@@ -747,14 +747,18 @@ bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool n
     if (!image) {
         return false;
     }
+    // The screen image comes straight from the display buffer, which UIImageJPEGRepresentation
+    // can return nil for, so native resolution is redrawn too, at the image's pixel size.
+    CGSize size = CGSizeMake(image.size.width * image.scale, image.size.height * image.scale);
     if (!native_resolution) {
         IcliScreenMetrics metrics = icli_screen_metrics();
-        UIGraphicsBeginImageContextWithOptions(CGSizeMake(metrics.width, metrics.height), YES, 1);
-        [image drawInRect:CGRectMake(0, 0, metrics.width, metrics.height)];
-        image = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        if (!image) return false;
+        size = CGSizeMake(metrics.width, metrics.height);
     }
+    UIGraphicsBeginImageContextWithOptions(size, YES, 1);
+    [image drawInRect:CGRectMake(0, 0, size.width, size.height)];
+    image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    if (!image) return false;
     float q = quality > 0 ? quality : 0.7f;
     NSData *data = UIImageJPEGRepresentation(image, q);
     if (max_bytes > 0) {

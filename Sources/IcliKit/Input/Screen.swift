@@ -1,3 +1,5 @@
+import Accelerate
+import CoreVideo
 import Foundation
 import IcliLaunch
 import IcliPrivate
@@ -223,20 +225,28 @@ private func recognizeImage(path: String, languages: [String], minConfidence: Fl
     guard let image = UIImage(contentsOfFile: path), let cgImage = image.cgImage else {
         throw IcliError.failed("OCR image missing")
     }
-    // Without a Metal device, as in a process started over SSH on iOS 15,
-    // Vision's CoreImage context falls back to OpenGL ES and crashes.
-    guard MTLCreateSystemDefaultDevice() != nil else {
-        throw IcliError.unavailable("System text recognition is unavailable on this device.")
-    }
+    // A process started over SSH or launchd has no GPU device: the kernel denies the GPU
+    // user client to non-app processes, so MTLCreateSystemDefaultDevice() is nil, Vision's
+    // IOSurface-backed pixel buffers (and any CoreImage GL context) fail or crash. On iOS 17+
+    // Vision runs the request on the CPU from a plain (non-IOSurface) pixel buffer we fill with
+    // vImage, avoiding both. Older systems without a GPU device stay unavailable.
+    let haveGPU = MTLCreateSystemDefaultDevice() != nil
     let pointSize = pointSizeMatching(image: cgImage)
+    let downsampled = downsampledCGImage(cgImage, maxEdge: 1600)
     do {
-        let blocks = try visionBlocks(
-            in: downsampledCGImage(cgImage, maxEdge: 1600),
-            languages: languages,
-            minConfidence: minConfidence,
-            pointSize: pointSize,
-        )
+        let blocks: [[String: Any]]
+        if haveGPU {
+            blocks = try visionBlocks(in: downsampled, languages: languages,
+                                      minConfidence: minConfidence, pointSize: pointSize)
+        } else if #available(iOS 17.0, *) {
+            blocks = try visionBlocksCPU(in: downsampled, languages: languages,
+                                         minConfidence: minConfidence, pointSize: pointSize)
+        } else {
+            throw IcliError.unavailable("System text recognition is unavailable on this device.")
+        }
         return ["blocks": blocks, "count": blocks.count, "engine": "vision"]
+    } catch let error as IcliError {
+        throw error
     } catch {
         throw IcliError.unavailable("System text recognition is unavailable on this device.")
     }
@@ -426,17 +436,16 @@ func validatePoint(_ x: Double, _ y: Double) throws {
     }
 }
 
-private func visionBlocks(
-    in image: CGImage,
-    languages: [String],
-    minConfidence: Float,
-    pointSize: CGSize,
-) throws -> [[String: Any]] {
+private func textRecognitionRequest(languages: [String]) -> VNRecognizeTextRequest {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = false
     request.recognitionLanguages = languages
-    try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+    return request
+}
+
+private func textBlocks(from request: VNRecognizeTextRequest, minConfidence: Float,
+                        pointSize: CGSize) -> [[String: Any]] {
     return (request.results ?? []).compactMap { observation in
         guard let candidate = observation.topCandidates(1).first, candidate.confidence >= minConfidence else {
             return nil
@@ -446,6 +455,85 @@ private func visionBlocks(
                 "x": box.midX * pointSize.width, "y": (1 - box.midY) * pointSize.height,
                 "width": box.width * pointSize.width, "height": box.height * pointSize.height]
     }
+}
+
+private func visionBlocks(
+    in image: CGImage,
+    languages: [String],
+    minConfidence: Float,
+    pointSize: CGSize,
+) throws -> [[String: Any]] {
+    let request = textRecognitionRequest(languages: languages)
+    try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+    return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize)
+}
+
+// GPU-free OCR: Vision on the CPU over a plain (non-IOSurface) 420f buffer filled with vImage,
+// so nothing needs the GPU user client the kernel withholds from non-app processes.
+@available(iOS 17.0, *)
+private func visionBlocksCPU(
+    in image: CGImage,
+    languages: [String],
+    minConfidence: Float,
+    pointSize: CGSize,
+) throws -> [[String: Any]] {
+    guard let buffer = cpuPixelBuffer420f(from: image) else {
+        throw IcliError.unavailable("System text recognition is unavailable on this device.")
+    }
+    let request = textRecognitionRequest(languages: languages)
+    for (stage, devices) in try request.supportedComputeStageDevices {
+        if let cpu = devices.first(where: { if case .cpu = $0 { return true } else { return false } }) {
+            request.setComputeDevice(cpu, for: stage)
+        }
+    }
+    try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
+    return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize)
+}
+
+// A malloc-backed 420f CVPixelBuffer (IOSurface-backed ones need the GPU and fail here), filled
+// from the CGImage with vImage on the CPU. Vision accepts it without allocating its own buffer.
+private func cpuPixelBuffer420f(from image: CGImage) -> CVPixelBuffer? {
+    let width = image.width, height = image.height
+    var pixelBuffer: CVPixelBuffer?
+    guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                              kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+                              [:] as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+          let buffer = pixelBuffer else { return nil }
+
+    var argb = vImage_Buffer()
+    guard vImageBuffer_Init(&argb, vImagePixelCount(height), vImagePixelCount(width), 32,
+                            vImage_Flags(kvImageNoFlags)) == kvImageNoError else { return nil }
+    defer { free(argb.data) }
+    guard let context = CGContext(data: argb.data, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: argb.rowBytes,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                      | CGBitmapInfo.byteOrder32Big.rawValue) else { return nil }
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+    var yp = vImage_Buffer(data: CVPixelBufferGetBaseAddressOfPlane(buffer, 0),
+                           height: vImagePixelCount(CVPixelBufferGetHeightOfPlane(buffer, 0)),
+                           width: vImagePixelCount(CVPixelBufferGetWidthOfPlane(buffer, 0)),
+                           rowBytes: CVPixelBufferGetBytesPerRowOfPlane(buffer, 0))
+    var cbcr = vImage_Buffer(data: CVPixelBufferGetBaseAddressOfPlane(buffer, 1),
+                             height: vImagePixelCount(CVPixelBufferGetHeightOfPlane(buffer, 1)),
+                             width: vImagePixelCount(CVPixelBufferGetWidthOfPlane(buffer, 1)),
+                             rowBytes: CVPixelBufferGetBytesPerRowOfPlane(buffer, 1))
+    var info = vImage_ARGBToYpCbCr()
+    var range = vImage_YpCbCrPixelRange(Yp_bias: 0, CbCr_bias: 128, YpRangeMax: 255,
+                                        CbCrRangeMax: 255, YpMax: 255, YpMin: 0,
+                                        CbCrMax: 255, CbCrMin: 0)
+    guard vImageConvert_ARGBToYpCbCr_GenerateConversion(
+        kvImage_ARGBToYpCbCrMatrix_ITU_R_601_4, &range, &info,
+        kvImageARGB8888, kvImage420Yp8_CbCr8, vImage_Flags(kvImageNoFlags)) == kvImageNoError
+    else { return nil }
+    let permute: [UInt8] = [0, 1, 2, 3]
+    guard vImageConvert_ARGB8888To420Yp8_CbCr8(&argb, &yp, &cbcr, &info, permute,
+                                               vImage_Flags(kvImageNoFlags)) == kvImageNoError
+    else { return nil }
+    return buffer
 }
 
 private func downsampledCGImage(_ src: CGImage, maxEdge: CGFloat) -> CGImage {
