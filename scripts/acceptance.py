@@ -2017,6 +2017,373 @@ def springboard_restart(d):
     assert d.cli('screen', 'info')['locked'] is False
 
 
+def run_binary(d, arguments, timeout=35):
+    """Runs icli with stdout kept as bytes, for commands that write raw data."""
+    command = shlex.join([d.binary] + list(arguments))
+    start = time.monotonic()
+    result = subprocess.run(d.prefix + ['ssh', '-p', d.port] + d.options + [d.user + '@' + d.host, command],
+                            env=d.env, capture_output=True, timeout=timeout)
+    d.trace.append({'command': command, 'cli_arguments': list(arguments), 'exit': result.returncode,
+                    'seconds': round(time.monotonic()-start, 3), 'stdout_bytes': len(result.stdout),
+                    'stderr': result.stderr[:2000].decode(errors='replace')})
+    return result
+
+
+def jpeg_size(data):
+    """Independent JPEG check: markers up to the scan, then the EOI as the last
+    two bytes and nowhere earlier. Returns (width, height) from the frame header."""
+    assert data[:2] == b'\xff\xd8', data[:16]
+    offset, size = 2, None
+    while True:
+        assert data[offset] == 0xff, f'no marker at {offset}'
+        marker = data[offset + 1]
+        length = struct.unpack('>H', data[offset + 2:offset + 4])[0]
+        if marker in (0xc0, 0xc1, 0xc2):
+            height, width = struct.unpack('>HH', data[offset + 5:offset + 9])
+            size = (width, height)
+        if marker == 0xda:
+            break
+        offset += 2 + length
+    assert size, 'no frame header before the scan'
+    # Entropy-coded data stuffs 0xff as ff00; ffd9 can only be the end of image.
+    assert data.index(b'\xff\xd9', offset) == len(data) - 2, 'bytes after the JPEG end of image'
+    return size
+
+
+def batch(d, steps, expected):
+    return d.cli('batch', input=steps if isinstance(steps, str) else json.dumps(steps), expected=expected)
+
+
+def wait_state(d, check, seconds=5):
+    deadline = time.monotonic() + seconds
+    while True:
+        state = d.state()
+        if check(state):
+            return state
+        assert time.monotonic() < deadline, f'TestHost state never matched: {state}'
+        time.sleep(0.2)
+
+
+@case('batch_steps', 'runtime', ['batch'])
+def batch_steps(d):
+    d.fixture()
+    lock = d.cli('device', 'info')['lock']['passcode_enabled']
+    # Every step passes, including a nested expect; the URL step's effect shows it ran.
+    passed = batch(d, [{'argv': ['app', 'frontmost'], 'expect': {'bundle_id': BUNDLE, 'verified': True}},
+                       {'argv': ['device', 'info'], 'expect': {'lock.passcode_enabled': lock}},
+                       ['url', 'open', 'icli-test://blur']], expected=0)
+    assert passed['ok'] and passed['status'] == 0 and passed['completed'] == passed['count'] == 3, passed
+    assert 'failed_step' not in passed and all(step['ok'] and step['exit_code'] == 0 for step in passed['steps']), passed
+    assert [step['index'] for step in passed['steps']] == [0, 1, 2], passed
+    assert d.state()['last_url'] == 'icli-test://blur'
+
+    # An unmet expect stops the batch: the URL step after it never runs.
+    d.fixture()
+    stopped = batch(d, [{'argv': ['app', 'frontmost'], 'expect': {'bundle_id': 'icli.wrong', 'verified': True}},
+                        ['url', 'open', 'icli-test://blur']], expected=1)
+    assert not stopped['ok'] and stopped['failed_step'] == 0 and stopped['completed'] == 1 and stopped['count'] == 2, stopped
+    assert stopped['steps'][0]['expect_failed'] == ['bundle_id'] and stopped['steps'][0]['result']['bundle_id'] == BUNDLE, stopped
+    assert d.state()['last_url'] == 'icli-test://reset', 'a step after the failure ran'
+
+    # A failing command also stops it, with that command's own result.
+    d.fixture()
+    failed = batch(d, [['ui', 'tap', 'no-such-element'], ['url', 'open', 'icli-test://blur']], expected=1)
+    assert failed['completed'] == 1 and failed['steps'][0]['result']['message'] == 'element not found', failed
+    assert d.state()['last_url'] == 'icli-test://reset', 'a step after the failure ran'
+
+    # continue_on_error runs the rest, and the batch still fails on the first failure.
+    d.fixture()
+    continued = batch(d, [{'argv': ['ui', 'tap', 'no-such-element'], 'continue_on_error': True},
+                          ['url', 'open', 'icli-test://blur']], expected=1)
+    assert not continued['ok'] and continued['failed_step'] == 0 and continued['completed'] == 2, continued
+    assert not continued['steps'][0]['ok'] and continued['steps'][1]['ok'], continued
+    assert d.state()['last_url'] == 'icli-test://blur', 'continue_on_error did not run the next step'
+
+    # The exit status is the first failed step's: 64 for a usage error, not a later step's 1.
+    usage = batch(d, [{'argv': ['screen', 'no-such-command'], 'continue_on_error': True},
+                      ['ui', 'tap', 'no-such-element']], expected=64)
+    assert usage['status'] == 64 and usage['failed_step'] == 0 and usage['completed'] == 2, usage
+    assert usage['steps'][0]['exit_code'] == 64 and 'no-such-command' in usage['steps'][0]['message'], usage
+    assert usage['steps'][1]['exit_code'] == 1, usage
+
+    # Refused steps and malformed input stop the batch before any step runs.
+    for command in [['batch'], ['probe', '/tmp/x.js'], ['tests']]:
+        d.fixture()
+        refused = batch(d, [['url', 'open', 'icli-test://blur'], command], expected=1)
+        assert refused['error'] == 'failed' and f'{command[0]} cannot run inside a batch' in refused['message'], refused
+        assert d.state()['last_url'] == 'icli-test://reset', f'a step ran before {command[0]} was refused'
+    for steps, message in [('', 'JSON array'), ('{"argv": ["app", "frontmost"]}', 'JSON array'), ([], 'JSON array'),
+                           ([['app', 'frontmost']] * 1001, 'JSON array'),
+                           ([{'argv': []}], 'non-empty list'), ([{'argv': ['app', 1]}], 'non-empty list'),
+                           ([{'argv': ['app', 'frontmost'], 'bogus': 1}], 'unknown field bogus'),
+                           ([{'argv': ['app', 'frontmost'], 'expect': ['bundle_id']}], 'expect must be an object'),
+                           ([{'argv': ['app', 'frontmost'], 'delay_ms': 60001}], 'delay_ms must be 0-60000'),
+                           ([{'argv': ['app', 'frontmost'], 'delay_ms': 'soon'}], 'delay_ms must be 0-60000')]:
+        rejected = batch(d, steps, expected=1)
+        assert message in rejected['message'] and 'steps' not in rejected, (steps if isinstance(steps, str) else steps[:2], rejected)
+
+
+@case('batch_refuses_stdout_screenshot', 'runtime', ['batch'])
+def batch_refuses_stdout_screenshot(d):
+    # 'screen shot --stdout' cannot be a step: like the other refused commands,
+    # the batch must refuse it with a JSON answer and run nothing.
+    d.fixture()
+    result = d.run([d.binary, 'batch'], input=json.dumps([['url', 'open', 'icli-test://blur'], ['screen', 'shot', '--stdout']]))
+    assert result.returncode == 1, result.returncode
+    assert not result.stdout.startswith('\xff\xd8'), 'a JPEG reached the batch output'
+    assert d.state()['last_url'] == 'icli-test://reset', 'the step before screen shot --stdout ran before the refusal'
+    answer = json.loads(result.stdout)
+    assert 'cannot run inside a batch' in answer['message'], answer
+
+
+@case('screen_shot_stdout', 'screen', ['screen shot'])
+def screen_shot_stdout(d):
+    d.fixture()
+    result = run_binary(d, ['screen', 'shot', '--stdout'])
+    assert result.returncode == 0 and result.stderr == b'', (result.returncode, result.stderr[:500])
+    size = jpeg_size(result.stdout)
+    # Same picture geometry as the JSON route, which the screenshot case checks against screen info.
+    shot = d.cli('screen', 'shot', '--base64')
+    assert size == jpeg_size(base64.b64decode(shot['data'])) == (shot['width'], shot['height']), (size, shot['width'], shot['height'])
+    # Usage errors still keep stdout clean.
+    bad = run_binary(d, ['screen', 'shot', '--stdout', '--bogus'])
+    assert bad.returncode == 64 and bad.stdout == b'', (bad.returncode, bad.stdout[:200])
+
+
+# TestHost's "Ready element" label, which toggles one second after icli-test://toggle.
+READY_REGION = '24,307,360,30'
+
+
+@case('screen_wait', 'screen', ['screen wait', 'screen shot'])
+def screen_wait(d):
+    baseline = '/tmp/icli-acceptance-wait-' + uuid.uuid4().hex + '.jpg'
+    try:
+        d.fixture()
+        stable = d.cli('screen', 'wait', '--stable', '--stable-for', '0.5', '--timeout', '5')
+        assert stable['stable'] and stable['stable_ms'] >= 500 and stable['frames'] >= 2 and 'changed' not in stable, stable
+
+        # A change after a saved baseline is seen, and then waited out until it settles.
+        d.cli('screen', 'shot', '--output', baseline)
+        d.cli('url', 'open', 'icli-test://toggle')
+        seen = d.cli('screen', 'wait', '--baseline', baseline, '--changed', '--stable', '--region', READY_REGION, '--timeout', '8')
+        assert seen['changed'] and seen['stable'] and seen['difference'] > 0.001, seen
+        assert d.state()['delayed_visible'], 'TestHost did not show the label the wait reported'
+        # The same rectangle without the label still matches the baseline elsewhere.
+        title = d.cli('screen', 'wait', '--baseline', baseline, '--changed', '--region', '24,65,360,40', '--timeout', '0.5', expected=1)
+        assert not title['changed'], title
+
+        # With nothing changing, --changed runs out its timeout and fails.
+        unchanged = d.cli('screen', 'wait', '--changed', '--region', READY_REGION, '--timeout', '1', expected=1)
+        assert not unchanged['changed'] and unchanged['waited_ms'] >= 1000 and unchanged['frames'] >= 2, unchanged
+        assert unchanged['difference'] <= 0.001, unchanged
+
+        for arguments in [[], ['--stable', '--baseline', baseline], ['--changed', '--region', '1,2,3'],
+                          ['--changed', '--region', '0,0,0,10'], ['--changed', '--timeout', '61'],
+                          ['--changed', '--baseline', '/tmp/icli-no-such-baseline.jpg']]:
+            d.cli('screen', 'wait', *arguments, expected=1)
+        # Documented (docs/usage/interaction.md): a timeout exits 1 with error timed_out.
+        assert unchanged['error'] == 'timed_out' and unchanged['message'] == 'the screen did not change', unchanged
+    finally:
+        d.run(['rm', '-f', baseline])
+
+
+@case('ui_source_ocr', 'ax', ['ui tap', 'ui wait', 'ui wait-gone'])
+def ui_source_ocr(d):
+    d.fixture()
+    if d.cli('screen', 'ocr', expected=None).get('error') == 'unavailable':
+        raise AssertionError('System OCR is unavailable on this device; --source ocr cannot be tested')
+    assert d.cli('screen', 'info')['height'] >= 750, "TestHost's drawn text (y 670-750) is off this screen"
+    # "HELLO 123" is drawn into an image the accessibility tree does not expose.
+    d.cli('ui', 'wait', 'HELLO 123', '--timeout', '0.3', expected=1)
+    drawn = d.cli('ui', 'wait', 'HELLO 123', '--source', 'ocr', '--timeout', '5')
+    assert drawn['found'] and drawn['source'] == 'ocr' and 'HELLO 123' in drawn['element']['label'], drawn
+    assert abs(drawn['element']['y'] - 691) < 15, drawn
+    fallback = d.cli('ui', 'wait', 'HELLO 123', '--source', 'any', '--timeout', '5')
+    assert fallback['found'] and fallback['source'] == 'ocr', fallback
+    tree = d.cli('ui', 'wait', 'Increment', '--source', 'any', '--timeout', '5')
+    assert tree['found'] and tree['source'] == 'ax' and tree['element']['identifier'] == 'counter.increment', tree
+
+    d.cli('url', 'open', 'icli-test://toggle')
+    appeared = d.cli('ui', 'wait', 'Ready element', '--source', 'ocr', '--timeout', '5')
+    assert appeared['found'] and appeared['source'] == 'ocr' and d.state()['delayed_visible'], appeared
+    d.cli('url', 'open', 'icli-test://toggle')
+    gone = d.cli('ui', 'wait-gone', 'Ready element', '--source', 'ocr', '--timeout', '5')
+    assert gone['disappeared'] and not d.state()['delayed_visible'], gone
+    d.cli('ui', 'wait', 'Never appears', '--source', 'ocr', '--timeout', '0.5', expected=1)
+    for arguments in [['--identifier', 'counter.increment'], ['Increment', '--role', 'button']]:
+        refused = d.cli('ui', 'wait', *arguments, '--source', 'ocr', '--timeout', '0.5', expected=1)
+        assert 'OCR matches text only' in refused['message'], refused
+    d.cli('ui', 'tap', 'Increment', '--source', 'screen', expected=1)
+
+    # The button's title found by OCR is tapped where it is drawn.
+    tapped = d.cli('ui', 'tap', 'Increment', '--source', 'ocr', '--match', 'exact')
+    assert tapped['tapped'] and tapped['source'] == 'ocr', tapped
+    wait_state(d, lambda state: state['counter'] == 1)
+    any_tap = d.cli('ui', 'tap', 'HELLO 123', '--source', 'any')
+    assert any_tap['tapped'] and any_tap['source'] == 'ocr', any_tap
+    assert d.state()['counter'] == 1, 'tapping the drawn text changed the counter'
+
+
+def testhost_pids(d):
+    return sorted(a['pid'] for a in d.cli('app', 'running')['apps'] if a['bundle_id'] == BUNDLE)
+
+
+@case('verified_launch_and_relaunch', 'apps', ['app launch', 'app relaunch', 'log crashes'])
+def verified_launch(d):
+    d.cli('app', 'kill', BUNDLE, '--force')
+    launched = d.cli('app', 'launch', BUNDLE, '--wait-foreground')
+    assert launched['verified'] and launched['frontmost'] and launched['launched'] == BUNDLE, launched
+    assert testhost_pids(d) == [launched['pid']], (launched, testhost_pids(d))
+    front = d.cli('app', 'frontmost')
+    assert front['bundle_id'] == BUNDLE and front['verified'], front
+    again = d.cli('app', 'launch', BUNDLE, '--wait-foreground')
+    assert again['pid'] == launched['pid'], 'launching a running app started another process'
+
+    # TestHost writes a fresh state in viewDidLoad: a counter back at 0 shows a new process.
+    d.cli('url', 'open', 'icli-test://reset')
+    d.cli('ui', 'tap', '--identifier', 'counter.increment')
+    wait_state(d, lambda state: state['counter'] == 1)
+    before = time.time()
+    relaunched = d.cli('app', 'relaunch', BUNDLE)
+    assert relaunched['old_pids'] == [launched['pid']] and relaunched['pid'] != launched['pid'], relaunched
+    assert relaunched['verified'] and relaunched['frontmost'], relaunched
+    assert testhost_pids(d) == [relaunched['pid']], (relaunched, testhost_pids(d))
+    assert d.cli('app', 'frontmost')['bundle_id'] == BUNDLE
+    wait_state(d, lambda state: state['counter'] == 0)
+    launched_at = datetime.fromisoformat(relaunched['launched_at'].replace('Z', '+00:00')).timestamp()
+    assert abs(launched_at - before) < 30, (relaunched['launched_at'], before)
+    assert d.cli('log', 'crashes', '--bundle-id', BUNDLE, '--since', relaunched['launched_at'])['count'] == 0
+
+    # Relaunching a stopped app reports no old process.
+    d.cli('app', 'kill', BUNDLE, '--force')
+    cold = d.cli('app', 'relaunch', BUNDLE)
+    assert cold['old_pids'] == [] and testhost_pids(d) == [cold['pid']], cold
+    for arguments in [['launch', 'icli.nonexistent.app', '--wait-foreground'], ['relaunch', 'icli.nonexistent.app'],
+                      ['launch', BUNDLE, '--wait-foreground', '--timeout', '61']]:
+        d.cli('app', *arguments, expected=1)
+    # An invalid timeout is refused without stopping the running app.
+    for timeout in ['-1', '61']:
+        d.cli('app', 'relaunch', BUNDLE, '--timeout=' + timeout, expected=1)
+        assert testhost_pids(d) == [cold['pid']], f'relaunch --timeout {timeout} was refused but stopped TestHost'
+    d.fixture()
+
+
+@case('crash_cutoff', 'logs', ['log crashes'])
+def crash_cutoff(d):
+    everything = d.cli('log', 'crashes')['crashes']
+    if len(everything) < 2:
+        d.fixture()
+        d.cli('url', 'open', 'icli-test://crash', expected=None)
+        time.sleep(5)
+        everything = d.cli('log', 'crashes')['crashes']
+    assert len(everything) >= 2, 'need at least two crash reports to test a cutoff'
+    # The oracle is each report's modification time as stat reports it.
+    stamps = {}
+    listing = d.run('stat -c "%.3Y %n" ' + ' '.join(shlex.quote(d.sh(path)) for path in everything), timeout=60)
+    for line in listing.stdout.splitlines():
+        stamp, path = line.split(' ', 1)
+        stamps[path] = float(stamp)
+    present = [path for path in everything if d.sh(path) in stamps]
+    assert len(present) >= 2, listing.stderr
+    times = sorted(stamps[d.sh(path)] for path in present)
+    # A cutoff half way between two distinct report times, as epoch seconds and as ISO-8601.
+    gaps = [(times[i + 1] - times[i], i) for i in range(len(times) - 1) if times[i + 1] - times[i] > 0.01]
+    assert gaps, 'every crash report has the same modification time'
+    _, i = max(gaps, key=lambda gap: (gap[0] > 2, -abs(gap[1] - len(times) // 2)))
+    cutoff = (times[i] + times[i + 1]) / 2
+    expected = {path for path in present if stamps[d.sh(path)] >= cutoff}
+    iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+    for since in [f'{cutoff:.3f}', iso]:
+        found = d.cli('log', 'crashes', '--since', since)
+        assert set(found['crashes']) & set(present) == expected and found['count'] == len(found['crashes']), (since, len(expected), found['count'])
+    assert set(d.cli('log', 'crashes', '--since', '0')['crashes']) >= set(present)
+    assert d.cli('log', 'crashes', '--since', str(int(time.time()) + 86400))['count'] == 0
+    assert d.cli('log', 'crashes', '--since', '2099-01-01T00:00:00Z')['count'] == 0
+    # Ages: each window contains the shorter one, all within everything.
+    windows = [set(d.cli('log', 'crashes', '--since', age)['crashes']) for age in ['30s', '5m', '2h', '100000h']]
+    assert all(a <= b for a, b in zip(windows, windows[1:])) and windows[-1] >= set(present), [len(w) for w in windows]
+    now = float(d.run(['date', '+%s.%N']).stdout)
+    in_two_hours = {path for path in present if stamps[d.sh(path)] >= now - 7200 + 5}
+    assert in_two_hours <= windows[2], 'a report from the last two hours is missing from --since 2h'
+    for since in ['abc', '5x', '5d', '-5m', 'nan', '2024-13-01T00:00:00Z']:
+        rejected = d.cli('log', 'crashes', '--since=' + since, expected=1)
+        assert rejected['message'].startswith('since must be'), (since, rejected)
+
+
+@case('app_container_preferences', 'system', ['prefs read', 'prefs write', 'prefs delete'])
+def app_container_preferences(d):
+    # An App Store-shaped app with a data container. The ad-hoc container
+    # fixture does not launch from 'app install --container' on every device;
+    # installed through TrollStore it does (ICLI_PREFS_APP picks another app).
+    app = d.env.get('ICLI_PREFS_APP', 'dev.owngoal.icli.ContainerFixture')
+    info = d.cli('app', 'info', app, expected=None)
+    assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with TrollStore'
+    plist = info['data_path'] + '/Library/Preferences/' + app + '.plist'
+    token = uuid.uuid4().hex[:8]
+    key, number = 'icli-acceptance-' + token, 'icli-acceptance-int-' + token
+
+    def running():
+        return sorted(a['pid'] for a in d.cli('app', 'running')['apps'] if a['bundle_id'] == app)
+
+    def on_disk():
+        result = d.run(['base64', d.sh(plist)], sudo=True)
+        return plistlib.loads(base64.b64decode(result.stdout)) if result.returncode == 0 and result.stdout.strip() else {}
+
+    def owner(path):
+        return d.run(['stat', '-c', '%u:%g', d.sh(path)], sudo=True).stdout.strip()
+
+    container_owner = owner(info['data_path'])
+    assert container_owner, 'cannot stat the data container'
+    original = on_disk()
+    try:
+        pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
+        refused = d.cli('prefs', 'write', '--app', app, key, 'value', expected=1)
+        assert refused['error'] == 'force_required', refused
+        assert running() == [pid], 'a refused write stopped the app'
+        assert key not in on_disk(), 'a refused write changed the file'
+
+        written = d.cli('prefs', 'write', '--app', app, key, 'text 中文', '--force')
+        assert written['stopped_app'] and written['value'] == 'text 中文' and written['type'] == 'string', written
+        assert written['path'] == plist and written['exists'], written
+        assert running() == [], 'the app is still running after a forced write'
+        stored = on_disk()
+        assert stored.get(key) == 'text 中文', stored
+        assert {k: v for k, v in stored.items() if k != key} == original, 'other keys changed'
+        assert owner(plist) == container_owner, (owner(plist), container_owner)
+        assert d.run(['stat', '-c', '%a', d.sh(plist)], sudo=True).stdout.strip() == '600'
+
+        # The app is stopped now, so no --force is needed.
+        typed = d.cli('prefs', 'write', '--app', app, number, '42', '--type', 'int')
+        assert not typed['stopped_app'] and typed['value'] == 42 and typed['type'] == 'int', typed
+        one = d.cli('prefs', 'read', '--app', app, key)
+        assert one['exists'] and one['value'] == 'text 中文' and one['app'] == app, one
+        listed = d.cli('prefs', 'read', '--app', app)
+        assert listed['values'][number] == {'value': 42, 'type': 'int'} and listed['count'] == len(listed['values']), listed
+        assert not d.cli('prefs', 'read', '--app', app, 'icli-missing-' + token)['exists']
+
+        # The app reads the edited file after cfprefsd restarts: it launches and
+        # still finds the values, and a delete while it runs is refused.
+        pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
+        assert d.cli('prefs', 'delete', '--app', app, key, expected=1)['error'] == 'force_required'
+        assert running() == [pid] and key in on_disk()
+        removed = d.cli('prefs', 'delete', '--app', app, key, '--force')
+        assert removed['removed'] and removed['stopped_app'] and not removed['exists'], removed
+        assert d.cli('prefs', 'delete', '--app', app, number)['removed']
+        assert not d.cli('prefs', 'delete', '--app', app, number)['removed']
+        assert on_disk() == original, 'the file did not return to its original keys'
+        assert owner(plist) == container_owner, (owner(plist), container_owner)
+
+        for arguments in [['write', '--app', app, key, 'x', '--notify', 'icli.test'], ['delete', '--app', app, key, '--notify', 'icli.test'],
+                          ['read', '--app', app, 'one', 'two'], ['write', '--app', app, key], ['write', '--app', 'icli.nonexistent.app', key, 'x'],
+                          ['write', '--app', app, key, '12x', '--type', 'int']]:
+            d.cli('prefs', *arguments, expected=1)
+        assert key not in on_disk()
+    finally:
+        d.cli('prefs', 'delete', '--app', app, key, '--force', expected=None)
+        d.cli('prefs', 'delete', '--app', app, number, '--force', expected=None)
+    d.fixture()
+
+
 def unsigned_code(binary):
     """A thin arm64 Mach-O without its code signature and RootHide's section marker."""
     magic, _, _, _, count, _, _, _ = struct.unpack('<8I', binary[:32])

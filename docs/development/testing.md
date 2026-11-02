@@ -36,6 +36,8 @@ python3 scripts/check-package-consumer.py --device
 python3 scripts/assemble-release.py
 ```
 
+The cases `batch_steps`, `batch_refuses_stdout_screenshot`, `screen_shot_stdout`, `screen_wait`, `ui_source_ocr`, `verified_launch_and_relaunch`, `crash_cutoff` and `app_container_preferences` cover batches, pixel waits, OCR element selectors, verified launches, crash cutoffs and app container preferences; run them alone with `--case`. `app_container_preferences` needs a running app with a data container: install `.build/install-fixtures/icli-container-fixture.ipa` with TrollStore (an `app install --container` copy of the ad-hoc fixture does not launch on every device), or name another app in `ICLI_PREFS_APP`. It writes and removes its own keys only.
+
 `scripts/host-soak.py` runs `Tests/HostSoak` on the same device: one long-lived process that calls IcliKit the way a daemon such as vphoned does, from worker threads and thousands of times, and checks memory after screen captures, the accessibility switches, waits on threads without a run loop, and values JSON cannot carry. Pass `--root` to run it as root, as a launch daemon runs.
 
 `assemble-release.py` archives the binary, packages, fixtures, integration documentation, and reports under `.build/release/<version>/` and regenerates `docs/rootless-acceptance.md` from the run. It verifies that the full run completed, the tested runner and binary still match, and the package consumer passed. It exits nonzero if any case failed or any command was not executed.

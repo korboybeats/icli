@@ -113,6 +113,34 @@ public func runSelfTests(expectedLayout: String? = nil, registrationFixture: Str
         }
         return ["comparisons": 3]
     }
+    check("crash_cutoff_parsing") {
+        // Ages are relative to now; allow for the time the check itself takes.
+        for (text, age) in [("0s", 0.0), ("30s", 30), ("1.5s", 1.5), ("5m", 300), ("2h", 7200)] {
+            let expected = Date(timeIntervalSinceNow: -age)
+            let parsed = try parseCrashCutoff(text)
+            try requireSelfTest(abs(parsed.timeIntervalSince(expected)) < 2, "\(text) parsed as \(parsed), expected about \(expected)")
+        }
+        for (text, epoch) in [
+            ("0", 0.0), ("1700000000", 1_700_000_000), ("1700000000.25", 1_700_000_000.25),
+            ("2024-01-02T03:04:05Z", 1_704_164_645), ("2024-01-02T03:04:05.250Z", 1_704_164_645.25),
+            ("2024-01-02T12:04:05+09:00", 1_704_164_645),
+        ] {
+            let parsed = try parseCrashCutoff(text)
+            try requireSelfTest(
+                abs(parsed.timeIntervalSince1970 - epoch) < 0.001,
+                "\(text) parsed as \(parsed.timeIntervalSince1970), expected \(epoch)",
+            )
+        }
+        let invalid = ["", "abc", "5x", "5d", "m", "-5m", "nan", "inf", "2024-13-02T03:04:05Z", "30 s"]
+        for text in invalid {
+            var accepted: Date?
+            do { accepted = try parseCrashCutoff(text) } catch let IcliError.failed(message) {
+                try requireSelfTest(message.hasPrefix("since must be"), "\(text) failed with an unexpected message: \(message)")
+            }
+            try requireSelfTest(accepted == nil, "Invalid cutoff \(text) was accepted as \(accepted.map { "\($0)" } ?? "")")
+        }
+        return ["ages": 5, "absolute": 6, "rejected": invalid.count]
+    }
     check("screenshot") {
         try withSelfTestDirectory { directory in
             var capture = try takeScreenshot(path: directory + "/screen.jpg")
