@@ -884,7 +884,9 @@ def raster_ocr(d):
         assert result['engine'] == 'vision'
         for text, expected_y in [('HELLO 123', 691), ('中文测试', 726)]:
             block = next(b for b in result['blocks'] if b['text'] == text)
-            assert abs(block['y']-expected_y) < 15 and block['confidence'] > 0.7, block
+            # Vision's confidence is coarse (0.3, 0.5, 1 on iOS 17) and says little
+            # about a correct read; the exact text and its position are the oracle.
+            assert abs(block['y']-expected_y) < 15 and block['confidence'] >= 0.3, block
         assert any(b['text'] == '中文测试' for b in described['ocr']['blocks'])
     assert not described['context_changed']
     assert base64.b64decode(described['screenshot']['data']).startswith(b'\xff\xd8')
@@ -1336,6 +1338,11 @@ def launchd_kickstart_upgrade(d):
     body = plistlib.dumps({'Label': label, 'ProgramArguments': [program, marker],
                           'RunAtLoad': True, 'ThrottleInterval': 1}).decode()
     assert not d.cli('svc', 'status', label)['loaded']
+    # Dopamine's bootstrap has no var/tmp until something makes it.
+    scratch = d.jb('/var/tmp')
+    made_scratch = d.run(['test', '-d', d.sh(scratch)]).returncode != 0
+    if made_scratch:
+        assert d.run(['mkdir', '-m', '1777', d.sh(scratch)], sudo=True).returncode == 0
     assert d.run(['mkdir', d.sh(folder)]).returncode == 0
     try:
         for version in [1, 2]:
@@ -1381,6 +1388,8 @@ def launchd_kickstart_upgrade(d):
     finally:
         d.cli('svc', 'bootout', plist, sudo=True, expected=None)
         d.run(['rm', '-rf', d.sh(plist), d.sh(folder)], sudo=True)
+        if made_scratch:
+            d.run(['rmdir', d.sh(scratch)], sudo=True)
     assert not d.cli('svc', 'status', label)['loaded']
 
 
@@ -1926,6 +1935,24 @@ def icon_cache(d):
     after = next(app['pid'] for app in d.cli('app', 'running')['apps'] if app['bundle_id'] == BUNDLE)
     assert before == after, 'refresh terminated or restarted an unchanged app'
     assert d.cli('app', 'frontmost')['bundle_id'] == BUNDLE
+
+
+@case('registration_uncontained_plugin', 'apps', ['app register', 'app refresh', 'app unregister'])
+def registration_uncontained_plugin(d):
+    # LaunchServices can report a no-container plug-in as containerized; that must
+    # neither fail a registration nor register the app again on every refresh.
+    directory = '/tmp/icli-uncontained-' + uuid.uuid4().hex
+    app = directory + '/IcliUncontainedFixture.app'
+    d.run(['mkdir', '-p', d.sh(directory)])
+    d.upload(ROOT / '.build/install-fixtures/uncontained-plugin/IcliUncontainedFixture.app', app)
+    try:
+        registered = d.cli('app', 'register', app)
+        assert registered['registered'] and registered['plugins'] == ['dev.owngoal.icli.UncontainedFixture.Tunnel'], registered
+        refreshed = d.cli('app', 'refresh', '--directory', directory)
+        assert not refreshed['registered'] and not refreshed['unverified'] and len(refreshed['unchanged']) == 1, refreshed
+    finally:
+        d.cli('app', 'unregister', app, '--force', expected=None)
+        d.run(['rm', '-rf', d.sh(directory)])
 
 
 @case('loopback_packet_capture', 'network', ['net capture'])

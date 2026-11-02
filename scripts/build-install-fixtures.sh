@@ -51,21 +51,15 @@ rm -rf "$root/container"
 mkdir -p "$container"
 cp "$app/IcliTestHost" "$container/IcliTestHost"
 stamp "$container" dev.owngoal.icli.ContainerFixture 'icli Container Fixture' "$root/container-entitlements.plist" --container
-# A plug-in, so a container install shows whether LaunchServices registered
-# it. Nothing configures the tunnel, so the extension is never launched.
-# Signing the app below signs it too, with the app's entitlements.
-extension="$container/PlugIns/IcliContainerFixtureTunnel.appex"
-mkdir -p "$extension"
-cp "$app/IcliTestHost" "$extension/IcliContainerFixtureTunnel"
-python3 - "$extension" <<'PY'
+extension_plist() {
+  python3 - "$@" <<'PY'
 import plistlib, sys
 from pathlib import Path
-bundle = sys.argv[1]
-identifier = 'dev.owngoal.icli.ContainerFixture.Tunnel'
+bundle, identifier, executable = sys.argv[1:]
 (Path(bundle) / 'Info.plist').write_bytes(plistlib.dumps({
     'CFBundleIdentifier': identifier,
-    'CFBundleExecutable': 'IcliContainerFixtureTunnel',
-    'CFBundleName': 'IcliContainerFixtureTunnel',
+    'CFBundleExecutable': executable,
+    'CFBundleName': executable,
     'CFBundlePackageType': 'XPC!',
     'CFBundleVersion': '1',
     'CFBundleShortVersionString': '1.0',
@@ -77,8 +71,26 @@ identifier = 'dev.owngoal.icli.ContainerFixture.Tunnel'
     },
 }))
 PY
+}
+# A plug-in, so a container install shows whether LaunchServices registered
+# it. Nothing configures the tunnel, so the extension is never launched.
+# Signing the app below signs it too, with the app's entitlements.
+extension="$container/PlugIns/IcliContainerFixtureTunnel.appex"
+mkdir -p "$extension"
+cp "$app/IcliTestHost" "$extension/IcliContainerFixtureTunnel"
+extension_plist "$extension" dev.owngoal.icli.ContainerFixture.Tunnel IcliContainerFixtureTunnel
 ldid -S"$root/container-entitlements.plist" "$container"
 (cd "$root/container" && rm -f ../icli-container-fixture.ipa && zip -qr ../icli-container-fixture.ipa Payload)
+# An unsandboxed app with a no-container plug-in, as Filza has: LaunchServices
+# reports the plug-in as containerized whatever was registered.
+uncontained="$root/uncontained-plugin/IcliUncontainedFixture.app"
+rm -rf "$root/uncontained-plugin"
+mkdir -p "$uncontained/PlugIns/IcliUncontainedTunnel.appex"
+cp "$app/IcliTestHost" "$uncontained/IcliTestHost"
+stamp "$uncontained" dev.owngoal.icli.UncontainedFixture 'icli Uncontained Fixture' "$root/uncontained-entitlements.plist"
+cp "$app/IcliTestHost" "$uncontained/PlugIns/IcliUncontainedTunnel.appex/IcliUncontainedTunnel"
+extension_plist "$uncontained/PlugIns/IcliUncontainedTunnel.appex" dev.owngoal.icli.UncontainedFixture.Tunnel IcliUncontainedTunnel
+ldid -S"$root/uncontained-entitlements.plist" "$uncontained"
 cat > "$root/deb/DEBIAN/control" <<CONTROL
 Package: dev.owngoal.icli.installtest
 Name: icli install acceptance fixture

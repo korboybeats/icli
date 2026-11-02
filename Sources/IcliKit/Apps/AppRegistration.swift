@@ -313,7 +313,7 @@ func registrationDifference(_ record: [String: Any], _ plan: RegistrationPlan) -
         return "plug-ins"
     }
     for plugIn in plan.plugIns {
-        if let difference = bundleDifference(plugIns[plugIn.bundleID] ?? [:], plugIn, plan) {
+        if let difference = bundleDifference(plugIns[plugIn.bundleID] ?? [:], plugIn, plan, isPlugIn: true) {
             return "plug-in \(plugIn.bundleID) \(difference)"
         }
     }
@@ -323,7 +323,8 @@ func registrationDifference(_ record: [String: Any], _ plan: RegistrationPlan) -
 private func bundleDifference(
     _ record: [String: Any],
     _ bundle: RegistrationPlan.Bundle,
-    _ plan: RegistrationPlan
+    _ plan: RegistrationPlan,
+    isPlugIn: Bool = false,
 ) -> String? {
     if record["path"] as? String != normalizedAppPath(bundle.path) {
         return "path"
@@ -331,7 +332,10 @@ private func bundleDifference(
     if !NSDictionary(dictionary: record["entitlements"] as? [String: Any] ?? [:]).isEqual(to: bundle.entitlements) {
         return "entitlements"
     }
-    if record["containerized"] as? Bool != bundle.containerized {
+    // LaunchServices reports a plug-in registered with IsContainerized false as
+    // containerized (seen on iOS 17.1.1), so only the reverse is a difference.
+    let recordedContainerized = record["containerized"] as? Bool
+    if recordedContainerized != bundle.containerized, !(isPlugIn && !bundle.containerized && recordedContainerized == true) {
         return "containerization"
     }
     if bundle.containerized, record["data_container"] == nil {
