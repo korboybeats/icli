@@ -7,7 +7,7 @@ struct Screen: ParsableCommand {
         abstract: "Touch, pointer, screenshot, OCR",
         subcommands: [
             Tap.self, Swipe.self, LongPress.self, DoubleTap.self, Drag.self, Touch.self,
-            TouchSequence.self, Click.self, Scroll.self, Shot.self, Info.self, OCR.self, Describe.self
+            TouchSequence.self, Click.self, Scroll.self, Shot.self, Wait.self, Info.self, OCR.self, Describe.self
         ],
     )
 }
@@ -183,9 +183,50 @@ extension Screen {
         @Flag(help: "Include the JPEG as Base64 in the result; keep a file only when --output is supplied.")
         var base64 = false
         @Flag var nativeResolution = false
+        @Flag(help: "Write the raw JPEG to stdout and nothing else; errors go to stderr as JSON.")
+        var stdout = false
         func run() {
+            if stdout {
+                writeShotToStdout()
+                return
+            }
             emit(allowWhenLocked: true, output) {
                 try takeScreenshot(path: path, base64: base64, nativeResolution: nativeResolution)
+            }
+        }
+    }
+
+    struct Wait: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Wait until the screen's pixels change, settle, or change and then settle.",
+            discussion: """
+            Pixels only, so it sees what the accessibility tree does not. A change made before \
+            this command starts is invisible to it, so save the screen before the action:
+
+              icli screen shot --output /tmp/before.jpg
+              icli ui tap Continue
+              icli screen wait --baseline /tmp/before.jpg --changed --stable
+
+            Give --changed, --stable or both. A timeout exits 1 with error timed_out and
+            reports whether a change was seen.
+            """,
+        )
+        @OptionGroup var output: OutputOptions
+        @Flag(help: "Wait until the screen differs from the baseline.") var changed = false
+        @Flag(help: "Wait until the screen stops changing; with --changed, after the change.") var stable = false
+        @Option(help: "JPEG from 'screen shot' to compare with; defaults to the screen when this command starts.")
+        var baseline: String?
+        @Option(help: "Seconds the screen must hold still to count as stable, 0–30.") var stableFor: Double = 0.5
+        @Option(help: "Only watch this rectangle, in points: x,y,width,height.") var region: String?
+        @Option(help: "Fraction of sampled pixels that must differ to count as a change, 0–1.") var threshold: Double = 0.001
+        @Option(help: "Overall deadline in seconds, 0–60.") var timeout: Double = 10
+        @Option(help: "Seconds between captures, 0–5.") var interval: Double = 0.05
+        func run() {
+            emit(output) {
+                try waitForScreen(
+                    changed: changed, stable: stable, baseline: baseline, stableFor: stableFor,
+                    region: ScreenRegion(text: region), threshold: threshold, timeout: timeout, interval: interval,
+                )
             }
         }
     }
@@ -330,6 +371,18 @@ struct UI: ParsableCommand {
     )
 }
 
+struct ElementSourceOptions: ParsableArguments {
+    @Option(help: "Where to look: ax (accessibility tree), ocr (on-screen text recognition; text only, no --identifier or --role) or any (tree, then text). ocr and any report the source used.")
+    var source: String = "ax"
+    @Option(help: "OCR recognition language; repeat for several.") var lang: [String] = ["zh-Hans", "en-US"]
+    func parsed() throws -> ElementSource {
+        guard let source = ElementSource(rawValue: source) else {
+            throw IcliError.failed("source must be ax, ocr or any")
+        }
+        return source
+    }
+}
+
 struct ElementOptions: ParsableArguments {
     @Argument(
         help: "Text to match in an element's label, identifier, or value; required unless --identifier is supplied.",
@@ -410,19 +463,24 @@ extension UI {
     struct Tap: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @OptionGroup var selection: ElementOptions
+        @OptionGroup var from: ElementSourceOptions
         func run() {
-            emit(output) { try tapElement(selection.selector()) }
+            emit(output) { try tapElement(selection.selector(), source: from.parsed(), languages: from.lang) }
         }
     }
 
     struct Wait: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @OptionGroup var selection: ElementOptions
-        @Option var timeout: Double = 10
-        @Option var interval: Double = 0.3
+        @OptionGroup var from: ElementSourceOptions
+        @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
+        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.3
         func run() {
             emit(output) {
-                try waitForElement(selection.selector(), appear: true, timeout: timeout, interval: interval)
+                try waitForElement(
+                    selection.selector(), appear: true, timeout: timeout, interval: interval,
+                    source: from.parsed(), languages: from.lang,
+                )
             }
         }
     }
@@ -431,13 +489,31 @@ extension UI {
         static var configuration = CommandConfiguration(commandName: "wait-gone")
         @OptionGroup var output: OutputOptions
         @OptionGroup var selection: ElementOptions
-        @Option var timeout: Double = 10
-        @Option var interval: Double = 0.3
+        @OptionGroup var from: ElementSourceOptions
+        @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
+        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.3
         func run() {
             emit(output) {
-                try waitForElement(selection.selector(), appear: false, timeout: timeout, interval: interval)
+                try waitForElement(
+                    selection.selector(), appear: false, timeout: timeout, interval: interval,
+                    source: from.parsed(), languages: from.lang,
+                )
             }
         }
+    }
+}
+
+private func writeShotToStdout() {
+    do {
+        // JSON on stdout would corrupt the image a caller is piping to a file.
+        guard !Envelope.capturing else { throw IcliError.failed("--stdout cannot run inside a batch") }
+        try Envelope.applyLockPolicy(allowWhenLocked: true)
+        try FileHandle.standardOutput.write(contentsOf: screenshotJPEGData())
+    } catch {
+        let payload = (error as? IcliError)?.payload ?? IcliError.failed(error.localizedDescription).payload
+        let data = (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
+        FileHandle.standardError.write(data + Data("\n".utf8))
+        Darwin.exit(1)
     }
 }
 

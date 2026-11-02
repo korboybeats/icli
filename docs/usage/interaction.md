@@ -157,3 +157,34 @@ Screenshot paths are on the device. Default screenshots have one image pixel per
 `screen describe` uses one capture for its JPEG and OCR results and collects accessibility elements separately. Check its component errors and `context_changed` before combining the results.
 
 OCR uses Apple's Vision framework. If system text recognition is unavailable, the command returns an `unavailable` error; that includes a process with no Metal device, such as one started over SSH on iOS 15, where Vision would otherwise crash. A successful scan with no recognized text returns an empty result.
+
+### Text Recognition Selectors
+
+`ui tap`, `ui wait` and `ui wait-gone` take `--source ax|ocr|any` (default `ax`). `ocr` matches on-screen text found by text recognition, for UI missing from the accessibility tree such as system share sheets; it accepts text only, not `--identifier` or `--role`, and taps the centre of the matched text within its line. `any` tries the tree first and falls back to text recognition when the tree has no match. Results from `ocr` and `any` include `source`. Add `--lang` to change the recognition languages.
+
+```sh
+icli ui wait --source ocr Copy --timeout 5
+icli ui tap --source any Copy
+```
+
+### Waiting for the Screen
+
+`screen wait` compares screenshots, so it sees changes the accessibility tree does not. `--changed` waits until the screen differs from a baseline, `--stable` until it stops changing for `--stable-for` seconds, and both together wait for a change and then for it to settle. A change made before the command starts is invisible to it unless you save a baseline first. `--region x,y,width,height` limits the comparison to a rectangle in points. A timeout exits 1 with `error: timed_out`.
+
+```sh
+icli screen shot --output /tmp/before.jpg
+icli ui tap Continue
+icli screen wait --baseline /tmp/before.jpg --changed --stable
+```
+
+`screen shot --stdout` writes only the JPEG bytes to stdout, for `ssh phone 'icli screen shot --stdout' > shot.jpg`; errors go to stderr as JSON.
+
+### Batches
+
+`icli batch` reads a JSON array of steps from stdin and runs them in one process, stopping at the first failure. A step is an argument list or an object with `argv`, and optionally `expect` (result fields that must match; dotted keys read nested fields), `delay_ms` and `continue_on_error`. The result lists each step's `result`, `exit_code` and `elapsed_ms`; the exit status is the first failed step's. `batch`, `probe`, `tests` and `screen shot --stdout` cannot be steps.
+
+```sh
+echo '[["app","relaunch","com.example"],
+       {"argv":["app","frontmost"],"expect":{"bundle_id":"com.example","verified":true}},
+       ["ui","wait","Ready"]]' | icli batch
+```

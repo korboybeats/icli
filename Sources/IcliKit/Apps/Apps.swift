@@ -130,6 +130,56 @@ public func killApp(_ bundleID: String, force: Bool) throws -> [String: Any] {
     throw IcliError.failed("app is still running: \(bundleID)")
 }
 
+/// Launches an app and returns once RunningBoard verifies it in front, with
+/// its PID. launchApp alone can answer from an unverified SpringBoard query.
+public func launchAppVerified(_ bundleID: String, timeout: TimeInterval = 15) throws -> [String: Any] {
+    guard timeout.isFinite, (0 ... 60).contains(timeout) else {
+        throw IcliError.failed("timeout must be 0–60 seconds")
+    }
+    let start = ProcessInfo.processInfo.systemUptime
+    _ = try launchApp(bundleID)
+    let app = try appInfo(bundleID)
+    repeat {
+        let frontmost = frontmostApp()
+        if frontmost["verified"] as? Bool == true, frontmost["bundle_id"] as? String == bundleID {
+            let processes = try listProcesses(filter: nil)["processes"] as? [[String: Any]] ?? []
+            if let pid = appPIDs(app, in: processes).first {
+                return [
+                    "launched": bundleID, "frontmost": true, "verified": true, "pid": pid,
+                    "waited_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000),
+                ]
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while ProcessInfo.processInfo.systemUptime - start < timeout
+    throw IcliError.failed("\(bundleID) was not verified in front within \(timeout) seconds; it may have crashed")
+}
+
+/// Stops an app, starts it again and proves the process in front is a new one.
+/// `launched_at` can be passed to `log crashes --since`.
+public func relaunchApp(_ bundleID: String, timeout: TimeInterval = 15) throws -> [String: Any] {
+    // Validate before stopping the app, so a bad timeout leaves it running.
+    guard timeout.isFinite, (0 ... 60).contains(timeout) else {
+        throw IcliError.failed("timeout must be 0–60 seconds")
+    }
+    let stopped = try killApp(bundleID, force: true)
+    let oldPIDs = stopped["pids"] as? [Int] ?? []
+    let launchedAt = ISO8601DateFormatter().string(from: Date())
+    var result = try launchAppVerified(bundleID, timeout: timeout)
+    if let pid = result["pid"] as? Int, oldPIDs.contains(pid) {
+        throw IcliError.failed("\(bundleID) kept its old process \(pid) through the relaunch")
+    }
+    result["old_pids"] = oldPIDs
+    result["launched_at"] = launchedAt
+    return result
+}
+
+/// Whether any process of an installed app is running.
+func appIsRunning(_ app: [String: Any]) throws -> Bool {
+    let processes = try listProcesses(filter: nil)["processes"] as? [[String: Any]] ?? []
+    return !appPIDs(app, in: processes).isEmpty
+}
+
 /// Installs a .deb, registers a .app, or installs an .ipa into the
 /// bootstrap's /Applications or, with `container`, into its own app container.
 public func installPackage(

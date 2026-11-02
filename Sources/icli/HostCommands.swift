@@ -42,8 +42,10 @@ extension Log {
     struct Crashes: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Option var bundleID: String?
+        @Option(help: "Only reports written since: ISO-8601, epoch seconds, or an age such as 30s, 5m or 2h.")
+        var since: String?
         func run() {
-            emit(output) { try crashLogs(bundleID: bundleID) }
+            emit(output) { try crashLogs(bundleID: bundleID, since: since.map(parseCrashCutoff)) }
         }
     }
 

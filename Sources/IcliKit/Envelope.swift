@@ -12,6 +12,12 @@ public enum Envelope {
     public static var human = false
     public static var warning: String?
 
+    /// While true, the next result and exit status are kept for a batch
+    /// instead of being printed or ending the process.
+    public static var capturing = false
+    public static var capturedResult: Any?
+    public static var capturedStatus: Int32 = 0
+
     public static func applyLockPolicy(allowWhenLocked: Bool) throws {
         warning = nil
         icli_private_init()
@@ -29,6 +35,10 @@ public enum Envelope {
     }
 
     public static func printJSON(_ value: Any) {
+        if capturing {
+            capturedResult = value
+            return
+        }
         let payload: Any
         if let warning, var dict = value as? [String: Any] {
             dict["warning"] = warning
@@ -58,20 +68,28 @@ public enum Envelope {
             let result = try body()
             printJSON(result)
             if let status = result["status"] as? Int, status != 0 {
-                Darwin.exit(exitCode(status))
+                finish(exitCode(status))
             }
         } catch let error as IcliError {
             printJSON(error.payload)
             if case .locked = error {
-                Darwin.exit(2)
+                finish(2)
+            } else if case let .commandFailed(result) = error {
+                finish(exitCode(result["status"] as? Int ?? 1))
+            } else {
+                finish(1)
             }
-            if case let .commandFailed(result) = error {
-                Darwin.exit(exitCode(result["status"] as? Int ?? 1))
-            }
-            Darwin.exit(1)
         } catch {
             printJSON(IcliError.failed(error.localizedDescription).payload)
-            Darwin.exit(1)
+            finish(1)
+        }
+    }
+
+    private static func finish(_ status: Int32) {
+        if capturing {
+            capturedStatus = status
+        } else {
+            Darwin.exit(status)
         }
     }
 

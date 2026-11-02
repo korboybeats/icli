@@ -42,6 +42,17 @@ public func takeScreenshot(
     return result
 }
 
+/// One screenshot's JPEG bytes, for a caller that wants them and no file.
+public func screenshotJPEGData(nativeResolution: Bool = false) throws -> Data {
+    icli_private_init()
+    let path = JailbreakRoot.current.scratchDirectory() + "/icli-\(UUID().uuidString).jpg"
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    guard icli_screenshot_jpeg(path, 0.8, 800_000, nativeResolution) else {
+        throw IcliError.failed("screenshot failed")
+    }
+    return try Data(contentsOf: URL(fileURLWithPath: path))
+}
+
 /// tvOS has neither a touch screen nor a pointer: a touch or click at a point
 /// reaches nothing there, so it is refused rather than reported as sent.
 func requirePointInput() throws {
@@ -211,17 +222,18 @@ public func openURL(_ url: String) throws -> [String: Any] {
     return ["url": url]
 }
 
-public func recognizeScreen(languages: [String], minConfidence: Float) throws -> [String: Any] {
+public func recognizeScreen(languages: [String], minConfidence: Float, locating: String? = nil) throws -> [String: Any] {
     guard !languages.isEmpty, minConfidence.isFinite, (0 ... 1).contains(minConfidence) else {
         throw IcliError.failed("provide languages and confidence between 0 and 1")
     }
     let path = JailbreakRoot.current.scratchDirectory() + "/icli-ocr-\(UUID().uuidString).jpg"
     defer { try? FileManager.default.removeItem(atPath: path) }
     guard icli_screenshot_jpeg(path, 0.9, 0, true) else { throw IcliError.failed("OCR screenshot failed") }
-    return try recognizeImage(path: path, languages: languages, minConfidence: minConfidence)
+    return try recognizeImage(path: path, languages: languages, minConfidence: minConfidence, locating: locating)
 }
 
-private func recognizeImage(path: String, languages: [String], minConfidence: Float) throws -> [String: Any] {
+private func recognizeImage(path: String, languages: [String], minConfidence: Float,
+                            locating: String? = nil) throws -> [String: Any] {
     guard let image = UIImage(contentsOfFile: path), let cgImage = image.cgImage else {
         throw IcliError.failed("OCR image missing")
     }
@@ -237,10 +249,10 @@ private func recognizeImage(path: String, languages: [String], minConfidence: Fl
         let blocks: [[String: Any]]
         if haveGPU {
             blocks = try visionBlocks(in: downsampled, languages: languages,
-                                      minConfidence: minConfidence, pointSize: pointSize)
+                                      minConfidence: minConfidence, pointSize: pointSize, locating: locating)
         } else if #available(iOS 17.0, *) {
             blocks = try visionBlocksCPU(in: downsampled, languages: languages,
-                                         minConfidence: minConfidence, pointSize: pointSize)
+                                         minConfidence: minConfidence, pointSize: pointSize, locating: locating)
         } else {
             throw IcliError.unavailable("System text recognition is unavailable on this device.")
         }
@@ -390,16 +402,76 @@ private func selectedElements(_ selector: ElementSelector) throws -> [[String: A
     return (result["elements"] as? [[String: Any]] ?? []).filter(selector.matches)
 }
 
-public func tapElement(_ selector: ElementSelector) throws -> [String: Any] {
+/// Where an element selector looks: the accessibility tree, on-screen text
+/// recognition, or the tree first and then text recognition.
+public enum ElementSource: String {
+    case ax, ocr, any
+}
+
+/// OCR has only text to match, so an identifier or a role cannot apply to it.
+private func ocrElements(_ selector: ElementSelector, languages: [String]) throws -> [[String: Any]] {
+    guard let text = selector.text, !text.isEmpty, selector.identifier == nil, selector.role == nil else {
+        throw IcliError.failed("OCR matches text only; provide text without --identifier or --role")
+    }
+    let blocks = try recognizeScreen(languages: languages, minConfidence: 0.3, locating: text)["blocks"]
+        as? [[String: Any]] ?? []
+    return blocks.compactMap { block in
+        let line = block["text"] as? String ?? ""
+        let hit = selector.match == "exact"
+            ? line.compare(text, options: .caseInsensitive) == .orderedSame
+            : line.localizedCaseInsensitiveContains(text)
+        guard hit else { return nil }
+        var element = block
+        element["x"] = block["match_x"] ?? block["x"]
+        element["y"] = block["match_y"] ?? block["y"]
+        element["label"] = line
+        element.removeValue(forKey: "match_x")
+        element.removeValue(forKey: "match_y")
+        return element
+    }
+}
+
+/// The matches and the source that produced them. `any` falls through to OCR
+/// only when the tree answered without a match; a failed tree query still stops.
+private func selectedElements(
+    _ selector: ElementSelector, source: ElementSource, languages: [String],
+) throws -> (hits: [[String: Any]], source: ElementSource) {
+    switch source {
+    case .ax:
+        return (try selectedElements(selector), .ax)
+    case .ocr:
+        return (try ocrElements(selector, languages: languages), .ocr)
+    case .any:
+        let tree = try selectedElements(selector)
+        if tree.indices.contains(selector.index) { return (tree, .ax) }
+        return (try ocrElements(selector, languages: languages), .ocr)
+    }
+}
+
+public func tapElement(
+    _ selector: ElementSelector,
+    source: ElementSource = .ax,
+    languages: [String] = ["zh-Hans", "en-US"],
+) throws -> [String: Any] {
     try requirePointInput()
-    let hits = try selectedElements(selector)
+    let (hits, used) = try selectedElements(selector, source: source, languages: languages)
     guard hits.indices.contains(selector.index) else { throw IcliError.failed("element not found") }
     let hit = hits[selector.index]
-    guard let x = hit["x"] as? Double, let y = hit["y"] as? Double else {
+    // AX points are Double, OCR points CGFloat; `as? Double` rejects a CGFloat.
+    func coordinate(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double: value
+        case let value as CGFloat: Double(value)
+        default: nil
+        }
+    }
+    guard let x = coordinate(hit["x"]), let y = coordinate(hit["y"]) else {
         throw IcliError.failed("element has no tap point")
     }
     _ = try tap(x: x, y: y)
-    return ["tapped": true, "element": hit]
+    var result: [String: Any] = ["tapped": true, "element": hit]
+    if source != .ax { result["source"] = used.rawValue }
+    return result
 }
 
 public func waitForElement(
@@ -407,21 +479,25 @@ public func waitForElement(
     appear: Bool,
     timeout: TimeInterval,
     interval: TimeInterval = 0.3,
+    source: ElementSource = .ax,
+    languages: [String] = ["zh-Hans", "en-US"],
 ) throws -> [String: Any] {
     guard timeout.isFinite, (0 ... 60).contains(timeout), interval.isFinite, (0.1 ... 5).contains(interval) else {
         throw IcliError.failed("timeout must be 0–60 seconds and interval 0.1–5 seconds")
     }
     let start = ProcessInfo.processInfo.systemUptime
     repeat {
-        let hits = try selectedElements(selector)
+        let (hits, used) = try selectedElements(selector, source: source, languages: languages)
         let present = hits.indices.contains(selector.index)
         if present == appear {
-            return [
+            var result: [String: Any] = [
                 "found": present,
                 "disappeared": !present,
                 "waited_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000),
                 "element": present ? hits[selector.index] : [:],
             ]
+            if source != .ax { result["source"] = used.rawValue }
+            return result
         }
         let remaining = timeout - (ProcessInfo.processInfo.systemUptime - start)
         Thread.sleep(forTimeInterval: min(interval, remaining))
@@ -444,16 +520,27 @@ private func textRecognitionRequest(languages: [String]) -> VNRecognizeTextReque
     return request
 }
 
+/// With `locating`, a block whose line contains that text also carries
+/// `match_x`/`match_y`: the centre of the text itself rather than of the line.
 private func textBlocks(from request: VNRecognizeTextRequest, minConfidence: Float,
-                        pointSize: CGSize) -> [[String: Any]] {
+                        pointSize: CGSize, locating: String? = nil) -> [[String: Any]] {
     return (request.results ?? []).compactMap { observation in
         guard let candidate = observation.topCandidates(1).first, candidate.confidence >= minConfidence else {
             return nil
         }
         let box = observation.boundingBox
-        return ["text": candidate.string, "confidence": candidate.confidence,
-                "x": box.midX * pointSize.width, "y": (1 - box.midY) * pointSize.height,
-                "width": box.width * pointSize.width, "height": box.height * pointSize.height]
+        var block: [String: Any] = [
+            "text": candidate.string, "confidence": candidate.confidence,
+            "x": box.midX * pointSize.width, "y": (1 - box.midY) * pointSize.height,
+            "width": box.width * pointSize.width, "height": box.height * pointSize.height,
+        ]
+        if let locating, let range = candidate.string.range(of: locating, options: .caseInsensitive),
+           let matched = (try? candidate.boundingBox(for: range))?.boundingBox
+        {
+            block["match_x"] = matched.midX * pointSize.width
+            block["match_y"] = (1 - matched.midY) * pointSize.height
+        }
+        return block
     }
 }
 
@@ -462,10 +549,11 @@ private func visionBlocks(
     languages: [String],
     minConfidence: Float,
     pointSize: CGSize,
+    locating: String? = nil,
 ) throws -> [[String: Any]] {
     let request = textRecognitionRequest(languages: languages)
     try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-    return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize)
+    return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize, locating: locating)
 }
 
 // GPU-free OCR: Vision on the CPU over a plain (non-IOSurface) 420f buffer filled with vImage,
@@ -476,6 +564,7 @@ private func visionBlocksCPU(
     languages: [String],
     minConfidence: Float,
     pointSize: CGSize,
+    locating: String? = nil,
 ) throws -> [[String: Any]] {
     guard let buffer = cpuPixelBuffer420f(from: image) else {
         throw IcliError.unavailable("System text recognition is unavailable on this device.")
@@ -487,7 +576,7 @@ private func visionBlocksCPU(
         }
     }
     try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
-    return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize)
+    return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize, locating: locating)
 }
 
 // A malloc-backed 420f CVPixelBuffer (IOSurface-backed ones need the GPU and fail here), filled

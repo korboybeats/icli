@@ -36,7 +36,19 @@ public func addRepo(_ url: String) throws -> [String: Any] {
     return ["added": true, "url": url]
 }
 
-public func crashLogs(bundleID: String?) throws -> [String: Any] {
+/// `since` is ISO-8601, epoch seconds, or an age such as 30s, 5m or 2h.
+public func parseCrashCutoff(_ text: String) throws -> Date {
+    if let unit = text.last, let scale = ["s": 1.0, "m": 60.0, "h": 3600.0][String(unit)],
+       let amount = Double(text.dropLast()), amount.isFinite, amount >= 0
+    {
+        return Date(timeIntervalSinceNow: -amount * scale)
+    }
+    if let seconds = Double(text), seconds.isFinite { return Date(timeIntervalSince1970: seconds) }
+    if let date = parseISO8601(text) { return date }
+    throw IcliError.failed("since must be ISO-8601, epoch seconds, or an age such as 30s, 5m or 2h: \(text)")
+}
+
+public func crashLogs(bundleID: String?, since: Date? = nil) throws -> [String: Any] {
     let dirs = [
         "/var/mobile/Library/Logs/CrashReporter",
         "/var/mobile/Library/Logs/DiagnosticReports",
@@ -56,7 +68,9 @@ public func crashLogs(bundleID: String?) throws -> [String: Any] {
             }
             let path = (dir as NSString).appendingPathComponent(name)
             let attributes = try? FileManager.default.attributesOfItem(atPath: path)
-            files.append((path, attributes?[.modificationDate] as? Date ?? .distantPast))
+            let modified = attributes?[.modificationDate] as? Date ?? .distantPast
+            if let since, modified < since { continue }
+            files.append((path, modified))
         }
     }
     return ["crashes": files.sorted { $0.1 > $1.1 }.map(\.0), "count": files.count]

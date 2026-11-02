@@ -9,7 +9,7 @@ struct App: ParsableCommand {
         abstract: "Installed apps",
         subcommands: [
             List.self, Search.self, Running.self, Frontmost.self, Info.self,
-            Launch.self, Open.self, Kill.self, Install.self, Uninstall.self,
+            Launch.self, Relaunch.self, Open.self, Kill.self, Install.self, Uninstall.self,
             Register.self, Unregister.self, Refresh.self, UnregisterDir.self, Network.self,
             Handlers.self, Schemes.self, Binary.self, Data.self,
         ],
@@ -106,8 +106,23 @@ extension App {
     struct Launch: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument var bundleID: String
+        @Flag(help: "Return only once RunningBoard verifies the app in front, with its PID.") var waitForeground = false
+        @Option(help: "Seconds --wait-foreground waits, 0–60.") var timeout: Double = 15
         func run() {
-            emit(output) { try launchApp(bundleID) }
+            emit(output) { waitForeground ? try launchAppVerified(bundleID, timeout: timeout) : try launchApp(bundleID) }
+        }
+    }
+
+    struct Relaunch: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Stop an app, start it, and verify a new process is in front.",
+            discussion: "Reports the old PIDs, the new PID, and launched_at for 'log crashes --since'.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument var bundleID: String
+        @Option(help: "Seconds to wait for the verified foreground app, 0–60.") var timeout: Double = 15
+        func run() {
+            emit(output) { try relaunchApp(bundleID, timeout: timeout) }
         }
     }
 

@@ -43,8 +43,10 @@ public enum IcliError: Error {
         if case let .commandFailed(output) = self {
             result = output
         }
-        result["error"] = code
-        result["message"] = message
+        // A command's own code and message (timed_out, refresh_incomplete, ...)
+        // are more specific than command_failed.
+        if result["error"] as? String == nil { result["error"] = code }
+        if result["message"] as? String == nil { result["message"] = message }
         return result
     }
 }

@@ -143,3 +143,12 @@ icli's ordinary stdin and hidden terminal inputs remain available.
 The old UnlockHelper passcode and arm files were removed from the connected
 phone after migration was verified. The old tweak package remains installed
 and is not used by this command.
+
+### App Container Preferences
+
+`prefs read|write|delete --app <bundle-id>` edits the app's own preferences file, `Library/Preferences/<bundle-id>.plist` in its data container, keeping the container's owner, then restarts cfprefsd so the app reads the new value. The app must not be running; `--force` stops it first. `--user` and `--notify` do not apply.
+
+```sh
+icli prefs write --app example.bundle.id --force DebugEnabled true --type bool
+icli prefs read --app example.bundle.id DebugEnabled
+```

@@ -29,3 +29,12 @@ DEB operations read archives and update the bootstrap's dpkg database directly. 
 `sudo icli pkg install /tmp/example.deb` installs a local archive and checks architecture and installed dependencies; installing the same version reinstalls it. Package identifiers and repository downloads are not supported. `pkg info`, `pkg extract`, `pkg status`, and `pkg compare` expose metadata, extraction, installed state, and Debian version comparison. `pkg remove` keeps configuration files unless `--purge` is supplied. `pkg repos` and `pkg add-repo` inspect and edit repository source files.
 
 Maintainer scripts and package triggers are not executed. Transactions report skipped scripts in `scripts_not_run` and register installed app bundles through LaunchServices. Packages that require script-driven setup need that setup handled separately; icli is not a complete dpkg or APT replacement.
+
+### Verified Launches and Crash Checks
+
+`app launch --wait-foreground` returns only after RunningBoard verifies the app in front, with its `pid`. `app relaunch <bundle-id>` stops the app, launches it, verifies a new process is in front, and reports `old_pids`, `pid` and `launched_at`. Pass `launched_at` to `log crashes --since`, which also takes epoch seconds or an age such as `30s`, `5m` or `2h`.
+
+```sh
+icli app relaunch example.bundle.id
+icli log crashes --bundle-id example.bundle.id --since 2m
+```
