@@ -15,14 +15,14 @@ extension Log {
             abstract: "Capture the live unified log; every filter applies before --max-lines",
         )
         @OptionGroup var output: OutputOptions
-        @Option var seconds: Double = 3
+        @Option(help: "Seconds to capture, 0.1–60.") var seconds: Double = 3
         @Option(help: "Case-insensitive substring of the process name") var process: String?
         @Option(help: "Process identifier") var pid: Int32?
         @Option(help: "Subsystem, with its dotted children") var subsystem: String?
         @Option(help: "Category, exactly") var category: String?
         @Option(help: "Case-sensitive substring of the message") var messageContains: String?
         @Option(help: "Minimum level: all, debug, info, default, notice, error or fault") var level: String = "all"
-        @Option var maxLines: Int = 500
+        @Option(help: "Most lines returned, 1–5000.") var maxLines: Int = 500
         func run() {
             emit(allowWhenLocked: true, output) {
                 try captureSyslog(
@@ -41,7 +41,7 @@ extension Log {
 
     struct Crashes: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var bundleID: String?
+        @Option(help: "Only reports whose file name contains this bundle ID or the app's executable name.") var bundleID: String?
         @Option(help: "Only reports written since: ISO-8601, epoch seconds, or an age such as 30s, 5m or 2h.")
         var since: String?
         func run() {
@@ -114,7 +114,7 @@ extension Pkg {
 
     struct List: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var filter: String?
+        @Option(help: "Case-insensitive substring of the package identifier or name.") var filter: String?
         func run() {
             emit(allowWhenLocked: true, output) { try listPackages(filter: filter) }
         }
@@ -138,7 +138,7 @@ extension Pkg {
         )
         @OptionGroup var output: OutputOptions
         @Argument var name: String
-        @Flag var purge = false
+        @Flag(help: "Also remove the package's configuration files.") var purge = false
         func run() {
             emit(allowWhenLocked: true, output) { try removeDeb(name, purge: purge) }
         }
@@ -277,7 +277,7 @@ struct Proc: ParsableCommand {
 extension Proc {
     struct List: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var filter: String?
+        @Option(help: "Case-insensitive substring of the process name.") var filter: String?
         func run() {
             emit(output) { try listProcesses(filter: filter) }
         }
@@ -294,8 +294,8 @@ struct Net: ParsableCommand {
 extension Net {
     struct Capture: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var seconds: Double = 5
-        @Option var interface: String = "en0"
+        @Option(help: "Seconds to capture, 1–60.") var seconds: Double = 5
+        @Option(help: "Network interface, such as en0 (Wi-Fi) or pdp_ip0 (cellular).") var interface: String = "en0"
         @Option(help: "[tcp|udp|icmp] [src|dst] port N [src|dst] host A, joined with and") var filter: String?
         @Option(name: .customLong("output"), help: "pcap path (default: a temporary file)") var path: String?
         func run() {

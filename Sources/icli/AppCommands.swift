@@ -129,7 +129,7 @@ extension App {
     struct Open: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument var url: String
-        @Option var bundle: String?
+        @Option(help: "Open the URL in this app instead of the URL's default handler.") var bundle: String?
         func run() {
             emit(output) { try openAppURL(url, bundleID: bundle) }
         }

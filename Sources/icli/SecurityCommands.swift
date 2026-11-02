@@ -54,7 +54,7 @@ extension Sec {
 
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
-            @Option var `class`: String = "generic_password"
+            @Option(help: "generic_password, internet_password, certificate, key or identity.") var `class`: String = "generic_password"
             @Option var service: String?
             @Option var account: String?
             @Option var server: String?
@@ -74,13 +74,13 @@ extension Sec {
 
         struct Add: ParsableCommand {
             @OptionGroup var output: OutputOptions
-            @Option var `class`: String = "generic_password"
+            @Option(help: "generic_password, internet_password, certificate, key or identity.") var `class`: String = "generic_password"
             @Option var service: String?
             @Option var account: String
             @Option var server: String?
             @Option var label: String?
             @Option var group: String = defaultKeychainGroup
-            @Option var data: String
+            @Option(help: "The secret, stored as UTF-8 text.") var data: String
             func run() {
                 emit(allowWhenLocked: true, output) {
                     try addKeychain(
@@ -98,12 +98,12 @@ extension Sec {
 
         struct Update: ParsableCommand {
             @OptionGroup var output: OutputOptions
-            @Option var `class`: String = "generic_password"
+            @Option(help: "generic_password, internet_password, certificate, key or identity.") var `class`: String = "generic_password"
             @Option var service: String?
             @Option var account: String
             @Option var server: String?
             @Option var group: String = defaultKeychainGroup
-            @Option var data: String
+            @Option(help: "The secret, stored as UTF-8 text.") var data: String
             func run() {
                 emit(allowWhenLocked: true, output) {
                     try updateKeychain(
@@ -120,7 +120,7 @@ extension Sec {
 
         struct Delete: ParsableCommand {
             @OptionGroup var output: OutputOptions
-            @Option var `class`: String = "generic_password"
+            @Option(help: "generic_password, internet_password, certificate, key or identity.") var `class`: String = "generic_password"
             @Option var service: String?
             @Option var account: String?
             @Option var server: String?

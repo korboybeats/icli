@@ -12,6 +12,8 @@ struct Screen: ParsableCommand {
     )
 }
 
+private let pointHelp: ArgumentHelp = "UI points from the top-left corner, in the orientation shown; see screen info."
+
 private let normalizedHelp: ArgumentHelp =
     "x and y are 0–1 in the fixed portrait digitizer space instead of UI points."
 
@@ -21,8 +23,8 @@ private let pointerNormalizedHelp: ArgumentHelp =
 extension Screen {
     struct Tap: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument var x: Double
-        @Argument var y: Double
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
         func run() {
             emit(output) { try tap(x: x, y: y) }
         }
@@ -30,12 +32,12 @@ extension Screen {
 
     struct Swipe: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var fromX: Double
-        @Option var fromY: Double
-        @Option var toX: Double
-        @Option var toY: Double
-        @Option var seconds: Double = 0.25
-        @Option var steps: Int = 20
+        @Option(help: "Start x in UI points.") var fromX: Double
+        @Option(help: "Start y in UI points.") var fromY: Double
+        @Option(help: "End x in UI points.") var toX: Double
+        @Option(help: "End y in UI points.") var toY: Double
+        @Option(help: "Duration of the movement in seconds, up to 60.") var seconds: Double = 0.25
+        @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
         func run() {
             emit(output) { try swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps) }
         }
@@ -44,9 +46,9 @@ extension Screen {
     struct LongPress: ParsableCommand {
         static var configuration = CommandConfiguration(commandName: "long-press")
         @OptionGroup var output: OutputOptions
-        @Argument var x: Double
-        @Argument var y: Double
-        @Option var seconds: Double = 0.6
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
+        @Option(help: "Seconds to hold, up to 60.") var seconds: Double = 0.6
         func run() {
             emit(output) { try longPress(x: x, y: y, seconds: seconds) }
         }
@@ -55,9 +57,9 @@ extension Screen {
     struct DoubleTap: ParsableCommand {
         static var configuration = CommandConfiguration(commandName: "double-tap")
         @OptionGroup var output: OutputOptions
-        @Argument var x: Double
-        @Argument var y: Double
-        @Option var interval: Double = 0.1
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
+        @Option(help: "Seconds between the two taps, up to 1.") var interval: Double = 0.1
         func run() {
             emit(output) { try doubleTap(x: x, y: y, interval: interval) }
         }
@@ -65,17 +67,17 @@ extension Screen {
 
     struct Drag: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var fromX: Double?
-        @Option var fromY: Double?
-        @Option var toX: Double?
-        @Option var toY: Double?
+        @Option(help: "Start x in UI points.") var fromX: Double?
+        @Option(help: "Start y in UI points.") var fromY: Double?
+        @Option(help: "End x in UI points.") var toX: Double?
+        @Option(help: "End y in UI points.") var toY: Double?
         @Option(
             help: "Drag path as a JSON array of {x,y} points; use this option or all four endpoint options, not both.",
         )
         var points: String?
-        @Option var seconds: Double = 0.3
-        @Option var hold: Double = 0.5
-        @Option var steps: Int = 20
+        @Option(help: "Duration of the movement in seconds, up to 60.") var seconds: Double = 0.3
+        @Option(help: "Seconds to press at the first point before moving, as a long-press drag needs; 0 for none.") var hold: Double = 0.5
+        @Option(help: "Move events across the whole path, at least one per segment, up to 2000.") var steps: Int = 20
         func run() {
             emit(output) {
                 let path: [(Double, Double)]
@@ -107,8 +109,8 @@ extension Screen {
         static var configuration = CommandConfiguration(abstract: "Send one raw digitizer event: down, move or up.")
         @OptionGroup var output: OutputOptions
         @Argument(help: "down, move or up.") var phase: String
-        @Argument var x: Double
-        @Argument var y: Double
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
         @Flag(help: normalizedHelp) var normalized = false
         func run() {
             emit(output) {
@@ -139,8 +141,8 @@ extension Screen {
             discussion: "The pointer exists only while the command runs. iOS on an iPhone uses it only through AssistiveTouch's pointer devices.",
         )
         @OptionGroup var output: OutputOptions
-        @Argument var x: Double
-        @Argument var y: Double
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
         @Option(help: "primary, secondary or middle.") var button = "primary"
         @Option(help: "1 for a click, 2 for a double click, 3 for a triple click.") var count = 1
         @Option(help: "Seconds each press is held.") var hold = 0.05
@@ -162,12 +164,12 @@ extension Screen {
             discussion: "dx and dy are points with a browser wheel's signs: positive dy goes toward the end of the content. The pointer exists only while the command runs.",
         )
         @OptionGroup var output: OutputOptions
-        @Argument var x: Double
-        @Argument var y: Double
-        @Option var dx = 0.0
-        @Option var dy = 0.0
-        @Option var seconds = 0.3
-        @Option var steps = 15
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
+        @Option(help: "Horizontal distance in points.") var dx = 0.0
+        @Option(help: "Vertical distance in points; positive scrolls toward the end.") var dy = 0.0
+        @Option(help: "Duration in seconds.") var seconds = 0.3
+        @Option(help: "Scroll events sent.") var steps = 15
         @Flag(help: pointerNormalizedHelp) var normalized = false
         func run() {
             emit(output) {
@@ -182,7 +184,7 @@ extension Screen {
         var path: String?
         @Flag(help: "Include the JPEG as Base64 in the result; keep a file only when --output is supplied.")
         var base64 = false
-        @Flag var nativeResolution = false
+        @Flag(help: "Full device pixels instead of one pixel per UI point.") var nativeResolution = false
         @Flag(help: "Write the raw JPEG to stdout and nothing else; errors go to stderr as JSON.")
         var stdout = false
         func run() {
@@ -240,8 +242,8 @@ extension Screen {
 
     struct OCR: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var lang: [String] = ["zh-Hans", "en-US"]
-        @Option var minConfidence: Float = 0.3
+        @Option(help: "Recognition language; repeat for several.") var lang: [String] = ["zh-Hans", "en-US"]
+        @Option(help: "Drop text recognized with less confidence, 0–1.") var minConfidence: Float = 0.3
         func run() {
             emit(output) { try recognizeScreen(languages: lang, minConfidence: minConfidence) }
         }
@@ -318,7 +320,7 @@ struct Input: ParsableCommand {
 extension Input {
     struct Paste: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument var text: String
+        @Argument(help: "Text sent in one piece, up to 64 KiB; the clipboard is not used.") var text: String
         func run() {
             emit(output) { try pasteText(text) }
         }
@@ -327,8 +329,8 @@ extension Input {
     struct TypeText: ParsableCommand {
         static var configuration = CommandConfiguration(commandName: "type")
         @OptionGroup var output: OutputOptions
-        @Argument var text: String
-        @Option(name: .customLong("delay-ms")) var delayMS: Double = 30
+        @Argument(help: "Text sent one character at a time, up to 64 KiB.") var text: String
+        @Option(name: .customLong("delay-ms"), help: "Pause after each character in milliseconds, 0–1000.") var delayMS: Double = 30
         func run() {
             emit(output) { try typeText(text, delayMS: delayMS) }
         }
@@ -336,7 +338,7 @@ extension Input {
 
     struct Key: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument var name: String
+        @Argument(help: "return, enter, delete, backspace, tab, escape, space, up, down, left, right, home, end, pageup, pagedown or a letter, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
         func run() {
             emit(output) { try pressKey(name) }
         }
@@ -390,7 +392,7 @@ struct ElementOptions: ParsableArguments {
     var text: String?
     @Option(help: "Match an exact element identifier or label; takes precedence over the text argument.")
     var identifier: String?
-    @Option var role: String?
+    @Option(help: "button, text, control (any tappable element) or element (no filter).") var role: String?
     @Option(help: "Text matching mode: contains or exact; both ignore case.") var match: String = "contains"
     @Option(help: "Zero-based index among matching elements; 0 selects the first match.") var index: Int = 0
     func selector() throws -> ElementSelector {
@@ -435,10 +437,10 @@ extension UI {
 
     struct Tree: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var maxElements: Int = 250
-        @Option var limit: Int?
-        @Flag var includeOffscreen = false
-        @Flag var clickableOnly = false
+        @Option(help: "Most elements to read from the app, 1–2000; truncated says more exist.") var maxElements: Int = 250
+        @Option(help: "Most elements to print after filtering, 1–2000.") var limit: Int?
+        @Flag(help: "Include elements outside the visible screen.") var includeOffscreen = false
+        @Flag(help: "Only elements that can be tapped.") var clickableOnly = false
         func run() {
             emit(output) {
                 try uiElements(
@@ -453,8 +455,8 @@ extension UI {
 
     struct At: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument var x: Double
-        @Argument var y: Double
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
         func run() {
             emit(output) { try elementAt(x: x, y: y) }
         }

@@ -32,7 +32,7 @@ extension Device {
         @OptionGroup var output: OutputOptions
         @Option(help: "PNG/JPEG mark image") var mark: String
         @Option(name: .customLong("output"), help: "Destination .jp2 path") var destination: String
-        @Flag var dark = false
+        @Flag(help: "Black canvas instead of white.") var dark = false
         @Option(help: "Canvas width in pixels (default: native screen)") var width: Int = 0
         @Option(help: "Canvas height in pixels (default: native screen)") var height: Int = 0
         @Option(help: "Maximum mark side length in points") var markPoints: Double = 128
@@ -94,7 +94,7 @@ extension Device {
         static var configuration = CommandConfiguration(subcommands: [Get.self, Set.self])
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
-            @Option var category: String = "Audio/Video"
+            @Option(help: "Audio category, as AVSystemController names it.") var category: String = "Audio/Video"
             func run() {
                 emit(output) {
                     var state = try audioState()
@@ -108,7 +108,7 @@ extension Device {
         struct Set: ParsableCommand {
             @OptionGroup var output: OutputOptions
             @Argument(help: "Volume from 0 to 1.") var value: Double
-            @Option var category: String = "Audio/Video"
+            @Option(help: "Audio category, as AVSystemController names it.") var category: String = "Audio/Video"
             func run() {
                 emit(output) { try setVolume(value, category: category) }
             }
@@ -252,7 +252,7 @@ extension Device {
 
     struct Ioreg: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option var plane: String = "IOService"
+        @Option(help: "IORegistry plane, such as IOService or IODeviceTree.") var plane: String = "IOService"
         func run() {
             emit(output) { try ioregistry(plane: plane) }
         }

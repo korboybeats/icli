@@ -21,8 +21,8 @@ extension FS {
         @OptionGroup var output: OutputOptions
         @Argument var path: String
         @Argument var key: String
-        @Argument var value: String?
-        @Flag var remove = false
+        @Argument(help: "The new value as JSON, e.g. true, 3, \"text\" or {\"a\":1}.") var value: String?
+        @Flag(help: "Remove the key instead of setting it.") var remove = false
         func run() {
             emit(allowWhenLocked: true, output) {
                 guard remove != (value != nil) else { throw IcliError.failed("pass a JSON value or --remove") }
@@ -43,7 +43,7 @@ extension FS {
     struct Rm: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument var path: String
-        @Flag var recursive = false
+        @Flag(help: "Remove a directory and everything in it.") var recursive = false
         @Flag(help: "Confirm removal; required to run this command.") var force = false
         func run() {
             emit(allowWhenLocked: true, output) { try removePath(path, recursive: recursive, force: force) }
