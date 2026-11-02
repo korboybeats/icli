@@ -237,7 +237,7 @@ repeat that older snapshot as current or uninstall unrelated software.
   Apply the next task's specific authorization rather than assume global scope.
 - Mac: `ssh mac`; build mirror
   `/Users/korboy/Projects/icli-src/icli-update-e295e0f`.
-- Existing `.build/build-install.sh` syncs source, builds universal arm64+arm64e
+- Existing `scripts/build-install.sh` syncs source, builds universal arm64+arm64e
   on Mac with full logs, copies and installs atomically on phone. Do not run
   during research-only continuation.
 - Existing unrelated tvOS SDK/stub/xpc build issues remain; do not chase them

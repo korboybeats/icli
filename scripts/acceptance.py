@@ -2250,6 +2250,7 @@ def verified_launch(d):
     assert testhost_pids(d) == [relaunched['pid']], (relaunched, testhost_pids(d))
     assert d.cli('app', 'frontmost')['bundle_id'] == BUNDLE
     wait_state(d, lambda state: state['counter'] == 0)
+    assert re.fullmatch(r'.*T.*\.\d{3}Z', relaunched['launched_at']), relaunched['launched_at']
     launched_at = datetime.fromisoformat(relaunched['launched_at'].replace('Z', '+00:00')).timestamp()
     assert abs(launched_at - before) < 30, (relaunched['launched_at'], before)
     assert d.cli('log', 'crashes', '--bundle-id', BUNDLE, '--since', relaunched['launched_at'])['count'] == 0
@@ -2316,6 +2317,7 @@ def app_container_preferences(d):
     # fixture does not launch from 'app install --container' on every device;
     # installed through TrollStore it does (ICLI_PREFS_APP picks another app).
     app = d.env.get('ICLI_PREFS_APP', 'dev.owngoal.icli.ContainerFixture')
+    reports_preferences = app == 'dev.owngoal.icli.ContainerFixture'
     info = d.cli('app', 'info', app, expected=None)
     assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with TrollStore'
     plist = info['data_path'] + '/Library/Preferences/' + app + '.plist'
@@ -2331,6 +2333,19 @@ def app_container_preferences(d):
 
     def owner(path):
         return d.run(['stat', '-c', '%u:%g', d.sh(path)], sudo=True).stdout.strip()
+
+    def launch_and_read_seen():
+        # The fixture writes the matching keys it reads from NSUserDefaults when it launches.
+        seen_path = d.sh(info['data_path'] + '/Library/Caches/icli-prefs-seen.json')
+        d.run(['rm', '-f', seen_path], sudo=True)
+        launched = d.cli('app', 'launch', app, '--wait-foreground')['pid']
+        deadline = time.monotonic() + 10
+        while True:
+            result = d.run(['cat', seen_path], sudo=True)
+            if result.returncode == 0 and result.stdout.strip():
+                return launched, json.loads(result.stdout)
+            assert time.monotonic() < deadline, f'{app} did not report its preferences; it is not the current container fixture'
+            time.sleep(0.2)
 
     container_owner = owner(info['data_path'])
     assert container_owner, 'cannot stat the data container'
@@ -2361,9 +2376,14 @@ def app_container_preferences(d):
         assert listed['values'][number] == {'value': 42, 'type': 'int'} and listed['count'] == len(listed['values']), listed
         assert not d.cli('prefs', 'read', '--app', app, 'icli-missing-' + token)['exists']
 
-        # The app reads the edited file after cfprefsd restarts: it launches and
-        # still finds the values, and a delete while it runs is refused.
-        pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
+        # The app itself sees the edited values through cfprefsd, and a delete
+        # while it runs is refused. Another app has no way to report them.
+        if reports_preferences:
+            pid, seen = launch_and_read_seen()
+            assert seen.get(key) == 'text 中文' and seen.get(number) == 42, seen
+        else:
+            d.observations.append(f'{app} does not report its preferences, so only the file was checked.')
+            pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
         assert d.cli('prefs', 'delete', '--app', app, key, expected=1)['error'] == 'force_required'
         assert running() == [pid] and key in on_disk()
         removed = d.cli('prefs', 'delete', '--app', app, key, '--force')
@@ -2372,6 +2392,9 @@ def app_container_preferences(d):
         assert not d.cli('prefs', 'delete', '--app', app, number)['removed']
         assert on_disk() == original, 'the file did not return to its original keys'
         assert owner(plist) == container_owner, (owner(plist), container_owner)
+        if reports_preferences:
+            _, seen = launch_and_read_seen()
+            assert key not in seen and number not in seen, seen
 
         for arguments in [['write', '--app', app, key, 'x', '--notify', 'icli.test'], ['delete', '--app', app, key, '--notify', 'icli.test'],
                           ['read', '--app', app, 'one', 'two'], ['write', '--app', app, key], ['write', '--app', 'icli.nonexistent.app', key, 'x'],

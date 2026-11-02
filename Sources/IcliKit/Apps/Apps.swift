@@ -164,7 +164,10 @@ public func relaunchApp(_ bundleID: String, timeout: TimeInterval = 15) throws -
     }
     let stopped = try killApp(bundleID, force: true)
     let oldPIDs = stopped["pids"] as? [Int] ?? []
-    let launchedAt = ISO8601DateFormatter().string(from: Date())
+    // Milliseconds: a whole second could include a crash from just before the relaunch.
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let launchedAt = formatter.string(from: Date())
     var result = try launchAppVerified(bundleID, timeout: timeout)
     if let pid = result["pid"] as? Int, oldPIDs.contains(pid) {
         throw IcliError.failed("\(bundleID) kept its old process \(pid) through the relaunch")

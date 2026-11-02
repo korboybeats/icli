@@ -367,6 +367,17 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
 @implementation TestDelegate
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     self.controller=[TestController new];
+    // The container fixture has no URL scheme and cannot reach the shared state
+    // file; it reports what cfprefsd serves it in its own container at launch.
+    if ([NSBundle.mainBundle.bundleIdentifier hasSuffix:@".ContainerFixture"]) {
+        NSMutableDictionary *seen = [NSMutableDictionary dictionary];
+        [NSUserDefaults.standardUserDefaults.dictionaryRepresentation
+            enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
+                if ([key hasPrefix:@"icli-acceptance-"]) seen[key] = value;
+            }];
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/icli-prefs-seen.json"];
+        [[NSJSONSerialization dataWithJSONObject:seen options:0 error:nil] writeToFile:path atomically:YES];
+    }
     return YES;
 }
 @end
