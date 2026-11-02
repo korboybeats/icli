@@ -22,13 +22,16 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Wake the screen | `icli button wake` (does not remove a passcode) |
 | Find which app is in front | `icli app frontmost` |
 | Find an app's bundle ID | `icli app search <name>` or `icli app list` |
-| Launch an app and wait until it is in front | `icli app launch <bundle-id>` |
+| Launch an app and wait until it is in front | `icli app launch <bundle-id> --wait-foreground` (verified, with `pid`) |
+| Restart an app and prove a new process is in front | `icli app relaunch <bundle-id>` (reports `old_pids`, `pid`, `launched_at`) |
 | Open a URL or deep link | `icli url open <url>` or `icli app open <url> --bundle <bundle-id>` |
 | Quit an app | `icli app kill <bundle-id> --force` |
 | List what is on screen | `icli ui tree` (add `--clickable-only`, `--limit N`) |
 | Tap a button by its label | `icli ui tap 'Label' --match exact` |
 | Tap by accessibility identifier | `icli ui tap --identifier <id>` |
 | Wait for an element to appear or disappear | `icli ui wait 'Text' --timeout 5` / `icli ui wait-gone 'Loading'` |
+| Tap or wait for text missing from the accessibility tree | `icli ui tap --source ocr 'Copy'` / `ui wait --source any 'Copy'` |
+| Wait for the screen to change and settle instead of sleeping | `icli screen wait --baseline /tmp/before.jpg --changed --stable` |
 | Find which element is at a point | `icli ui at <x> <y>` |
 | Tap, double-tap or long-press a point | `icli screen tap <x> <y>` / `double-tap` / `long-press --seconds 1` |
 | Swipe or scroll | `icli screen swipe --from-x X --from-y Y --to-x X --to-y Y` |
@@ -38,7 +41,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Press Home, lock the screen or change volume | `icli button home` / `button power` / `button volume-up` |
 | Read or set the clipboard | `icli clipboard get` / `icli clipboard set 'text'` / `clipboard set --image <file>` |
 | Save the clipboard image | `icli clipboard get --image-output /tmp/clip.png` |
-| Take a screenshot | `icli screen shot --output /tmp/s.jpg` or `--base64` |
+| Take a screenshot | `icli screen shot --output /tmp/s.jpg`, `--base64`, or `--stdout` (raw JPEG only) |
 | Read the text on screen | `icli screen ocr` |
 | Get a screenshot, OCR and elements together | `icli screen describe` |
 | Get the model, iOS version, battery and bootstrap layout | `icli device info` |
@@ -50,8 +53,10 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Read, write or list files | `icli fs read <p>` / `fs write <p> <text>` / `fs ls <dir>` |
 | Read or edit a plist | `icli fs plist <p>` / `icli fs plist-set <p> <key> '<json>'` |
 | Read or change preferences (like `defaults`) | `icli prefs read <domain> [<key>]` / `prefs write <domain> <key> <value> --type int` / `prefs delete <domain> <key>` |
+| Change an app's own container preferences | `icli prefs write --app <bundle-id> --force <key> <value> --type bool` (stops the app) |
 | Capture live logs | `icli log syslog --seconds 5 --process <name> --level error` |
-| Find and read crash reports | `icli log crashes --bundle-id <id>` then `icli log crash <path>` |
+| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m]` then `icli log crash <path>` |
+| Run several commands in one process with checks | `echo '[["app","frontmost"],{"argv":["ui","wait","Ready"],"expect":{"found":true}}]' \| icli batch` |
 | Install a .deb or .ipa | `sudo icli app install /tmp/x.deb` (or `.ipa`) |
 | Uninstall an app or package | `sudo icli app uninstall <bundle-id> --force` / `sudo icli pkg remove <pkg>` |
 | Inspect a .deb without installing it | `icli pkg info <file.deb>` |
@@ -91,6 +96,8 @@ icli ui tap 'Sign In' --match exact
 icli ui wait-gone 'Loading' --timeout 15
 icli ui tree --clickable-only --limit 50          # confirm the new screen
 ```
+
+To verify a visible change without sleeping, save `screen shot --output /tmp/before.jpg` before the tap and run `screen wait --baseline /tmp/before.jpg --changed --stable` after it. For text the tree does not expose (system sheets, games), add `--source ocr` to `ui tap`/`ui wait`.
 
 If no element matches, look for the label in `ui tree` (text matching is `contains` by default and ignores case). Use `--index N` to pick the N-th match. As a last resort, tap the centre of the element's `frame` with `screen tap`.
 
