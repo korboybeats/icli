@@ -12,7 +12,7 @@ make tvos
 ./scripts/check-packages.sh
 ```
 
-Swift Package Manager resolves Argument Parser and the static [ArchiveKit package](https://github.com/Lakr233/libarchive.xcframework) using the versions pinned in `Package.resolved`. Dependency checkouts and binary artifacts stay under `.build/swiftpm/`; no library sources or headers are vendored. Use `make resolve` after changing dependency versions.
+Swift Package Manager resolves Argument Parser and the static [ArchiveKit package](https://github.com/Lakr233/libarchive.xcframework) using the versions pinned in `Package.resolved`. Dependency checkouts and binary artifacts stay under `.build/swiftpm-arm64/`, `.build/swiftpm-arm64e/` and the tvOS `.build/swiftpm/`; no library sources or headers are vendored. Separate iOS scratch directories prevent SwiftPM from reusing the other architecture's build description. Use `make resolve` after changing dependency versions.
 
 | Output | Location |
 | --- | --- |
@@ -27,4 +27,4 @@ The version comes from `Resources/Info.plist`. `make deb` builds the rootless pa
 
 The **DEB Release** GitHub Actions workflow builds both iOS layouts and the tvOS package and publishes the DEBs, `icli-tvos`, `SHA256SUMS`, and `package-verification.json`. It runs for version tags or can be dispatched with an existing tag. CI artifacts have their own hashes and package checks; device acceptance applies to the specific binary recorded in its report. Repository changes use ordinary incremental commits; published version tags remain fixed.
 
-`make` runs the SwiftPM iOS build, copies the executable to `.build/icli`, and signs it with `ldid` using the repository's entitlements. `make tvos` does the same for tvOS; the AppleTVOS SDK has no IOKit.framework, so `scripts/tvos-iokit-stub.sh` first borrows the iPhoneOS SDK's IOKit headers and stub, retargeted to tvOS, into `.build/tvos-stubs`. It does not require an Apple development certificate. To compile without signing, use `swift build -c release --triple arm64-apple-ios15.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)" --scratch-path .build/swiftpm --product icli --force-resolved-versions`.
+`make` builds arm64 and arm64e iOS slices, combines them in `.build/icli`, and signs the result with `ldid` using the repository's entitlements. The arm64e slice is required to control authenticated thread state for full lock-screen unlock; the arm64 slice retains support for older devices. `make tvos` builds the separate tvOS executable; the AppleTVOS SDK has no IOKit.framework, so `scripts/tvos-iokit-stub.sh` first borrows the iPhoneOS SDK's IOKit headers and stub, retargeted to tvOS, into `.build/tvos-stubs`. It does not require an Apple development certificate. To compile an arm64 slice without signing, use `swift build -c release --triple arm64-apple-ios15.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)" --scratch-path .build/swiftpm-arm64 --product icli --force-resolved-versions`.

@@ -3,6 +3,7 @@ SHELL    := /bin/sh
 SDK      ?= $(shell xcrun --sdk iphoneos --show-sdk-path)
 SDK_VERSION ?= $(shell xcrun --sdk iphoneos --show-sdk-version)
 TARGET   ?= arm64-apple-ios15.0
+ARM64E_TARGET ?= arm64e-apple-ios15.0
 SWIFT    ?= swift
 LDID     ?= ldid
 INSTALL  ?= /var/jb/usr/bin/icli
@@ -18,7 +19,14 @@ CONFIGURATION := release
 endif
 
 SWIFT_FLAGS := --configuration $(CONFIGURATION) --triple $(TARGET) --sdk $(SDK) \
-	--scratch-path $(BUILD)/swiftpm --product icli --force-resolved-versions
+	--scratch-path $(BUILD)/swiftpm-$(firstword $(subst -, ,$(TARGET))) --product icli --force-resolved-versions
+
+# Authenticated target thread state requires an authenticated caller. Keep
+# arm64 for older devices and let dyld select arm64e where it is supported.
+# Swift does not emit signed class_ro_t metadata; match that in ObjC objects.
+ARM64E_FLAGS := --configuration $(CONFIGURATION) --triple $(ARM64E_TARGET) --sdk $(SDK) \
+	--scratch-path $(BUILD)/swiftpm-arm64e --product icli --force-resolved-versions \
+	-Xcc -fno-ptrauth-objc-class-ro
 
 TVOS_SDK         ?= $(shell xcrun --sdk appletvos --show-sdk-path)
 TVOS_SDK_VERSION ?= $(shell xcrun --sdk appletvos --show-sdk-version)
@@ -34,6 +42,12 @@ TVOS_FLAGS := --configuration $(CONFIGURATION) --triple $(TVOS_TARGET) --sdk $(T
 all:
 	$(SWIFT) build $(SWIFT_FLAGS)
 	cp "$$($(SWIFT) build $(SWIFT_FLAGS) --show-bin-path)/icli" $(BIN)
+ifneq ($(TARGET),$(ARM64E_TARGET))
+	$(SWIFT) build $(ARM64E_FLAGS)
+	cp "$$($(SWIFT) build $(ARM64E_FLAGS) --show-bin-path)/icli" $(BUILD)/icli-arm64e
+	xcrun lipo -create $(BIN) $(BUILD)/icli-arm64e -output $(BUILD)/icli-universal
+	mv $(BUILD)/icli-universal $(BIN)
+endif
 	# SwiftPM can stamp the triple's version as the SDK too. Frameworks branch
 	# on the linked SDK (NSURL's parser, UIKit and Swift runtime behaviour), so
 	# the binary says the SDK it was really built with, as 0.8.0 did (sdk 26.5).
@@ -45,7 +59,7 @@ debug:
 	$(MAKE) DEBUG=1 all
 
 resolve:
-	$(SWIFT) package --scratch-path $(BUILD)/swiftpm resolve
+	$(SWIFT) package --scratch-path $(BUILD)/swiftpm-$(firstword $(subst -, ,$(TARGET))) resolve
 
 install: all
 	sudo mkdir -p $(dir $(INSTALL))

@@ -1,6 +1,6 @@
 # Entitlements and execution requirements
 
-[Resources/icli.entitlements](../Resources/icli.entitlements) is the authoritative signing profile for the shipped CLI. This inventory covers all 72 keys and their exact configured values. The complete profile has been tested on vphones; individual keys have **not** all been tested by removing them one at a time. Descriptions below explain each capability's intended role, not a claim that every key is necessary on every iOS release. Private capabilities depend on the OS and bootstrap.
+[Resources/icli.entitlements](../Resources/icli.entitlements) is the authoritative signing profile for the shipped CLI. This inventory covers all 75 keys and their exact configured values. The complete profile has been tested on vphones; individual keys have **not** all been tested by removing them one at a time. Descriptions below explain each capability's intended role, not a claim that every key is necessary on every iOS release. Private capabilities depend on the OS and bootstrap.
 
 When linking **IcliKit**, **IcliSystem** or **IcliLaunch**, entitlements must be granted to the final calling executable or app. [The Swift Package guide](swift-package.md#entitlements-the-host-needs) maps the read-only `IcliSystem` calls onto the keys below and says which of those are verified, and [its IcliLaunch section](swift-package.md#the-iclilaunch-product) does the same for launching. SwiftPM does not apply this file to consumers or sign them. Use your own `application-identifier` and `com.apple.application-identifier`; the `com.icli.icli` values identify the CLI. Integrate only the feature groups your host needs using its existing signing process. Ordinary provisioning cannot grant this private platform profile.
 
@@ -82,9 +82,12 @@ OCR uses Vision and the captured image; there is no separate OCR entitlement in 
 | `com.apple.private.logging.stream` | `true` | Unified log streaming. |
 | `com.apple.diagnosticd.stream` | `true` | Diagnostic service log stream access. |
 | `com.apple.private.logging.diagnostic` | `true` | Diagnostic logging client profile. |
-| `task_for_pid-allow` | `true` | Retained process inspection capability; current process listing uses sysctl/proc APIs rather than task_for_pid. |
+| `task_for_pid-allow` | `true` | SpringBoard task access for the root-only `passcode unlock --dismiss` path; process listing still uses sysctl/proc APIs. |
+| `com.apple.private.cs.debugger` | `true` | Debugger profile used by Dopamine's hookd. Adding it alone did not resolve the measured task-control denial. |
 | `proc_info-allow` | `true` | Process metadata/executable path inspection. |
-| `com.apple.system-task-ports.read` | `true` | Retained system task inspection profile; no public task-port API is exposed by IcliKit. |
+| `com.apple.system-task-ports` | `true` | System task access for standalone full unlock. Profile follows opainject; individual necessity remains to be isolated on-device. |
+| `com.apple.system-task-ports.control` | `true` | Control task access for the temporary SpringBoard execution context. |
+| `com.apple.private.thread-set-state` | `true` | Temporary thread state setup and restoration for full unlock. |
 | `com.apple.private.kernel.get-kext-info` | `true` | Retained kernel inspection profile; current IORegistry traversal does not expose a kext query API. |
 | `com.apple.private.network.statistics` | `true` | Retained network inspection profile; packet capture uses BPF and requires device access/root. |
 | `com.apple.private.security.storage.DiagnosticReports.read-write` | `true` | Diagnostic report storage access; crash commands read reports. |
@@ -93,6 +96,13 @@ OCR uses Vision and the captured image; there is no separate OCR entitlement in 
 | `com.apple.timed` | `true` | Sending timed commands, here turning the automatic time zone off before `device timezone set` and on for `device timezone automatic on`. timed checks it for every command it does not let any client send (read from timed in iOS 27.0.1). |
 | `com.apple.tzlink.allow` | `true` | Asking tzlinkd to re-point `/var/db/timezone/localtime` for `device timezone set`; tzlinkd refuses a client without it (read from tzlinkd in iOS 27.0.1). |
 | `com.apple.private.amfi.developer-mode-control` | `true` | Arming Developer Mode through amfid, as vphoned does. Reading the status does not need it (verified on iOS 18.5); arming was not run on a test device. |
+
+Do not combine the task-control profile with `com.apple.system-task-ports.read`.
+On the physical iOS 17.1.1 phone, the latter restricted icli to read access:
+control requests for both SpringBoard and icli itself returned Mach 5. With
+the same binary, signing tool and executable path, removing only that key
+passed the full-unlock preflight, restoring it reproduced the denial, and
+removing it again passed. No passcode was submitted in these comparisons.
 
 ## Location
 
@@ -107,7 +117,7 @@ OCR uses Vision and the captured image; there is no separate OCR entitlement in 
 
 | Key | CLI value | Intended role |
 | --- | --- | --- |
-| `keychain-access-groups` | `icli.test` | Access group used for self-created test credentials. |
+| `keychain-access-groups` | `icli.test`, `com.icli.unlock` | Separate access groups for test credentials and the explicitly provisioned device-local unlock credential. |
 | `com.apple.keystore.access-keychain-keys` | `true` | Retained Keychain client capability; independent necessity is unverified. |
 | `com.apple.private.security.system-keychain` | `true` | Retained system Keychain capability; acceptance only operates on fixture items in `icli.test`. |
 

@@ -96,9 +96,15 @@
 	<true/>
 	<key>task_for_pid-allow</key>
 	<true/>
+	<key>com.apple.private.cs.debugger</key>
+	<true/>
 	<key>proc_info-allow</key>
 	<true/>
-	<key>com.apple.system-task-ports.read</key>
+	<key>com.apple.system-task-ports</key>
+	<true/>
+	<key>com.apple.system-task-ports.control</key>
+	<true/>
+	<key>com.apple.private.thread-set-state</key>
 	<true/>
 	<key>com.apple.private.kernel.get-kext-info</key>
 	<true/>
@@ -109,6 +115,7 @@
 	<key>keychain-access-groups</key>
 	<array>
 		<string>icli.test</string>
+		<string>com.icli.unlock</string>
 	</array>
 	<key>com.apple.keystore.access-keychain-keys</key>
 	<true/>

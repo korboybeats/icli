@@ -4,16 +4,41 @@
 
 1. **Never lock the device out.** iOS delays passcode entry from the fifth consecutive failure (1 min, 5 min, 15 min, 1 h…) and can disable or wipe the device after ten. A caller that loops on a wrong passcode must not reach that.
 2. **No brute force.** icli only forwards a passcode it was given. It has no option to generate, iterate or vary one.
-3. **The passcode stays out of argv, logs and disk.** It is read from stdin, a private file or a no-echo terminal prompt, and wiped from memory after the attempt. Only digests of *wrong* passcodes are stored.
+3. **Explicit-input unlock never implicitly saves its passcode or puts it in argv or logs.** It reads stdin, a supplied private file or a hidden terminal prompt and wipes its owned input buffer. The separately authorized `icli unlock --store-from-stdin` provisions an opt-in phone Keychain credential for the no-prompt `icli unlock` command. The Windows entry point retains its Credential Manager storage and can provision the phone through an identity-verified SSH connection.
 4. **Tell the caller what happened and what is left.** Every answer carries `result`, `attempts_remaining` and a `hint` an agent can act on, and a distinct exit status.
 
 ## Commands
 
 | Command | Does |
 | --- | --- |
+| `unlock` | Root-only, no stdin/prompt. Loads the explicitly saved phone Keychain credential and invokes the existing full unlock with the same guards and ledger. `--check` makes no attempt. |
+| `unlock --store-from-stdin` | Explicit provisioning only; validates bounded input, saves in a separate device-only nonsynchronizing Keychain item, wipes owned input and makes no unlock attempt. Refuses a terminal stdin. |
+| `unlock --forget-stored` | Removes only the saved Keychain item, leaving rejected-passcode history intact. |
 | `device passcode status` | Keybag `lock_state`, `failed_attempts`, `backoff_seconds`, `permanently_blocked`, the ledger count, `attempts_remaining`, and SpringBoard's `lock_screen`. Also `api('passcode.status')` in `icli probe`. |
 | `device passcode unlock` | `--passcode-stdin`, `--passcode-file <path>`, or a TTY prompt. `--max-failures N` (1–4, default 3). `--check` runs every guard and stops before the attempt. |
 | `device passcode forget --force` | Empties the ledger, even an unreadable one. Needed after the device passcode changes. |
+
+The local `--dismiss` extension uses the same guards and ledger but makes the
+attempt through SpringBoard's full unlock method, with the passcode held in
+memory. It requires root and task/thread control; it has no installed tweak,
+subprocess, or saved-passcode dependency. See
+[the standalone unlock findings](standalone-unlock-research.md) for the process
+boundary, implementation, tests and device-validation boundary. Without the
+flag, the original MobileKeyBag behavior remains unchanged.
+
+Like UnlockHelper, it selects the four-argument method when present and falls
+back to `attemptUnlockWithPasscode:`. The latter is the method verified on the
+physical iOS 17.1.1 phone. The universal build includes arm64e for authenticated
+target thread state. Direct and Windows-vault unlocks both succeeded with no
+failed attempts; see the findings above for the exact device and test boundary.
+
+During full unlock, SIGINT, SIGHUP and SIGTERM are deferred across target
+cleanup, input wiping and ledger persistence, then delivered using the
+caller's restored signal dispositions. A target-thread exit ends the active
+call without retrying it. A live call that never returns must keep its reply
+channel; an arbitrary timeout cannot safely abandon SpringBoard's thread.
+Unexpected faults and failed cleanup return an error rather than clean
+success. SIGKILL and power loss remain outside these guarantees.
 
 `result` is `unlocked`, `check_passed`, `rejected`, `rejected_cached`, `refused` or `system_error`. Exit status: 0 unlocked (or already unlocked, or `--check` passed), 3 rejected now, 4 rejected before and not retried, 5 refused by a guard, 6 keybag error that did not count.
 
@@ -34,6 +59,58 @@ read passcode (stdin | 0600 file | TTY)      argv never
 ```
 
 ## The ledger
+
+The ledger remains separate from the saved credential. `SavedPasscode.swift`
+stores the credential in `com.icli.unlock` / `com.icli.device-passcode` /
+`full-unlock`, with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and
+`kSecAttrSynchronizable: false`. Queries use an LAContext with interaction
+disabled. A missing/inaccessible item fails before the unlock engine; it never
+falls back to reading stdin or requesting authentication. Root is checked
+before credential access through the new APIs. Keychain access groups are
+entitlements, not protection against other privileged Keychain clients.
+
+Provisioning updates the specific existing item, adding it only when absent;
+it never deletes an existing credential before a write. Storing or removing a
+credential does not clear the rejected-passcode ledger. A failed saved unlock
+is not retried, including if the passcode has changed. ThisDeviceOnly storage
+does not make an automatic first unlock after reboot possible.
+
+### Saved-command validation, 2026-10-31
+
+The user explicitly requested typing only the command in the phone terminal,
+without entering a passcode. This authorized opt-in phone Keychain storage;
+earlier no-phone-storage descriptions concern the original explicit-input mode.
+The existing Windows vault credential was provisioned over the identity-verified
+SSH connection without exposing it in arguments, files or command output.
+
+Universal arm64 + arm64e build and import/floor checks passed. Installed/local
+SHA-256: `f602337c51f9548fc7d64c03b60c5c09a5e8026d96fc85db4f8382eda374f955`.
+The dedicated access group is additive; `icli.test` remains present and first.
+No full-unlock RPC or policy/ledger implementation was changed. The explicit
+stdin reader was extracted unchanged for provisioning and original CLI reuse.
+
+- 12 saved-credential boundary cases passed, using the real storage wrapper with
+  controlled Security/UID/engine boundaries. They cover device-only attributes,
+  missing/inaccessible storage, root checks, buffer cleanup, updates, removal,
+  preflight forwarding and no retry after engine errors.
+- All 18 existing passcode/full-unlock policy tests passed again.
+- On the rootless iPhone16,2 / iOS 17.1.1, saved preflight succeeded with empty
+  stdin left open. Removal and missing-item failure worked; reprovisioning from
+  the Windows vault succeeded. The non-root command was refused before use.
+- Locked and screen-off was observed, then **`icli unlock` with no options and
+  stdin still open** performed one full unlock using `device_keychain`, reporting
+  `attempted: true`, `ui_unlocked: true`. Keybag and ledger failure counts stayed
+  zero; SpringBoard's PID stayed unchanged. A second command reported already
+  unlocked without attempting another unlock. The stored credential remains
+  provisioned intentionally.
+- The original Windows `icli-unlock --check` path passed after provisioning.
+  No real wrong passcode was submitted, no phone-terminal PIN entry was used,
+  and no commit, push or release was performed.
+
+Evidence: `.build/saved-unlock/{build.log,boundary-tests.log,policy-regression.log,
+missing-credential.json,device.json}` and its device runner `test-device.py`.
+The unit tests do not prove first-unlock-after-reboot behavior; that limitation
+comes from the SDK's accessibility-class contract and is documented in usage.
 
 `/var/mobile/Library/Caches/com.icli.icli/passcode-ledger.json`, 0600 in a 0700 directory, owned by mobile even when root wrote it, so `sudo icli` and `icli` share one budget.
 
@@ -92,6 +169,6 @@ So `com.apple.keystore.device` is enough for mobile to unlock, and the counter-b
 
 ## Open
 
-- Dismissing SpringBoard's lock screen after a keybag unlock: `button home` does not, on a Face ID iPhone. A later `--dismiss` could swipe up or ask SpringBoard directly.
+- Other iOS versions and jailbreaks need independent full-unlock device tests; the local `--dismiss` result above is specific to the tested phone.
 - The uncounted-error path (exit status 6) was not provoked; it needs a build without the entitlement.
 - iOS 26 and 27, root, and tvOS are untested. Whether `MKBGetDeviceLockStateInfo` follows the Create rule is unknown, so its result is never released.

@@ -29,11 +29,15 @@ extension Device {
                 owned by this user and closed to group and others); with neither, \
                 an interactive terminal is prompted without echo.
 
-                Nothing is attempted when the keybag is already unlocked, when \
+                Without --dismiss, an already unlocked keybag needs no attempt. \
+                With --dismiss, also finish the lock-screen unlock using SpringBoard's \
+                own method (root and task-port control required; no installed tweak). \
+                Nothing is attempted when \
                 this passcode was rejected before (the ledger keeps a salted \
                 digest of every rejected passcode until an unlock succeeds), when \
                 the failures reach --max-failures, or while the keybag backs off. \
-                icli never guesses or generates passcodes.
+                icli never guesses or generates passcodes. --dismiss --check performs \
+                a read-only preflight without executing code in SpringBoard.
 
                 Exit status: 0 unlocked, 3 rejected now, 4 rejected before (not \
                 retried), 5 refused by a guard, 6 keybag error not counted.
@@ -41,6 +45,8 @@ extension Device {
             )
             @OptionGroup var output: OutputOptions
             @Flag(help: "Read the passcode from the first line of stdin") var passcodeStdin = false
+            @Flag(help: "Also dismiss the lock screen using SpringBoard's unlock method (root; no tweak)")
+            var dismiss = false
             @Option(help: "Read the passcode from the first line of this file (mode 0600 or stricter)")
             var passcodeFile: String?
             @Option(help: "Stop before the failure count reaches this (1-\(passcodeFailureCeiling))")
@@ -56,13 +62,13 @@ extension Device {
             func run() {
                 emit(allowWhenLocked: true, output) {
                     var passcode = try readPasscode()
-                    return try unlockDevice(passcode: &passcode, limit: maxFailures, checkOnly: check)
+                    return try unlockDevice(passcode: &passcode, limit: maxFailures, checkOnly: check, dismissLockScreen: dismiss)
                 }
             }
 
             private func readPasscode() throws -> [UInt8] {
                 if passcodeStdin {
-                    return firstLine(FileHandle.standardInput.readDataToEndOfFile())
+                    return try readPasscodeFromStdin()
                 }
                 if let passcodeFile {
                     return try firstLine(readProtectedFile(passcodeFile))
@@ -124,4 +130,27 @@ extension Device {
             }
         }
     }
+}
+
+// Shared by explicit stdin unlock and one-time Keychain provisioning. Does not
+// run on the ordinary `icli unlock` path, which never reads the terminal.
+func readPasscodeFromStdin() throws -> [UInt8] {
+    var bytes = [UInt8]()
+    bytes.reserveCapacity(130)
+    var byte: UInt8 = 0
+    defer { memset_s(&byte, 1, 0, 1) }
+    while bytes.count < 130 {
+        let count = Darwin.read(STDIN_FILENO, &byte, 1)
+        if count < 0, errno == EINTR { continue }
+        if count < 0 {
+            bytes.withUnsafeMutableBytes { buffer in
+                if let base = buffer.baseAddress { memset_s(base, buffer.count, 0, buffer.count) }
+            }
+            throw IcliError.failed("could not read the passcode from stdin")
+        }
+        if count == 0 || byte == 10 { break }
+        bytes.append(byte)
+    }
+    if bytes.last == 13 { bytes.removeLast() }
+    return bytes
 }

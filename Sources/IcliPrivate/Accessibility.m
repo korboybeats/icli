@@ -6,6 +6,7 @@
 #import <os/lock.h>
 #import <stdlib.h>
 #import <unistd.h>
+#import <stdatomic.h>
 
 // libSystem exports it; the SDK ships no libproc.h.
 extern int proc_pidpath(int pid, void *buffer, uint32_t buffersize);
@@ -18,6 +19,7 @@ static int (*copyAttribute)(AXElement, CFStringRef, CFTypeRef *);
 static int (*setTimeout)(AXElement, float);
 static Boolean (*getAXValue)(CFTypeRef, int, void *);
 static int (*hitTest)(AXElement, AXElement *, float, float);
+static int (*performAction)(AXElement, uint32_t);
 static Boolean (*applicationEnabled)(void);
 static void (*setApplicationEnabled)(Boolean);
 static Boolean (*automationEnabled)(void);
@@ -82,6 +84,7 @@ static BOOL prepareAX(void) {
         setTimeout = dlsym(ax, "AXUIElementSetMessagingTimeout");
         getAXValue = dlsym(ax, "AXValueGetValue");
         hitTest = dlsym(ax, "AXUIElementCopyElementAtPosition");
+        performAction = dlsym(ax, "AXUIElementPerformAction");
     });
     return createApp && copyAttribute && getAXValue;
 }
@@ -171,7 +174,7 @@ static NSDictionary *serializeElement(AXElement element, BOOL fixedSpace) {
     };
 }
 
-static NSDictionary *elementsResult(int pid, int max_elements) {
+static NSDictionary *elementsResultForTarget(int pid, int max_elements, NSString *identifier, AXElement *target) {
     AXElement root = createApp(pid);
     if (!root) return @{@"error": @"AX application unavailable"};
     if (setTimeout) setTimeout(root, 0.5f);
@@ -190,6 +193,8 @@ static NSDictionary *elementsResult(int pid, int max_elements) {
     BOOL fixedSpace = framesInFixedSpace(pid);
     NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 5;
     BOOL truncated = NO;
+    AXElement chosen = NULL;
+    NSUInteger matches = 0;
     for (id element in elements) {
         if (rows.count >= (NSUInteger)max_elements || NSProcessInfo.processInfo.systemUptime >= deadline) {
             truncated = YES;
@@ -197,7 +202,13 @@ static NSDictionary *elementsResult(int pid, int max_elements) {
         }
         NSDictionary *node = serializeElement((__bridge AXElement)element, fixedSpace);
         if (node) [rows addObject:node];
+        if (target && [node[@"visible"] boolValue] && [node[@"identifier"] isEqual:identifier]) {
+            matches++;
+            if (!chosen) chosen = CFRetain((__bridge AXElement)element);
+        }
     }
+    if (target && matches == 1 && !truncated) *target = chosen;
+    else if (chosen) CFRelease(chosen);
     return @{
         @"source": @"ax",
         @"pid": @(pid),
@@ -205,6 +216,10 @@ static NSDictionary *elementsResult(int pid, int max_elements) {
         @"count": @(rows.count),
         @"truncated": @(truncated)
     };
+}
+
+static NSDictionary *elementsResult(int pid, int max_elements) {
+    return elementsResultForTarget(pid, max_elements, nil, NULL);
 }
 
 static NSDictionary *elementAtResult(int pid, double x, double y) {
@@ -250,4 +265,76 @@ char *icli_ax_element_at_json(int pid, double x, double y) {
         result = elementAtResult(pid, x, y);
     }
     return icli_json(result);
+}
+
+struct IcliAXActivationTarget {
+    AXElement element;
+    int pid;
+    atomic_bool attempted;
+};
+
+void icli_ax_activation_target_free(IcliAXActivationTarget *target) {
+    if (!target) return;
+    if (target->element) CFRelease(target->element);
+    free(target);
+}
+
+IcliAXActivationTarget *icli_ax_activation_target_create(int pid, const char *identifier, char **report) {
+    if (report) *report = NULL;
+    NSDictionary *failure = @{@"error": @"direct AX activation unavailable"};
+    IcliAXActivationTarget *target = NULL;
+    AXElement element = NULL;
+    if (pid > 0 && identifier && identifier[0] && prepareAX() && performAction && hitTest) {
+        enableSwitches();
+        NSDictionary *result = elementsResultForTarget(pid, 2000, @(identifier), &element);
+        failure = result[@"error"] ? result : @{@"error": @"direct activation target missing, ambiguous or truncated"};
+        if (element) {
+            NSDictionary *node = serializeElement(element, framesInFixedSpace(pid));
+            // iOS 17.1.1: AXElement.canPerformActivate reads 2019. It is only
+            // an advertisement, not a guarantee that the handler returns YES.
+            id capable = attribute(element, 2019);
+            if (![node[@"enabled"] boolValue] || ![node[@"clickable"] boolValue]
+                || ![node[@"visible"] boolValue] || ![capable isKindOfClass:NSNumber.class] || ![capable boolValue]) {
+                failure = @{@"error": @"target does not advertise enabled direct activation"};
+            } else {
+                target = calloc(1, sizeof(*target));
+                if (target) {
+                    target->element = element;
+                    target->pid = pid;
+                    atomic_init(&target->attempted, false);
+                    if (report) *report = icli_json(@{@"element":node});
+                    return target;
+                }
+                failure = @{@"error": @"activation target allocation failed"};
+            }
+            CFRelease(element);
+        }
+    }
+    if (report) *report = icli_json(failure);
+    return NULL;
+}
+
+char *icli_ax_activation_target_hit_json(IcliAXActivationTarget *target, double x, double y) {
+    if (!target || !hitTest || !isfinite(x) || !isfinite(y))
+        return icli_json(@{@"error": @"activation hit test unavailable"});
+    AXElement root = createApp(target->pid), hit = NULL;
+    if (!root) return icli_json(@{@"error": @"AX application unavailable"});
+    if (setTimeout) setTimeout(root, 0.5f);
+    double fx, fy;
+    icli_screen_point_to_fixed(x, y, &fx, &fy);
+    int error = hitTest(root, &hit, (float)fx, (float)fy);
+    CFRelease(root);
+    BOOL same = !error && hit && CFEqual(hit, target->element);
+    NSDictionary *row = same ? serializeElement(hit, framesInFixedSpace(target->pid)) : nil;
+    if (hit) CFRelease(hit);
+    return icli_json(row ? @{@"element":row} : @{@"error": @"retained activation target changed or occluded"});
+}
+
+int icli_ax_activation_target_perform(IcliAXActivationTarget *target) {
+    if (!target || !performAction || atomic_exchange(&target->attempted, true)) return -25201;
+    if (setTimeout) setTimeout(target->element, 0.5f);
+    // Traced in 21B91: _performActivate sends 2010; the app-side action
+    // handler calls accessibilityActivate. AXElement.press instead can send
+    // system action 5008 (a coordinate event), so it must never be used here.
+    return performAction(target->element, 2010);
 }

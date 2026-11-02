@@ -37,6 +37,14 @@ void icli_screen_point_to_digitizer(double x, double y, double *nx, double *ny);
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution);
 char *icli_ax_elements_json(int pid, int max_elements);
 char *icli_ax_element_at_json(int pid, double x, double y);
+/// PID, executable path and kernel start time, for detecting app replacement.
+char *icli_ui_process_identity_json(int pid);
+/// Owned remote AX reference. Direct activation never falls back to touch.
+typedef struct IcliAXActivationTarget IcliAXActivationTarget;
+IcliAXActivationTarget *icli_ax_activation_target_create(int pid, const char *identifier, char **report);
+char *icli_ax_activation_target_hit_json(IcliAXActivationTarget *target, double x, double y);
+int icli_ax_activation_target_perform(IcliAXActivationTarget *target);
+void icli_ax_activation_target_free(IcliAXActivationTarget *target);
 /// Puts the system-wide accessibility switches that AX queries turned on back
 /// off. icli does this at exit; a long-running host calls it when it is done.
 void icli_ax_restore_switches(void);
@@ -187,6 +195,14 @@ char *icli_keybag_info_json(void);
 /// MKBUnlockDevice with the passcode bytes; 0 unlocks. available is false when
 /// MobileKeyBag does not offer the call, and nothing was attempted.
 int icli_keybag_unlock(const uint8_t *passcode, size_t length, bool *available);
+/// Full unlock using SBLockScreenManager inside SpringBoard, without an
+/// installed tweak, subprocess, or saved passcode. Root only. JSON reports
+/// attempted, confirmed, ready and detail; checkOnly does not execute code.
+/// Must run between signals_begin/end on the same thread. Keep that scope
+/// through ledger persistence and passcode-buffer wiping, including errors.
+char *icli_full_unlock_json(const uint8_t *passcode, size_t length, bool checkOnly);
+bool icli_full_unlock_signals_begin(void);
+bool icli_full_unlock_signals_end(void);
 /// timed's automatic time zone: 1 on, 0 off, -1 when CoreTime does not offer
 /// it, -2 when timed does not answer within 3 seconds.
 int icli_automatic_time_zone_get(void);

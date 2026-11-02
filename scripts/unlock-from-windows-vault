@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+vault_script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
+vault_project_root="$(cd -- "$(dirname -- "$vault_script_path")/.." && pwd)"
+vault_options=()
+case "${1:-}" in
+    '') ;;
+    --check) vault_options=(-Check) ;;
+    --store) vault_options=(-StoreFromStdin) ;;
+    --provision-phone) vault_options=(-ProvisionPhone) ;;
+    *) printf 'Usage: %s [--check|--store|--provision-phone]\n' "$0" >&2; exit 2 ;;
+esac
+if (( $# > 1 )); then exit 2; fi
+# Identity discovery must not consume a passcode piped to --store.
+vault_device_id="$(ssh-iphone '/var/jb/usr/bin/deviceinfo uniqueid' </dev/null)"
+if [[ ! "$vault_device_id" =~ ^[0-9a-fA-F-]{16,64}$ ]]; then
+    printf 'Could not identify the phone; no credential was read.\n' >&2
+    exit 6
+fi
+vault_launch=(powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass \
+    -File "$(wslpath -w "$vault_project_root/scripts/windows-unlock.ps1")" \
+    -DeviceUDID "$vault_device_id" -Distribution "$WSL_DISTRO_NAME" \
+    -SshWrapper "$HOME/bin/ssh-iphone" "${vault_options[@]}")
+if [[ "${1:-}" == --store && -t 0 ]]; then
+    IFS= read -r -s -p 'Phone passcode: ' vault_passcode
+    printf '\n' >&2
+    if printf '%s\n' "$vault_passcode" | "${vault_launch[@]}"; then
+        vault_store_status=0
+    else
+        vault_store_status=$?
+    fi
+    unset vault_passcode
+    exit "$vault_store_status"
+fi
+exec "${vault_launch[@]}"

@@ -20,9 +20,43 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
 @property(nonatomic) CGPoint dragStart;
 @property(nonatomic) UIImage *ocrImage;
 @property(nonatomic) AVAudioPlayer *player;
+@property(nonatomic) UIButton *incrementButton;
+@property(nonatomic) NSTimeInterval toggleDelay;
+@property(nonatomic) NSUInteger toggleGeneration;
+@property(nonatomic) BOOL directActivation;
+@property(nonatomic) BOOL rejectActivation;
 - (void)save;
 - (void)reset;
 - (void)handleURL:(NSURL *)url;
+@end
+
+@interface ActivationProbeButton : UIButton
+@property(nonatomic, weak) TestController *controller;
+@end
+@implementation ActivationProbeButton
+- (BOOL)accessibilityActivate {
+    BOOL handled;
+    if (self.controller.directActivation && self.enabled) {
+        [self sendActionsForControlEvents:UIControlEventTouchUpInside];
+        handled = !self.controller.rejectActivation;
+    } else {
+        handled = [super accessibilityActivate];
+    }
+    self.controller.state[@"activation_calls"] = @([self.controller.state[@"activation_calls"] intValue] + 1);
+    self.controller.state[@"activation_handled"] = @(handled);
+    [self.controller save];
+    return handled;
+}
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    self.controller.state[@"touch_began"] = @([self.controller.state[@"touch_began"] intValue] + 1);
+    [self.controller save];
+    [super touchesBegan:touches withEvent:event];
+}
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    self.controller.state[@"touch_ended"] = @([self.controller.state[@"touch_ended"] intValue] + 1);
+    [self.controller save];
+    [super touchesEnded:touches withEvent:event];
+}
 @end
 
 @implementation TestController
@@ -46,10 +80,12 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     self.input.accessibilityLabel = @"Test input";
     self.input.accessibilityIdentifier = @"input.text";
     [self.view addSubview:self.input];
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    ActivationProbeButton *button = [ActivationProbeButton buttonWithType:UIButtonTypeSystem];
+    button.controller = self;
     button.frame = CGRectMake(24, 225, 170, 44);
     [button setTitle:@"Increment" forState:UIControlStateNormal];
     button.accessibilityIdentifier = @"counter.increment";
+    self.incrementButton = button;
     [button addTarget:self action:@selector(increment:) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:button];
     UIButton *toggle = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -127,6 +163,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     self.state[@"drag_y"] = @(self.dragTarget.center.y);
     self.state[@"counter"] = self.state[@"counter"] ?: @0;
     self.status.text = [NSString stringWithFormat:@"Count: %@",self.state[@"counter"]];
+    self.status.accessibilityValue = [self.state[@"counter"] stringValue];
     [[NSFileManager defaultManager] createDirectoryAtPath:StatePath.stringByDeletingLastPathComponent
                               withIntermediateDirectories:YES
                                                attributes:nil
@@ -136,6 +173,17 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
          atomically:YES];
 }
 - (void)reset {
+    self.directActivation = NO;
+    self.rejectActivation = NO;
+    self.incrementButton.frame = CGRectMake(24, 225, 170, 44);
+    [self.incrementButton removeTarget:self action:NULL forControlEvents:UIControlEventTouchUpInside];
+    [self.incrementButton addTarget:self action:@selector(increment:) forControlEvents:UIControlEventTouchUpInside];
+    self.toggleGeneration++;
+    self.toggleDelay = 1;
+    self.incrementButton.enabled = YES;
+    for (UIView *view in [self.view.subviews copy]) {
+        if (view.tag == 7301) [view removeFromSuperview];
+    }
     [self.input resignFirstResponder];
     [self.state removeAllObjects];
     self.input.text = @"";
@@ -153,7 +201,11 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     [self save];
 }
 - (void)toggleDelayed:(id)sender {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    NSUInteger generation = self.toggleGeneration;
+    self.state[@"toggle_taps"] = @([self.state[@"toggle_taps"] intValue] + 1);
+    [self save];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.toggleDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (generation != self.toggleGeneration) return;
         self.delayed.hidden = !self.delayed.hidden;
         [self save];
     });
@@ -183,6 +235,49 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
 - (void)textViewDidChange:(UITextView *)textView { [self save]; }
 - (void)handleURL:(NSURL *)url {
     if([url.host isEqual:@"reset"]) [self reset];
+    else if([url.host isEqual:@"verified-direct"]) self.directActivation = YES;
+    else if([url.host isEqual:@"verified-direct-reject"]) {
+        self.directActivation = YES;
+        self.rejectActivation = YES;
+    }
+    else if([url.host isEqual:@"verified-replace"]) {
+        CGRect old = self.incrementButton.frame;
+        [self.incrementButton removeFromSuperview];
+        ActivationProbeButton *replacement = [ActivationProbeButton buttonWithType:UIButtonTypeSystem];
+        replacement.controller = self;
+        replacement.frame = old;
+        [replacement setTitle:@"Replacement" forState:UIControlStateNormal];
+        replacement.accessibilityIdentifier = @"counter.increment";
+        [replacement addTarget:self action:@selector(verifiedOtherTap:) forControlEvents:UIControlEventTouchUpInside];
+        self.incrementButton = replacement;
+        [self.view addSubview:replacement];
+    }
+    else if([url.host isEqual:@"verified-relocate"]) {
+        CGRect old = self.incrementButton.frame;
+        self.incrementButton.frame = CGRectMake(210, 460, 174, 44);
+        UIButton *decoy = [UIButton buttonWithType:UIButtonTypeSystem];
+        decoy.tag = 7301;
+        decoy.frame = old;
+        [decoy setTitle:@"Decoy" forState:UIControlStateNormal];
+        decoy.accessibilityIdentifier = @"counter.decoy";
+        [decoy addTarget:self action:@selector(verifiedOtherTap:) forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:decoy];
+    }
+    else if([url.host isEqual:@"verified-disabled"]) self.incrementButton.enabled = NO;
+    else if([url.host isEqual:@"verified-slow"]) self.toggleDelay = 3;
+    else if([url.host isEqual:@"verified-duplicate"] || [url.host isEqual:@"verified-label"]
+            || [url.host isEqual:@"verified-overlay"]) {
+        UIButton *fixture = [UIButton buttonWithType:UIButtonTypeSystem];
+        fixture.tag = 7301;
+        BOOL overlay = [url.host isEqual:@"verified-overlay"];
+        fixture.frame = overlay ? self.incrementButton.frame : CGRectMake(210, 460, 174, 44);
+        [fixture setTitle:overlay ? @"Overlay" : @"Increment" forState:UIControlStateNormal];
+        fixture.backgroundColor = UIColor.systemBackgroundColor;
+        fixture.accessibilityIdentifier = overlay ? @"counter.overlay"
+            : ([url.host isEqual:@"verified-label"] ? @"counter.other" : @"counter.increment");
+        [fixture addTarget:self action:@selector(verifiedOtherTap:) forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:fixture];
+    }
     else if([url.host isEqual:@"focus"]) [self.input becomeFirstResponder];
     else if([url.host isEqual:@"blur"]) [self.input resignFirstResponder];
     else if([url.host isEqual:@"toggle"]) [self toggleDelayed:nil];
@@ -255,6 +350,10 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     }
     else if([url.host isEqual:@"crash"]) abort();
     self.state[@"last_url"] = url.absoluteString;
+    [self save];
+}
+- (void)verifiedOtherTap:(id)sender {
+    self.state[@"other_taps"] = @([self.state[@"other_taps"] intValue] + 1);
     [self save];
 }
 @end

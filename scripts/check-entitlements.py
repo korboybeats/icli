@@ -6,6 +6,10 @@ import re
 
 root = Path(__file__).resolve().parents[1]
 profile = plistlib.loads((root / 'Resources/icli.entitlements').read_bytes())
+# Device A/B/A: on iOS 17.1.1 this key restricts the caller to read access
+# even when control entitlements are also present. Full unlock needs control.
+if profile.get('com.apple.system-task-ports.control'):
+    assert not profile.get('com.apple.system-task-ports.read'), 'read-only task profile blocks full-unlock control access'
 document = (root / 'docs/entitlements.md').read_text()
 rows = {}
 for line in document.splitlines():

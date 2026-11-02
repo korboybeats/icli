@@ -326,7 +326,7 @@ extension Input {
 struct UI: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Accessibility / OCR elements",
-        subcommands: [Tree.self, At.self, Tap.self, Wait.self, WaitGone.self],
+        subcommands: [Tree.self, At.self, Tap.self, Perform.self, Wait.self, WaitGone.self],
     )
 }
 
@@ -346,6 +346,40 @@ struct ElementOptions: ParsableArguments {
 }
 
 extension UI {
+    struct Perform: ParsableCommand {
+        static var configuration = CommandConfiguration(abstract: "Tap once and verify an observed UI transition.")
+        @OptionGroup var output: OutputOptions
+        @Option(help: "Required verified foreground bundle ID.") var app: String
+        @Option(help: "One exact accessibility identifier; ambiguous targets are refused.") var tapIdentifier: String
+        @Option(help: "touch (default), or accessibility for direct element activation without touch fallback.") var method: String = "touch"
+        @Option(help: "Exact identifier that must be absent before input and appear afterward.") var expectAppeared: String?
+        @Option(help: "Exact identifier that must be present before input and disappear afterward.") var expectDisappeared: String?
+        @Option(help: "Exact identifier whose AX value must change after input.") var expectValueChanged: String?
+        @Option(help: "Overall observation deadline in seconds, 0.1–60; synchronous AX calls may overrun it.") var timeout: Double = 10
+        @Option(help: "Polling interval in seconds, 0.1–5.") var interval: Double = 0.2
+        @Option(help: "Optional device JPEG path captured on refusal or unconfirmed input.") var failureScreenshot: String?
+
+        func run() {
+            // Let the operation enforce lock state itself, retaining a refused
+            // outcome rather than losing the action envelope to CLI policy.
+            emit(allowWhenLocked: true, output) {
+                guard let actionMethod = VerifiedUIActionMethod(rawValue: method) else {
+                    throw IcliError.failed("method must be touch or accessibility")
+                }
+                guard [expectAppeared, expectDisappeared, expectValueChanged].compactMap({ $0 }).count == 1 else {
+                    throw IcliError.failed("provide exactly one --expect-appeared, --expect-disappeared or --expect-value-changed")
+                }
+                let condition: VerifiedUICondition
+                if let id = expectAppeared { condition = .appeared(id) }
+                else if let id = expectDisappeared { condition = .disappeared(id) }
+                else { condition = .valueChanged(expectValueChanged!) }
+                return performVerifiedUIAction(VerifiedUIActionRequest(
+                    app: app, tapIdentifier: tapIdentifier, condition: condition,
+                    timeout: timeout, interval: interval, failureScreenshot: failureScreenshot, method: actionMethod)).payload
+            }
+        }
+    }
+
     struct Tree: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Option var maxElements: Int = 250

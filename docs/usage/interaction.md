@@ -17,6 +17,93 @@ icli ui wait-gone 'Loading' --timeout 10
 
 `app frontmost` marks a bundle ID `verified: true` only when RunningBoard has one non-widget focal app. A SpringBoard-query fallback is marked `verified: false`; UI commands stop if they cannot verify the target. `app running` reports its `source` as `runningboard` or `processes`.
 
+### Verified UI Actions
+
+`ui perform` checks the intended foreground app, taps one enabled target once,
+then observes a requested transition. All identifiers are exact accessibility
+identifiers: a label with the same text does not count. Targets and expectation
+elements must be unique among the visible AX rows. There is no index override.
+
+```sh
+icli ui perform --app dev.owngoal.icli.TestHost \
+  --tap-identifier element.toggle --expect-appeared element.ready --timeout 10
+icli ui perform --app dev.owngoal.icli.TestHost \
+  --tap-identifier element.toggle --expect-disappeared element.ready
+icli ui perform --app dev.owngoal.icli.TestHost \
+  --tap-identifier counter.increment --expect-value-changed counter.status
+```
+
+Supply exactly one expectation. Appeared requires absence before the tap;
+disappeared requires presence; value-changed requires one visible element
+before and after, with a different AX `value`. A changed label alone does not
+count as a changed value. Already satisfied appearance/disappearance conditions
+refuse the action instead of treating old UI as success.
+
+For a control that implements accessibility activation, add
+`--method accessibility`:
+
+For the TestHost example below, first enable its test handler with
+`icli url open icli-test://verified-direct`.
+
+```sh
+icli ui perform --app dev.owngoal.icli.TestHost \
+  --tap-identifier counter.increment --expect-value-changed counter.status \
+  --method accessibility
+```
+
+This mode retains the selected remote element and sends its activation action
+directly. It never falls back to a coordinate tap, including after a timeout or
+an activation error. A moved control cannot redirect this request to a different
+control at the old screen position. The default `--method touch` keeps ordinary
+tap behavior for controls that do not implement activation. Accessibility support
+is app-dependent; a reported capability does not guarantee the handler succeeds.
+
+| Outcome | Exit | Meaning |
+| --- | --- | --- |
+| `refused` | 1 | No dispatch was attempted. Check `reason`. |
+| `verified` | 0 | HID accepted the tap and the transition was observed. |
+| `sent_unconfirmed` | 3 | Dispatch was attempted, but its visible result was not verified. |
+
+`dispatch_attempted` is set before entering the dispatch API. With `touch`, `sent`
+means both finger events were accepted. With `accessibility`, it means the AX
+action returned success; `ax_error` records its native result. The visible result
+is checked separately. A partial dispatch failure is unconfirmed, never a safe
+refusal. A handler can return failure after changing state. Missing/invalid CLI
+arguments fail before the operation.
+No outcome causes an automatic retry. After an unconfirmed result, inspect the
+app before deciding whether another action is appropriate.
+
+The command checks unlocked/screen-on state even in debug/library hosts,
+verified foreground bundle, PID and kernel start time, orientation, dimensions,
+target frame/activation point, enabled state and an AX hit test before input.
+Truncated or failed AX observations stop verification. Foreground/process or
+orientation changes after input leave the result unconfirmed. It does not
+launch, unlock, dismiss overlays, move a target into view or select another app.
+
+Results include bounded pre/post expectation rows, a compact UI difference
+(up to 20 added and 20 removed rows, text capped at 256 characters), target
+geometry and timings. Add `--failure-screenshot /tmp/action.jpg` to save a JPEG
+on refusal/unconfirmed input; capture is best effort and may show a changed app.
+There is no screenshot or OCR work by default.
+
+`--timeout` is an overall monotonic deadline (0.1–60 seconds), including checks;
+`--interval` controls bounded polling (0.1–5 seconds, default 0.2). Synchronous
+AX/system calls and optional failure capture can finish after the deadline;
+late observations cannot verify success. There is no background service or work
+between requests. The current AX bridge supplies snapshots, so this operation
+uses polling rather than inventing an unsupported notification subscription.
+
+Checks and taps are separate operations: the GUI can still change between them.
+Direct activation preserves the target's identity; it does not freeze the UI.
+For example, a late overlay may cover the target while its activation still runs.
+AX hit testing is scoped to the intended app and cannot prove absence of every
+system overlay. Observations do not establish causality or prove a server-side
+transaction. There is no rollback or exactly-once guarantee across crashes.
+Point input is unavailable on tvOS. See [validation](../development/verified-ui-actions.md)
+for tested behavior and the reusable IcliKit API.
+See [direct activation research](../development/direct-ax-activation.md) for
+the native behavior and limits tested on the phone.
+
 For coordinate input, read the screen dimensions first. Coordinates are **points** in the orientation shown on screen, including those returned by accessibility and OCR. On an iPad held in landscape, `screen info` reports a landscape width and height:
 
 ```sh

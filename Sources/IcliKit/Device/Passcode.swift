@@ -69,15 +69,21 @@ public func forgetPasscodeAttempts(ledger: PasscodeLedger = PasscodeLedger()) th
 /// attempt. A failed attempt is recorded when the keybag's counter rose, or
 /// when the counter cannot be read; a success empties the ledger.
 ///
-/// The keybag unlocking does not dismiss SpringBoard's lock screen;
-/// `lock_screen` reports whether it is still up.
+/// With dismissLockScreen, invokes SpringBoard's full unlock method directly
+/// through a temporary in-process execution context instead of attempting a
+/// separate MobileKeyBag unlock. No installed helper or saved passcode.
 public func unlockDevice(
     passcode: inout [UInt8],
     limit: Int = defaultPasscodeFailureLimit,
     checkOnly: Bool = false,
     ledger: PasscodeLedger = PasscodeLedger(),
+    dismissLockScreen: Bool = false,
 ) throws -> [String: Any] {
-    defer { wipe(&passcode) }
+    var signalsProtected = false
+    defer {
+        wipe(&passcode)
+        if signalsProtected { _ = icli_full_unlock_signals_end() }
+    }
     guard (1 ... 128).contains(passcode.count), !passcode.contains(0) else {
         throw IcliError.failed("the passcode must be 1-128 bytes without NUL")
     }
@@ -85,7 +91,7 @@ public func unlockDevice(
         throw IcliError.failed("--max-failures must be between 1 and \(passcodeFailureCeiling)")
     }
 
-    return try ledger.withLock { state in
+    var result = try ledger.withLock { state in
         let before = try keybagInfo()
         var report: [String: Any] = ["attempted": false, "ledger_path": ledger.path]
         func answer(_ status: PasscodeUnlockStatus, _ hint: String) -> [String: Any] {
@@ -101,8 +107,10 @@ public func unlockDevice(
         report["lock_state"] = before["lock_state"]
         let remaining = attemptsRemaining(keybag: before, ledgerFailures: state.failures, limit: limit)
         report["attempts_remaining"] = remaining
-        if lockState == 0 || lockState == 3 {
+        let screen = icli_lock_status()
+        if !(checkOnly && dismissLockScreen) && (lockState == 0 || lockState == 3) && (!dismissLockScreen || (!screen.locked && !screen.screen_off)) {
             report["already_unlocked"] = true
+            if dismissLockScreen { report["ui_unlocked"] = true }
             return answer(.unlocked, lockState == 3
                 ? "The device has no passcode; nothing to unlock."
                 : "The keybag is already unlocked; nothing was attempted.")
@@ -123,26 +131,64 @@ public func unlockDevice(
         if remaining <= 0 {
             return answer(.refused, "\(max(state.failures, before["failed_attempts"] as? Int ?? 0)) failed attempts reached the limit of \(limit); icli makes no further attempt. A person must unlock the device, which resets the count.")
         }
+        if dismissLockScreen {
+            guard icli_full_unlock_signals_begin() else {
+                return answer(.systemError, "Cannot protect signal handling or another full unlock is active; no attempt was made.")
+            }
+            signalsProtected = true
+        }
         if checkOnly {
+            if dismissLockScreen {
+                let preflight = try passcode.withUnsafeBufferPointer {
+                    try decodeBridgeJSON(takeCString(icli_full_unlock_json($0.baseAddress, $0.count, true)), "full unlock preflight")
+                }
+                guard preflight["ready"] as? Bool == true else {
+                    return answer(.systemError, preflight["detail"] as? String ?? "Full unlock preflight failed; no attempt was made.")
+                }
+            }
             var checked = answer(.unlocked, "Every guard passed; --check made no attempt. \(remaining) attempt(s) remain.")
             checked["result"] = "check_passed"
             return checked
         }
 
-        var available = false
-        let code = passcode.withUnsafeBufferPointer { icli_keybag_unlock($0.baseAddress, $0.count, &available) }
-        guard available else {
-            throw IcliError.unavailable("MobileKeyBag does not offer MKBUnlockDevice on this system")
+        var attempted = true
+        let code: Int32
+        var detail: String?
+        if dismissLockScreen {
+            let full = try passcode.withUnsafeBufferPointer {
+                try decodeBridgeJSON(takeCString(icli_full_unlock_json($0.baseAddress, $0.count, false)), "full unlock result")
+            }
+            attempted = full["attempted"] as? Bool ?? false
+            let confirmed = full["confirmed"] as? Bool == true
+            code = confirmed ? 0 : -1
+            report["ui_unlocked"] = confirmed
+            detail = full["detail"] as? String
+        } else {
+            var available = false
+            code = passcode.withUnsafeBufferPointer { icli_keybag_unlock($0.baseAddress, $0.count, &available) }
+            guard available else {
+                throw IcliError.unavailable("MobileKeyBag does not offer MKBUnlockDevice on this system")
+            }
+            report["keybag_result"] = Int(code)
         }
-        report["attempted"] = true
-        report["keybag_result"] = Int(code)
+        report["attempted"] = attempted
         let after = try keybagInfo()
         report["lock_state"] = after["lock_state"]
 
         if code == 0 {
+            if dismissLockScreen {
+                let screen = icli_lock_status()
+                guard !screen.locked, !screen.screen_off else {
+                    report["ui_unlocked"] = false
+                    return answer(.systemError, "SpringBoard answered, but the screen state did not confirm unlock; no request was retried.")
+                }
+            }
             state.rejected.removeAll()
             report["attempts_remaining"] = attemptsRemaining(keybag: after, ledgerFailures: 0, limit: limit)
-            return answer(.unlocked, "The keybag is unlocked.")
+            return answer(.unlocked, dismissLockScreen ? "The phone is awake and the lock screen is dismissed." : "The keybag is unlocked.")
+        }
+        guard attempted else {
+            return answer(.systemError, detail ?? "Full unlock was unavailable; no attempt was made.")
         }
         let counted: Bool
         if let was = before["failed_attempts"] as? Int, let now = after["failed_attempts"] as? Int {
@@ -155,11 +201,23 @@ public func unlockDevice(
         }
         report["attempts_remaining"] = attemptsRemaining(keybag: after, ledgerFailures: state.failures + (counted ? 1 : 0), limit: limit)
         guard counted else {
-            return answer(.systemError, "The keybag returned \(code) without counting a failed attempt (is com.apple.keystore.device in the signature?). The passcode was not recorded.")
+            return answer(.systemError, detail ?? "The keybag returned \(code) without counting a failed attempt. The passcode was not recorded.")
         }
         state.recordRejected(digest)
         return answer(.rejected, "The keybag rejected the passcode. It is recorded and will not be tried again.")
     }
+    // Persist the attempt and release the ledger lock before restoring signal
+    // actions. A pending SIGTERM/SIGHUP may terminate the process at end().
+    wipe(&passcode)
+    if signalsProtected {
+        signalsProtected = false
+        if !icli_full_unlock_signals_end() {
+            result["status"] = PasscodeUnlockStatus.systemError.rawValue
+            result["result"] = "system_error"
+            result["hint"] = "The attempt was recorded, but the caller's signal handling could not be restored."
+        }
+    }
+    return result
 }
 
 private func keybagInfo() throws -> [String: Any] {

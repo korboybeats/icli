@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify signed single-binary package invariants after check-packages.sh extracts them."""
 import hashlib
+import argparse
 import io
 import json
 from pathlib import Path
@@ -8,17 +9,21 @@ import plistlib
 import runpy
 import subprocess
 import tarfile
+import tempfile
 
 root = Path(__file__).resolve().parents[1]
 version = plistlib.loads((root / 'Resources/Info.plist').read_bytes())['CFBundleShortVersionString']
 verifier = runpy.run_path(str(root / 'scripts/verify-binary.py'))
+parser = argparse.ArgumentParser()
+parser.add_argument('--ios-only', action='store_true', help='Verify the two iOS packages without a tvOS build')
+options = parser.parse_args()
 
 
-def verify_binary(binary, platform, sdk_name, extra_frameworks=()):
-    """The checks every shipped executable passes, whichever platform it is for."""
+def verify_slice(binary, platform, sdk_name, architecture, extra_frameworks=()):
+    """Apply every binary invariant independently to one architecture."""
     entitlements = plistlib.loads(subprocess.check_output(['ldid', '-e', str(binary)]))
     assert entitlements == plistlib.loads((root / 'Resources/icli.entitlements').read_bytes())
-    assert subprocess.check_output(['lipo', '-archs', str(binary)], text=True).strip() == 'arm64'
+    assert subprocess.check_output(['lipo', '-archs', str(binary)], text=True).strip() == architecture
     build = subprocess.check_output(['xcrun', 'vtool', '-show-build', str(binary)], text=True)
     # The CLI, the package and the DEB's firmware dependency share one floor.
     # The SDK is the one it was built with: a lower stamp sends newer systems
@@ -32,22 +37,41 @@ def verify_binary(binary, platform, sdk_name, extra_frameworks=()):
         assert name.startswith(('/System/Library/', '/usr/lib/')), name
         assert 'libarchive' not in name, 'libarchive must be statically linked'
     verifier['verify_javascriptcore_not_linked'](binary)
-    report = {'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'architecture': 'arm64',
+    report = {'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'architecture': architecture,
               'system_loads': loads, 'javascriptcore_linked': False}
     report.update(verifier['verify_no_process_imports'](binary))
     report.update(verifier['verify_floor_imports'](binary, sdk_name, extra_frameworks))
     return report
 
 
+def verify_binary(binary, platform, sdk_name, extra_frameworks=()):
+    """Check the complete architecture set and every signed slice."""
+    architectures = subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split()
+    expected = ['arm64', 'arm64e'] if platform == 'IOS' else ['arm64']
+    assert architectures == expected, (architectures, expected)
+    slices = {}
+    with tempfile.TemporaryDirectory(prefix='icli-package-slices-') as directory:
+        for architecture in architectures:
+            thin = binary
+            if len(architectures) > 1:
+                thin = Path(directory) / architecture
+                subprocess.run(['lipo', str(binary), '-thin', architecture, '-output', str(thin)], check=True)
+            slices[architecture] = verify_slice(thin, platform, sdk_name, architecture, extra_frameworks)
+    return {**slices[architectures[0]], 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+            'architecture': ' '.join(architectures), 'slices': slices}
+
+
 ios = verify_binary(root / '.build/icli', 'IOS', 'iphoneos')
 report = {'version': version, **ios, 'minimum_ios': '15.0', 'packages': []}
 # tvOS is its own executable: the same sources built against the AppleTVOS
 # SDK, with IOKit's headers from the stub the tvOS build links against.
-tvos = verify_binary(root / '.build/icli-tvos', 'TVOS', 'appletvos', [root / '.build/tvos-stubs'])
-report['tvos'] = {'binary': 'icli-tvos', **tvos, 'minimum_tvos': '15.0'}
-for kind, arch, prefix, digest in [('rootless', 'iphoneos-arm64', 'var/jb', ios['binary_sha256']),
-                                   ('roothide', 'iphoneos-arm64e', '', ios['binary_sha256']),
-                                   ('tvos', 'appletvos-arm64', '', tvos['binary_sha256'])]:
+layouts = [('rootless', 'iphoneos-arm64', 'var/jb', ios['binary_sha256']),
+           ('roothide', 'iphoneos-arm64e', '', ios['binary_sha256'])]
+if not options.ios_only:
+    tvos = verify_binary(root / '.build/icli-tvos', 'TVOS', 'appletvos', [root / '.build/tvos-stubs'])
+    report['tvos'] = {'binary': 'icli-tvos', **tvos, 'minimum_tvos': '15.0'}
+    layouts.append(('tvos', 'appletvos-arm64', '', tvos['binary_sha256']))
+for kind, arch, prefix, digest in layouts:
     package = root / f'.build/com.icli.icli_{version}_{arch}.deb'
     folder = root / '.build/package-check' / kind / prefix
     cli = folder / 'usr/bin/icli'
@@ -68,5 +92,5 @@ for kind, arch, prefix, digest in [('rootless', 'iphoneos-arm64', 'var/jb', ios[
                                'binary_sha256': digest, 'depends': dependencies,
                                'single_binary': True, 'root_owned': True})
 (root / '.build/package-verification.json').write_text(json.dumps(report, indent=2) + '\n')
-print('PASS iOS and tvOS package architecture, metadata, entitlements, system dependencies, ownership, '
+print('PASS ' + ('iOS' if options.ios_only else 'iOS and tvOS') + ' package architecture, metadata, entitlements, system dependencies, ownership, '
       'CLI-only contents, JavaScriptCore loaded at runtime and no process-launch imports')
