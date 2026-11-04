@@ -310,6 +310,101 @@ char *icli_ax_element_at_json(int pid, double x, double y) {
     return icli_json(result);
 }
 
+// The actions VoiceOver's three-finger swipes use, read from AXRuntime 17.1.1
+// (-[AXElement scrollAncestorForScrollAction:]): each has an attribute naming the
+// nearest ancestor that can scroll that way, nil at the end of the content or
+// where accessibility cannot scroll the view. Attribute 2057 is an element's frame
+// clipped to what its scroll views and bars leave visible; action 2003 scrolls the
+// element into view.
+static const struct { const char *name; uint32_t action, ancestor; } kScrollDirections[] = {
+    {"down", 2006, 2109}, {"up", 2007, 2108}, {"left", 2008, 2106}, {"right", 2009, 2107},
+};
+
+static BOOL isElement(id value) {
+    return value && CFGetTypeID((__bridge CFTypeRef)value) != CFArrayGetTypeID();
+}
+
+char *icli_ax_scroll_page_json(int pid, double x, double y, const char *direction) {
+    uint32_t action = 0, ancestorKey = 0;
+    for (size_t i = 0; direction && i < sizeof(kScrollDirections) / sizeof(*kScrollDirections); i++) {
+        if (strcmp(direction, kScrollDirections[i].name) == 0) {
+            action = kScrollDirections[i].action;
+            ancestorKey = kScrollDirections[i].ancestor;
+        }
+    }
+    if (pid <= 0 || !action || !prepareAX() || !hitTest || !performAction) {
+        return icli_json(@{@"error": @"AX scrolling unavailable"});
+    }
+    enableSwitches();
+    AXElement root = createApp(pid), hit = NULL;
+    if (!root) return icli_json(@{@"error": @"AX application unavailable"});
+    if (setTimeout) setTimeout(root, 0.5f);
+    double fx = x, fy = y;
+    icli_screen_point_to_fixed(x, y, &fx, &fy);
+    hitTest(root, &hit, (float)fx, (float)fy);
+    id ancestor = hit ? attribute(hit, ancestorKey) : nil;
+    if (hit) CFRelease(hit);
+    if (!isElement(ancestor)) {
+        // The point can fall between rows or on something outside the list:
+        // the nearest elements tell which scroll view is meant.
+        BOOL fixedSpace = framesInFixedSpace(pid);
+        CGPoint point = fixedSpace ? CGPointMake(fx, fy) : CGPointMake(x, y);
+        NSMutableArray<NSArray *> *near = [NSMutableArray array];
+        id elements = attribute(root, 3015);
+        for (id element in [elements isKindOfClass:NSArray.class] ? elements : @[]) {
+            id value = attribute((__bridge AXElement)element, 2003);
+            CGRect frame;
+            if (!value || !getAXValue((__bridge CFTypeRef)value, 3, &frame)) continue;
+            double dx = MAX(MAX(CGRectGetMinX(frame) - point.x, point.x - CGRectGetMaxX(frame)), 0);
+            double dy = MAX(MAX(CGRectGetMinY(frame) - point.y, point.y - CGRectGetMaxY(frame)), 0);
+            [near addObject:@[@(hypot(dx, dy)), element]];
+        }
+        [near sortUsingComparator:^NSComparisonResult(NSArray *a, NSArray *b) { return [a[0] compare:b[0]]; }];
+        for (NSUInteger i = 0; i < near.count && i < 8 && !isElement(ancestor); i++) {
+            ancestor = attribute((__bridge AXElement)near[i][1], ancestorKey);
+        }
+    }
+    CFRelease(root);
+    if (!isElement(ancestor)) return icli_json(@{@"moved": @NO, @"ancestor": @NO});
+    int error = performAction((__bridge AXElement)ancestor, action);
+    return icli_json(@{@"moved": @(error == 0), @"ancestor": @YES, @"ax_error": @(error)});
+}
+
+char *icli_ax_reveal_json(int pid, const char *label, const char *identifier, double x, double y) {
+    if (pid <= 0 || !label || !identifier || !prepareAX() || !performAction) {
+        return icli_json(@{@"error": @"AX scrolling unavailable"});
+    }
+    enableSwitches();
+    AXElement root = createApp(pid);
+    if (!root) return icli_json(@{@"error": @"AX application unavailable"});
+    if (setTimeout) setTimeout(root, 0.5f);
+    id elements = attribute(root, 3015);
+    CFRelease(root);
+    BOOL fixedSpace = framesInFixedSpace(pid);
+    NSString *wantLabel = @(label), *wantIdentifier = @(identifier);
+    for (id element in [elements isKindOfClass:NSArray.class] ? elements : @[]) {
+        AXElement target = (__bridge AXElement)element;
+        NSDictionary *node = serializeElement(target, fixedSpace);
+        if (![node[@"label"] isEqual:wantLabel] || ![node[@"identifier"] isEqual:wantIdentifier]
+            || fabs([node[@"x"] doubleValue] - x) > 1 || fabs([node[@"y"] doubleValue] - y) > 1) {
+            continue;
+        }
+        id visibleValue = attribute(target, 2057), frameValue = attribute(target, 2003), pointValue = attribute(target, 2007);
+        CGRect visible, frame;
+        if (!visibleValue || !getAXValue((__bridge CFTypeRef)visibleValue, 3, &visible) || CGRectIsEmpty(visible)
+            || !frameValue || !getAXValue((__bridge CFTypeRef)frameValue, 3, &frame)) {
+            return icli_json(@{@"found": @YES, @"clipped": @NO});
+        }
+        CGPoint point = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame)), activation;
+        if (pointValue && getAXValue((__bridge CFTypeRef)pointValue, 1, &activation)
+            && isfinite(activation.x) && isfinite(activation.y)) point = activation;
+        if (CGRectContainsPoint(visible, point)) return icli_json(@{@"found": @YES, @"clipped": @NO});
+        int error = performAction(target, 2003);
+        return icli_json(@{@"found": @YES, @"clipped": @YES, @"revealed": @(error == 0), @"ax_error": @(error)});
+    }
+    return icli_json(@{@"found": @NO});
+}
+
 struct IcliAXActivationTarget {
     AXElement element;
     int pid;

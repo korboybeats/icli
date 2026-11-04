@@ -80,6 +80,13 @@ bool icli_accessibility_set_text_size(const char *category);
 
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution);
 char *icli_ax_elements_json(int pid, int max_elements);
+/// Scrolls the scroll view at or nearest a point by one page with accessibility's
+/// own action: direction is down, up, left or right. moved is false at the end of
+/// the content or where accessibility cannot scroll that view.
+char *icli_ax_scroll_page_json(int pid, double x, double y, const char *direction);
+/// Scrolls an element into view when its tap point is clipped; the element is the
+/// one with this label and identifier at this point in the element list.
+char *icli_ax_reveal_json(int pid, const char *label, const char *identifier, double x, double y);
 char *icli_ax_element_at_json(int pid, double x, double y);
 /// Frames shown on the main display, for waits that look again only after the
 /// screen changed. begin answers false where frame notifications are unavailable;

@@ -3,31 +3,39 @@ import IcliPrivate
 import UIKit
 
 /// iOS keeps this many points of a drag before a scroll view starts moving.
-private let scrollSlop = 12.0
-private let strokeSeconds = 0.6
-private let strokeRest = 0.15
+/// How far a scroll view's pan runs behind the finger, measured with the stroke
+/// below: a stroke of this plus n points scrolls n, to within a point.
+private let scrollSlop = 11.0
+private let strokeStep = 0.01
 
-/// A stroke's points in UI points: a quick start past the touch slop in the first
-/// third of the steps, then a cubic ease in and out, so the finger is at rest when
-/// it reaches the end.
-private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double, steps: Int) -> (xs: [Double], ys: [Double]) {
+/// A stroke that lands where it should, with no fling, as distances along the line:
+/// - to 9 points at once, then half a point a step to 13, so the pan starts at the
+///   same place each time. Stopping at 11 sometimes lost a whole step of the body.
+/// - the rest at up to 160 points a step (16,000 points a second).
+/// - 2 points over 8 steps. UIKit takes its fling speed from the last moves it sees,
+///   so these have to be real moves: a hold, or moves on the spot, still flung after
+///   a fast body, and 3 steps were too few.
+/// 150 strokes of 30, 200 and 500 points on TestHost's list were all within a point.
+private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double) -> (xs: [Double], ys: [Double], seconds: Double) {
     let length = hypot(x2 - x1, y2 - y1)
-    let start = length > 1 ? min(15 / length, 0.5) : 0.5
-    let lead = steps / 3
-    var xs: [Double] = [], ys: [Double] = []
-    for step in 0 ... steps {
-        let fraction: Double
-        if step <= lead {
-            fraction = start * Double(step) / Double(lead)
-        } else {
-            let t = Double(step - lead) / Double(steps - lead)
-            let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(2 - 2 * t, 3) / 2
-            fraction = start + (1 - start) * eased
+    let tail = 2.0, slopEnd = 13.0, bodyEnd = max(length - tail, 0)
+    var distances = [0.0]
+    if bodyEnd > slopEnd {
+        distances += [4.5, 9]
+        distances += stride(from: 9.5, through: slopEnd, by: 0.5)
+        let span = bodyEnd - slopEnd
+        let body = max(3, Int((span * 1.5 / 160).rounded(.up)))
+        distances += (1 ... body).map { step in
+            let t = Double(step) / Double(body)
+            return slopEnd + span * t * t * (3 - 2 * t)
         }
-        xs.append(x1 + (x2 - x1) * fraction)
-        ys.append(y1 + (y2 - y1) * fraction)
+    } else if bodyEnd > 0 {
+        let body = max(4, Int((bodyEnd / 2).rounded(.up)))
+        distances += (1 ... body).map { bodyEnd * Double($0) / Double(body) }
     }
-    return (xs, ys)
+    distances += (1 ... 8).map { bodyEnd + (length - bodyEnd) * Double($0) / 8 }
+    let unitX = length > 0 ? (x2 - x1) / length : 0, unitY = length > 0 ? (y2 - y1) / length : 0
+    return (distances.map { x1 + unitX * $0 }, distances.map { y1 + unitY * $0 }, strokeStep * Double(distances.count - 1))
 }
 
 public func swipeWithoutMomentum(
@@ -38,8 +46,8 @@ public func swipeWithoutMomentum(
     try validatePoint(x2, y2)
     guard seconds.isFinite, seconds >= 0, seconds <= 60 else { throw IcliError.failed("seconds must be 0–60") }
     guard (1 ... 2000).contains(steps) else { throw IcliError.failed("steps must be 1–2000") }
-    let path = strokePath(x1: x1, y1: y1, x2: x2, y2: y2, steps: max(steps, 30))
-    guard icli_hid_stroke(path.xs, path.ys, Int32(path.xs.count), max(seconds, strokeSeconds), strokeRest) else {
+    let path = strokePath(x1: x1, y1: y1, x2: x2, y2: y2)
+    guard icli_hid_stroke(path.xs, path.ys, Int32(path.xs.count), max(seconds, path.seconds), 0) else {
         throw IcliError.failed("hid stroke unavailable")
     }
     return ["from": [x1, y1], "to": [x2, y2], "momentum": false]
@@ -72,9 +80,9 @@ public func scrollBy(direction: String, points: Double, x: Double? = nil, y: Dou
         : (start * length, side * across, end * length, side * across)
     try validatePoint(x1, y1)
     try validatePoint(x2, y2)
-    let path = strokePath(x1: x1, y1: y1, x2: x2, y2: y2, steps: 30)
+    let path = strokePath(x1: x1, y1: y1, x2: x2, y2: y2)
     for _ in 0 ..< strokes {
-        guard icli_hid_stroke(path.xs, path.ys, Int32(path.xs.count), strokeSeconds, strokeRest) else {
+        guard icli_hid_stroke(path.xs, path.ys, Int32(path.xs.count), path.seconds, 0) else {
             throw IcliError.failed("hid stroke unavailable")
         }
     }
@@ -87,8 +95,11 @@ private func screenSignature(source: ElementSource, languages: [String]) throws 
         let blocks = try recognizeScreen(languages: languages, minConfidence: 0.3)["blocks"] as? [[String: Any]] ?? []
         return blocks.map { ($0["text"] as? String ?? "") }.joined(separator: "\n")
     }
-    let elements = try uiElements(maxElements: 2000)["elements"] as? [[String: Any]] ?? []
-    return elements.map { element in
+    return screenSignature(of: try uiElements(maxElements: 2000)["elements"] as? [[String: Any]] ?? [])
+}
+
+private func screenSignature(of elements: [[String: Any]]) -> String {
+    elements.map { element in
         let y = elementCoordinate(element["y"]).map { Int($0.rounded()) } ?? 0
         let x = elementCoordinate(element["x"]).map { Int($0.rounded()) } ?? 0
         return "\(element["label"] as? String ?? "")|\(element["value"] as? String ?? "")|\(x)|\(y)"
@@ -109,6 +120,43 @@ private func settledSignature(source: ElementSource, languages: [String]) throws
     return last
 }
 
+/// One reading of the accessibility tree: what a selector looks through, and the
+/// signature that tells whether anything moved.
+private struct ScreenReading {
+    let elements: [[String: Any]]
+    let signature: String
+
+    init() throws {
+        let result = try uiElements(maxElements: 2000)
+        guard result["truncated"] as? Bool != true else {
+            throw IcliError.failed("AX query was truncated; narrow the screen before selecting an element")
+        }
+        elements = result["elements"] as? [[String: Any]] ?? []
+        signature = screenSignature(of: elements)
+    }
+}
+
+/// Reads the screen once the page action's 200 ms animation has finished: a reading
+/// that differs from `before`, agrees with the one before it, and had no new frame
+/// during it, since mid-swipe the Home Screen's tree holds still while its pages
+/// move. Where frames never stop (a video) several agreeing readings end the wait.
+/// Reading throughout is what makes this quick, 30 ms a read where a read after
+/// waiting costs 50. Nil when nothing changed within a second.
+private func readingAfterChange(from before: String, frames: inout FrameGate) throws -> ScreenReading? {
+    let deadline = ProcessInfo.processInfo.systemUptime + 1
+    _ = frames.wait(limit: 0.15, interval: 0, since: 0)
+    var last = before, agreeing = 0
+    while true {
+        frames.mark()
+        let next = try ScreenReading()
+        let changed = next.signature != before
+        agreeing = changed && next.signature == last ? agreeing + 1 : 0
+        if agreeing >= 4 || (agreeing > 0 && (!frames.active || frames.isStillSinceMark)) { return next }
+        last = next.signature
+        guard ProcessInfo.processInfo.systemUptime < deadline else { return changed ? next : nil }
+    }
+}
+
 public func scrollToElement(
     _ selector: ElementSelector, direction: String, maxScrolls: Int, x: Double?, y: Double?,
     source: ElementSource = .ax, languages: [String] = ["zh-Hans", "en-US"],
@@ -117,14 +165,51 @@ public func scrollToElement(
     guard (1 ... 100).contains(maxScrolls) else { throw IcliError.failed("max-scrolls must be 1–100") }
     let metrics = icli_screen_metrics()
     let stroke = (direction == "left" || direction == "right" ? metrics.width : metrics.height) * 0.45
-    var scrolls = 0
-    while true {
-        let (hits, used) = try selectedElements(selector, source: source, languages: languages)
+    let endOfContent = { (scrolls: Int) in
+        IcliError.commandFailed([
+            "error": "not_found", "reason": "end_of_content", "scrolls": scrolls, "status": 1,
+            "message": "reached the end of the content scrolling \(direction) without finding it; try the other direction",
+        ])
+    }
+    var frames = FrameGate()
+    defer { frames.close() }
+    var scrolls = 0, pages = 0
+    var reading: ScreenReading?
+    func pick(_ hits: [[String: Any]]) -> (element: [String: Any], count: Int)? {
         let best = selector.indexIsExplicit
             ? (hits.indices.contains(selector.index) ? [hits[selector.index]] : [])
             : bestMatches(hits, selector)
-        if let element = best.first {
-            var result: [String: Any] = ["found": true, "element": element, "scrolls": scrolls, "matches": best.count]
+        return best.first.map { ($0, best.count) }
+    }
+    while true {
+        let hits: [[String: Any]], used: ElementSource
+        if source == .ax {
+            let current = try reading ?? ScreenReading()
+            reading = current
+            (hits, used) = (current.elements.filter(selector.matches), .ax)
+        } else {
+            (hits, used) = try selectedElements(selector, source: source, languages: languages)
+        }
+        if var found = pick(hits) {
+            var revealed = false
+            if used == .ax, let pid = try? onScreenPID(), let px = elementCoordinate(found.element["x"]),
+               let py = elementCoordinate(found.element["y"])
+            {
+                // Found with its tap point clipped by the list's edge or a bar: a tap there would miss.
+                let before = try reading?.signature ?? ScreenReading().signature
+                frames.mark()
+                let answer = try? decodeBridgeJSON(takeCString(icli_ax_reveal_json(
+                    pid, found.element["label"] as? String ?? "", found.element["identifier"] as? String ?? "", px, py)), "AX reveal")
+                if answer?["revealed"] as? Bool == true, let after = try readingAfterChange(from: before, frames: &frames),
+                   let moved = pick(after.elements.filter(selector.matches))
+                {
+                    found = moved
+                    revealed = true
+                }
+            }
+            var result: [String: Any] = ["found": true, "element": found.element, "scrolls": scrolls, "matches": found.count]
+            if scrolls > 0 { result["method"] = pages > 0 ? "accessibility" : "touch" }
+            if revealed { result["revealed"] = true }
             if source != .ax { result["source"] = used.rawValue }
             return result
         }
@@ -134,15 +219,38 @@ public func scrollToElement(
                 "message": "scrolled \(direction) \(scrolls) times without finding it; raise --max-scrolls or try the other direction",
             ])
         }
-        let before = try settledSignature(source: source, languages: languages)
+        let before = try reading?.signature ?? screenSignature(source: source, languages: languages)
+        // The page action first: no touch, no momentum, and a page never skips content.
+        frames.mark()
+        let page = (try? onScreenPID()).flatMap { pid in
+            try? decodeBridgeJSON(takeCString(icli_ax_scroll_page_json(
+                pid, x ?? metrics.width / 2, y ?? metrics.height / 2, direction)), "AX scroll")
+        }
+        if page?["moved"] as? Bool == true {
+            if source == .ax {
+                if let after = try readingAfterChange(from: before, frames: &frames) {
+                    reading = after
+                    scrolls += 1
+                    pages += 1
+                    continue
+                }
+            } else {
+                if !frames.waitStill(quiet: 0.15, limit: 2) { Thread.sleep(forTimeInterval: 0.35) }
+                scrolls += 1
+                pages += 1
+                if try screenSignature(source: source, languages: languages) != before { continue }
+                throw endOfContent(scrolls)
+            }
+        } else if pages > 0 {
+            // It has been scrolling this view, so no ancestor left means the end.
+            throw endOfContent(scrolls)
+        }
+        // Accessibility cannot scroll this view: a stroke, and the screen says whether it moved.
+        reading = nil
+        let settledBefore = try settledSignature(source: source, languages: languages)
         _ = try scrollBy(direction: direction, points: stroke, x: x, y: y)
         scrolls += 1
-        if try settledSignature(source: source, languages: languages) == before {
-            throw IcliError.commandFailed([
-                "error": "not_found", "reason": "end_of_content", "scrolls": scrolls, "status": 1,
-                "message": "reached the end of the content scrolling \(direction) without finding it; try the other direction",
-            ])
-        }
+        if try settledSignature(source: source, languages: languages) == settledBefore { throw endOfContent(scrolls) }
     }
 }
 

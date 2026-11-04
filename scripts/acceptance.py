@@ -407,10 +407,20 @@ def ui_fill(d):
 def ui_scroll_to(d):
     d.fixture()
     point = ['--x', '180', '--y', '600']
-    found = d.cli('ui', 'scroll-to', 'Row 19', '--match', 'exact', *point)
-    assert found['found'] and found['scrolls'] > 0, found
+    found = d.cli('ui', 'scroll-to', 'Row 19', '--match', 'exact', '--max-scrolls', '20', *point)
+    assert found['found'] and found['scrolls'] > 0 and found['method'] == 'accessibility', found
     time.sleep(0.2)
     assert d.state()['scroll_y'] > 400
+    # The list shows 100 points of 900: none may be skipped, wherever the point is,
+    # and each must come back with a tap point inside the list.
+    for row, args in [(row, args) for row in (2, 3, 7, 9, 13, 17) for args in (point, [])]:
+        d.fixture()
+        found = d.cli('ui', 'scroll-to', f'Row {row}', '--match', 'exact', '--max-scrolls', '20', *args)
+        assert 550 <= found['element']['y'] <= 650, (row, found)
+    d.fixture()
+    d.cli('ui', 'scroll-to', 'Row 19', '--match', 'exact', '--max-scrolls', '20', *point)
+    back = d.cli('ui', 'scroll-to', 'Row 0', '--match', 'exact', '--direction', 'up', '--max-scrolls', '20', *point)
+    assert back['found'] and back['method'] == 'accessibility', back
     missing = d.cli('ui', 'scroll-to', 'no-such-row', '--match', 'exact', '--max-scrolls', '20', *point, expected=1)
     assert missing['error'] == 'not_found' and missing['reason'] == 'end_of_content', missing
     capped = d.cli('ui', 'scroll-to', 'no-such-row', '--direction', 'up', '--max-scrolls', '1', *point, expected=1)
@@ -735,23 +745,29 @@ def touch_scroll_exact(d):
     d.fixture()
     point = ['--x', '180', '--y', '600']
     d.cli('screen', 'scroll-by', 'down', '200', *point)
-    time.sleep(0.3)
+    time.sleep(0.5)
     first = d.state()['scroll_y']
-    assert abs(first - 200) <= 8, first
+    assert abs(first - 200) <= 2, first
     d.cli('screen', 'scroll-by', 'up', '100', *point)
-    time.sleep(0.3)
+    time.sleep(0.5)
     second = d.state()['scroll_y']
-    assert abs(second - (first - 100)) <= 8, second
+    assert abs(second - (first - 100)) <= 2, second
+    # Short and quick strokes are the ones that fling or fall short.
+    for points in (5, 30, 500):
+        d.fixture()
+        d.cli('screen', 'scroll-by', 'down', str(points), *point)
+        time.sleep(0.5)
+        assert abs(d.state().get('scroll_y', 0) - points) <= 2, (points, d.state().get('scroll_y'))
     d.fixture()
     d.cli('screen', 'swipe', '--from-x', '180', '--from-y', '640', '--to-x', '180', '--to-y', '440', '--no-momentum')
     time.sleep(0.5)
-    assert abs(d.state()['scroll_y'] - 188) <= 8, d.state()['scroll_y']
+    assert abs(d.state()['scroll_y'] - 189) <= 2, d.state()['scroll_y']
     # Longer than one stroke can reach from here: the strokes must add up.
     d.fixture()
     long = d.cli('screen', 'scroll-by', 'down', '700', *point)
     assert long['strokes'] > 1, long
     time.sleep(0.3)
-    assert abs(d.state()['scroll_y'] - 700) <= 16, d.state()['scroll_y']
+    assert abs(d.state()['scroll_y'] - 700) <= 4, d.state()['scroll_y']
     d.cli('screen', 'scroll-by', 'sideways', '10', expected=1)
     d.cli('screen', 'scroll-by', 'down', '0', expected=1)
 

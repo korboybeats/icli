@@ -172,7 +172,9 @@ OCR uses Apple's Vision framework. If system text recognition is unavailable, th
 
 `ui tap` taps only an unmistakable match. An exact match beats a partial one, then an enabled element, then one that can be tapped; an element whose tap point lies inside a better one counts as the same control. If several remain, nothing is tapped and the result is `error: ambiguous` with their `matches`. `--index N` skips this and picks among all matches.
 
-A quick swipe flings: a scroll view keeps moving after the finger lifts, so a 200-point `screen swipe` at the default speed moved Settings about 490 points. `screen scroll-by` and `screen swipe --no-momentum` slow the finger to a stop before it lifts. `scroll-by` also adds the distance iOS keeps before a scroll view starts moving, and lands within a few points of the distance asked for, or sooner where the content ends.
+A quick swipe flings: a scroll view keeps moving after the finger lifts, so a 200-point `screen swipe` at the default speed moved Settings about 490 points. `screen scroll-by` and `screen swipe --no-momentum` end with a short slow move, so the scroll view stops when the finger lifts; `--steps` has no effect with `--no-momentum`, and `--seconds` can only lengthen the stroke. `scroll-by` also adds the distance iOS keeps before a scroll view starts moving, and lands within a point or two of the distance asked for, or sooner where the content ends.
+
+`ui scroll-to` pages with accessibility's own scroll action where the view supports it: no touch, no fling, and a page never jumps past content. `method` in the result says whether it paged (`accessibility`) or had to use touch strokes (`touch`). If the element it finds has its tap point clipped by the list's edge or a bar, it scrolls that element into view (`revealed: true`) and reports the corrected point, so a tap there lands. In a view accessibility cannot scroll, each stroke covers 45% of the screen, which can jump past rows in a list shorter than that.
 
 ```sh
 icli ui fill 'Email' --value 'me@example.com' --submit

@@ -645,7 +645,7 @@ extension UI {
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "up, down, left or right.") var direction: String = "down"
-        @Option(help: "Most strokes before giving up, 1–100.") var maxScrolls: Int = 10
+        @Option(help: "Most scrolls before giving up, 1–100.") var maxScrolls: Int = 10
         @Option(help: "A point in the scroll view, x in UI points; default: the middle of the screen.") var x: Double?
         @Option(help: "A point in the scroll view, y in UI points; default: the middle of the screen.") var y: Double?
         func run() {
