@@ -39,7 +39,7 @@ before and after, with a different AX `value`. A changed label alone does not
 count as a changed value. Already satisfied appearance/disappearance conditions
 refuse the action instead of treating old UI as success. After the tap it looks
 again only once the screen draws a new frame, at most every `--interval`
-(default 0.2 s); `trigger` in the result says `frames`, or `poll` where frame
+(default 0.1 s); `trigger` in the result says `frames`, or `poll` where frame
 notifications are unavailable and it checks every interval.
 
 For a control that implements accessibility activation, add
@@ -90,11 +90,13 @@ on refusal/unconfirmed input; capture is best effort and may show a changed app.
 There is no screenshot or OCR work by default.
 
 `--timeout` is an overall monotonic deadline (0.1–60 seconds), including checks;
-`--interval` controls bounded polling (0.1–5 seconds, default 0.2). Synchronous
-AX/system calls and optional failure capture can finish after the deadline;
-late observations cannot verify success. There is no background service or work
-between requests. The current AX bridge supplies snapshots, so this operation
-uses polling rather than inventing an unsupported notification subscription.
+`--interval` is the least time between checks while the screen keeps changing
+(0.1–5 seconds, default 0.1). Synchronous AX/system calls and optional failure
+capture can finish after the deadline; late observations cannot verify success.
+There is no background service or work between requests. The AX bridge supplies
+snapshots, so this operation takes one after each new displayed frame rather
+than relying on accessibility notifications, which apps do not post for every
+change.
 
 Checks and taps are separate operations: the GUI can still change between them.
 Direct activation preserves the target's identity; it does not freeze the UI.

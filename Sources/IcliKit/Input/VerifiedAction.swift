@@ -37,7 +37,7 @@ public struct VerifiedUIActionRequest {
     public let method: VerifiedUIActionMethod
 
     public init(app: String, tapIdentifier: String, condition: VerifiedUICondition,
-                timeout: TimeInterval = 10, interval: TimeInterval = 0.2,
+                timeout: TimeInterval = 10, interval: TimeInterval = 0.1,
                 failureScreenshot: String? = nil, method: VerifiedUIActionMethod = .touch) {
         self.app = app
         self.tapIdentifier = tapIdentifier

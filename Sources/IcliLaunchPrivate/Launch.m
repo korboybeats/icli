@@ -231,6 +231,87 @@ static BOOL hiddenApplication(const char *path) {
     }
 }
 
+// One RunningBoard request for every application's state: 0.7 ms on iOS 17.1.1
+// against 4.6 ms for one request per app process (52 of them) in the scan
+// below. Its states carry the same assertions. It answers only when the scan's
+// first two rules would: one app holding a focal assertion, or one of several
+// holding ForegroundFocal. Anything else (no focal app, roles, tvOS) is left to
+// the scan, which also explains a missing answer.
+static NSString *bulkFocalApplication(NSMutableDictionary<NSString *, NSNumber *> *pids) {
+#if TARGET_OS_TV
+    return nil;
+#else
+    static id connection, predicate, descriptor;
+    static SEL statesSelector;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Class connectionClass = NSClassFromString(@"RBSConnection");
+        Class predicateClass = NSClassFromString(@"RBSProcessPredicate");
+        Class descriptorClass = NSClassFromString(@"RBSProcessStateDescriptor");
+        SEL shared = NSSelectorFromString(@"sharedInstance");
+        SEL applications = NSSelectorFromString(@"predicateMatchingProcessTypeApplication");
+        SEL make = NSSelectorFromString(@"descriptor");
+        SEL setValues = NSSelectorFromString(@"setValues:");
+        statesSelector = NSSelectorFromString(@"statesForPredicate:withDescriptor:error:");
+        if (![connectionClass respondsToSelector:shared] || ![predicateClass respondsToSelector:applications] ||
+            ![descriptorClass respondsToSelector:make]) return;
+        id shell = ((id (*)(id, SEL))objc_msgSend)(connectionClass, shared);
+        id made = ((id (*)(id, SEL))objc_msgSend)(descriptorClass, make);
+        if (![shell respondsToSelector:statesSelector] || ![made respondsToSelector:setValues]) return;
+        // Task state, legacy and primitive assertions: the scan reads assertions.
+        ((void (*)(id, SEL, unsigned long))objc_msgSend)(made, setValues, 0x1 | 0x8 | 0x10);
+        predicate = ((id (*)(id, SEL))objc_msgSend)(predicateClass, applications);
+        descriptor = made;
+        connection = predicate ? shell : nil;
+    });
+    if (!connection) return nil;
+    NSString *answer = nil;
+    @autoreleasepool {
+    @try {
+        NSError *error = nil;
+        NSArray *states = ((id (*)(id, SEL, id, id, NSError **))objc_msgSend)(
+            connection, statesSelector, predicate, descriptor, &error);
+        if (![states isKindOfClass:[NSArray class]]) return nil;
+        NSMutableSet<NSString *> *focalIDs = [NSMutableSet set];
+        NSMutableSet<NSString *> *foregroundFocalIDs = [NSMutableSet set];
+        for (id state in states) {
+            id handle = [state valueForKey:@"process"];
+            NSString *bundleID = [[handle valueForKey:@"identity"] valueForKey:@"embeddedApplicationIdentifier"];
+            if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length ||
+                [bundleID containsString:@"WidgetRenderer"]) {
+                continue;
+            }
+            BOOL focal = NO, foregroundFocal = NO;
+            for (id assertion in [state valueForKey:@"assertions"]) {
+                NSString *domain = [assertion valueForKey:@"domain"];
+                if ([domain isKindOfClass:[NSString class]] &&
+                    ([domain containsString:@"Workspace-ForegroundFocal"] ||
+                     [domain containsString:@"com.apple.frontboard:SuspendableRole-UIFocal"])) {
+                    focal = YES;
+                    foregroundFocal = foregroundFocal || [domain containsString:@"JetsamPriority-ForegroundFocal"];
+                }
+            }
+            if (!focal) continue;
+            pid_t pid = [[handle valueForKey:@"pid"] intValue];
+            char path[4096] = {0};
+            // The scan's filters: app bundles only, hidden view services apart.
+            if (proc_pidpath(pid, path, sizeof(path)) > 0) {
+                char *app = strstr(path, ".app/");
+                if (!app || strchr(app + 5, '/') || strstr(path, "WidgetRenderer") || hiddenApplication(path)) continue;
+            }
+            [focalIDs addObject:bundleID];
+            if (foregroundFocal) [foregroundFocalIDs addObject:bundleID];
+            if (!pids[bundleID]) pids[bundleID] = @(pid);
+        }
+        if (focalIDs.count == 1) answer = focalIDs.anyObject;
+        else if (focalIDs.count > 1 && foregroundFocalIDs.count == 1) answer = foregroundFocalIDs.anyObject;
+    } @catch (NSException *) {
+    }
+    }
+    return answer;
+#endif
+}
+
 // The FrontBoard focal assertion identifies the app receiving input. The
 // older SpringBoard query may be stale even while another app is on screen.
 // Hidden view services hold that assertion too and are left out. When several
@@ -247,6 +328,12 @@ static NSString *runningBoardFocalApplication(NSMutableDictionary *why) {
     if (![identifierClass respondsToSelector:identifierSelector] || ![handleClass respondsToSelector:handleSelector]) {
         why[@"reason"] = @"runningboard_unavailable";
         return nil;
+    }
+    NSMutableDictionary<NSString *, NSNumber *> *bulkPIDs = [NSMutableDictionary dictionary];
+    NSString *bulk = bulkFocalApplication(bulkPIDs);
+    if (bulk) {
+        why[@"pids"] = bulkPIDs;
+        return bulk;
     }
     int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
     size_t length = 0;

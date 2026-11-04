@@ -514,7 +514,7 @@ extension UI {
         @Option(help: "Exact identifier that must be present before input and disappear afterward.") var expectDisappeared: String?
         @Option(help: "Exact identifier whose AX value must change after input.") var expectValueChanged: String?
         @Option(help: "Overall observation deadline in seconds, 0.1–60; synchronous AX calls may overrun it.") var timeout: Double = 10
-        @Option(help: "Polling interval in seconds, 0.1–5.") var interval: Double = 0.2
+        @Option(help: "Least seconds between checks after the tap while the screen keeps changing, 0.1–5.") var interval: Double = 0.1
         @Option(help: "Optional device JPEG path captured on refusal or unconfirmed input.") var failureScreenshot: String?
 
         func run() {
