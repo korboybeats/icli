@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Lock state, app launch and the frontmost app: what a host needs to bring an
 // app forward. Foundation only; SpringBoardServices, LaunchServices and
@@ -34,6 +35,16 @@ IcliLaunchResult icli_launch_app(const char *bundle_id, char **reason);
 IcliLaunchResult icli_launch_app_with_options(
     const char *bundle_id, const char *arguments_json, const char *environment_json, char **reason);
 char *icli_frontmost_app_json(void);
+
+/// Counts posts of 1-8 Darwin notification names while a wait runs, so it
+/// looks again only when one arrived. NULL when a name cannot be registered;
+/// every watch needs icli_watch_end. wait returns the
+/// count, still `seen` when nothing arrived within `timeout` seconds.
+typedef struct IcliWatch IcliWatch;
+IcliWatch *icli_watch_notify(const char *const *names, int count);
+uint64_t icli_watch_count(IcliWatch *watch);
+uint64_t icli_watch_wait(IcliWatch *watch, uint64_t seen, double timeout);
+void icli_watch_end(IcliWatch *watch);
 
 #ifdef __cplusplus
 }

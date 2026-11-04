@@ -358,7 +358,22 @@ static IcliInterfaceGeometry interfaceGeometry(void) {
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     if (geometryStale || !cachedGeometry.valid || now - geometryCapturedAt > 1) {
         IcliInterfaceGeometry geometry = {false, 0, 0, 1, 0};
-        @autoreleasepool {
+        // _UICreateScreenUIImage renders UIScreen's _referenceBounds at its _scale
+        // (UIKitCore, iOS 17.1.1), so those two give the capture's fixed size
+        // without the capture, which cost 15 ms of a 210 ms ui command.
+        // The capture stays as the fallback, and for its orientation.
+        UIScreen *screen = [UIScreen mainScreen];
+        SEL boundsSelector = NSSelectorFromString(@"_referenceBounds"), scaleSelector = NSSelectorFromString(@"_scale");
+        int springBoardDegrees = -1;
+        if ([screen respondsToSelector:boundsSelector] && [screen respondsToSelector:scaleSelector]
+            && (springBoardDegrees = springBoardInterfaceDegrees()) >= 0) {
+            CGRect bounds = ((CGRect (*)(id, SEL))objc_msgSend)(screen, boundsSelector);
+            double scale = ((CGFloat (*)(id, SEL))objc_msgSend)(screen, scaleSelector);
+            if (bounds.size.width >= 1 && bounds.size.height >= 1 && scale > 0) {
+                geometry = (IcliInterfaceGeometry){true, bounds.size.width, bounds.size.height, scale, springBoardDegrees, true};
+            }
+        }
+        if (!geometry.valid) @autoreleasepool {
             UIImage *image = screenCaptureReady() ? _UICreateScreenUIImage() : nil;
             CGImageRef cg = image.CGImage;
             double scale = image.scale > 0 ? image.scale : 1;
