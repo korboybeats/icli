@@ -42,8 +42,8 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit`, `--expect`, `--expect-gone` | no | unlocked |
 | `ui scroll-to [<text>]` | Scroll until an element is on screen and report where; stops at the end of the content | same selectors, `--direction down`, `--max-scrolls 10`, `--x`, `--y` | no | unlocked |
 | `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts, and wait until it has closed; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action, `--expect`, `--expect-gone` | no | unlocked |
-| `ui wait [<text>]` | Poll until the element appears | same selectors, `--timeout 10`, `--interval 0.1` | no | unlocked |
-| `ui wait-gone [<text>]` | Poll until the element disappears | same as `ui wait` | no | unlocked |
+| `ui wait [<text>]` | Wait until the element appears | same selectors, `--timeout 10`, `--interval 0.1` | no | unlocked |
+| `ui wait-gone [<text>]` | Wait until the element disappears | same as `ui wait` | no | unlocked |
 
 `ui tree` reads what can be reached now (`--scope auto`): the app in front, or the Home Screen or Spotlight, with anything SpringBoard shows over it listed first and marked `scope: system`, and `system_overlay` true. That covers alerts, banners, Control Center and the app switcher. `ui tap` and `ui wait` search the same list, and between equal matches prefer the overlay. `--scope app` and `--scope system` read one side, `system` with the status bar and on the Lock Screen too; `all` reads both. `--source ocr` lists on-screen text instead of the tree, and `--source any` does so when the tree is empty; text has no tap state, so neither takes `--clickable-only`.
 
@@ -51,7 +51,7 @@ Reading the AX tree needs the system's accessibility and automation switches, wh
 
 Selectors: `<text>` matches an element's label, identifier or value. Matching ignores case and defaults to `contains`. `--identifier` matches an exact identifier or label and takes precedence over `<text>`. One of the two is required. `ui tap` fails with exit 1 when nothing matches.
 
-`--expect <text>` waits after the action until an element whose label, identifier or value contains the text is on screen, and adds that wait to the result as `expect`; `--expect-gone <text>` waits until none does. Give one of them. `--expect-timeout` is 0–60 seconds (default 10). A wait that runs out exits 1 with `error: expect_failed`, and its `action` shows that the action itself ran. Waits check every 0.1 s.
+`--expect <text>` waits after the action until an element whose label, identifier or value contains the text is on screen, and adds that wait to the result as `expect`; `--expect-gone <text>` waits until none does. Give one of them. `--expect-timeout` is 0–60 seconds (default 10). A wait that runs out exits 1 with `error: expect_failed`, and its `action` shows that the action itself ran. Waits check again only after the screen draws a new frame, at most every 0.1 s (`--interval` for `ui wait`), and not at all while the screen holds still; results carry `trigger: frames`, or `trigger: poll` where frame notifications are unavailable and the wait checks every interval instead.
 
 A tap that lands while an alert is still animating in is dropped, so `ui alert` checks that the alert closed. If the same alert, with the same button and title, is still there a second later, it taps once more, and `attempts` reports 2. An alert still open after that fails with `error: alert_open`. When the alert was found by text recognition, there is no second tap.
 

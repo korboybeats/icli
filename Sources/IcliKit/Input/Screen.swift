@@ -677,7 +677,13 @@ public func waitForElement(
         throw IcliError.failed("timeout must be 0–60 seconds and interval 0.1–5 seconds")
     }
     let start = ProcessInfo.processInfo.systemUptime
+    // An element can only appear or go once the screen draws a new frame, so
+    // after each miss the wait sleeps until one is shown.
+    var frames = FrameGate()
+    defer { frames.close() }
     repeat {
+        frames.mark()
+        let checked = ProcessInfo.processInfo.systemUptime
         let (hits, used) = try selectedElements(selector, source: source, languages: languages)
         let present = hits.indices.contains(selector.index)
         if present == appear {
@@ -686,12 +692,13 @@ public func waitForElement(
                 "disappeared": !present,
                 "waited_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000),
                 "element": present ? hits[selector.index] : [:],
+                "trigger": frames.trigger,
             ]
             if source != .ax { result["source"] = used.rawValue }
             return result
         }
         let remaining = timeout - (ProcessInfo.processInfo.systemUptime - start)
-        Thread.sleep(forTimeInterval: min(interval, remaining))
+        guard frames.wait(limit: remaining, interval: interval, since: checked) else { break }
     } while ProcessInfo.processInfo.systemUptime - start <= timeout
     throw IcliError.failed("element wait timed out")
 }

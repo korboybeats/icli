@@ -81,6 +81,14 @@ bool icli_accessibility_set_text_size(const char *category);
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution);
 char *icli_ax_elements_json(int pid, int max_elements);
 char *icli_ax_element_at_json(int pid, double x, double y);
+/// Frames shown on the main display, for waits that look again only after the
+/// screen changed. begin answers false where frame notifications are unavailable;
+/// every true begin needs one end. wait returns the frame count, still `seen`
+/// when no frame arrived within `timeout` seconds.
+bool icli_frames_begin(void);
+void icli_frames_end(void);
+uint64_t icli_frames_count(void);
+uint64_t icli_frames_wait(uint64_t seen, double timeout);
 /// PID, executable path and kernel start time, for detecting app replacement.
 char *icli_ui_process_identity_json(int pid);
 /// Owned remote AX reference. Direct activation never falls back to touch.

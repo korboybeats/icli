@@ -96,6 +96,10 @@ public func waitForScreen(
     }
     icli_private_init()
     let start = ProcessInfo.processInfo.systemUptime
+    // A still screen draws no frames, so captures follow the frames shown and
+    // a quiet spell ends only to confirm --stable-for or at the timeout.
+    var gate = FrameGate()
+    defer { gate.close() }
     let reference: ScreenSample
     if let baseline {
         guard let image = UIImage(contentsOfFile: baseline)?.cgImage else {
@@ -113,6 +117,7 @@ public func waitForScreen(
     var settledSince = ProcessInfo.processInfo.systemUptime
     var lastDifference = 0.0
     while true {
+        gate.mark()
         let frame = try captureScreenSample(region: region)
         let now = ProcessInfo.processInfo.systemUptime
         frames += 1
@@ -127,6 +132,7 @@ public func waitForScreen(
         if changeSeen, !stable || now - settledSince >= stableFor {
             var result: [String: Any] = [
                 "waited_ms": Int((now - start) * 1000), "frames": frames, "difference": lastDifference,
+                "trigger": gate.trigger,
             ]
             if changed {
                 result["changed"] = true
@@ -144,9 +150,12 @@ public func waitForScreen(
                 "message": changeSeen ? "the screen kept changing" : "the screen did not change",
                 "waited_ms": Int((now - start) * 1000), "frames": frames, "difference": lastDifference,
                 "changed": changeSeen && changed,
+                "trigger": gate.trigger,
                 "status": 1,
             ])
         }
-        Thread.sleep(forTimeInterval: interval)
+        var limit = timeout - (now - start)
+        if changeSeen, stable { limit = min(limit, stableFor - (now - settledSince)) }
+        _ = gate.wait(limit: limit, interval: interval, since: now)
     }
 }

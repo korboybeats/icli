@@ -222,7 +222,7 @@ icli ui tap --source any Copy
 
 ### Waiting for the Screen
 
-`screen wait` compares screenshots, so it sees changes the accessibility tree does not. `--changed` waits until the screen differs from a baseline, `--stable` until it stops changing for `--stable-for` seconds, and both together wait for a change and then for it to settle. A change made before the command starts is invisible to it unless you save a baseline first. `--region x,y,width,height` limits the comparison to a rectangle in points. A timeout exits 1 with `error: timed_out`.
+`screen wait` compares screenshots, so it sees changes the accessibility tree does not. `--changed` waits until the screen differs from a baseline, `--stable` until it stops changing for `--stable-for` seconds, and both together wait for a change and then for it to settle. A change made before the command starts is invisible to it unless you save a baseline first. `--region x,y,width,height` limits the comparison to a rectangle in points. A timeout exits 1 with `error: timed_out`. It captures again only after the display shows a new frame, at most every `--interval`, so a still screen costs one capture to confirm `--stable-for` and one at the timeout; `trigger` reports `frames`, or `poll` where frame notifications are unavailable and it captures every interval. `ui wait`, `ui wait-gone` and `--expect` pace their checks the same way.
 
 ```sh
 icli screen shot --output /tmp/before.jpg

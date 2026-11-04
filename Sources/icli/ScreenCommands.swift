@@ -294,7 +294,7 @@ extension Screen {
         @Option(help: "Only watch this rectangle, in points: x,y,width,height.") var region: String?
         @Option(help: "Fraction of sampled pixels that must differ to count as a change, 0–1.") var threshold: Double = 0.001
         @Option(help: "Overall deadline in seconds, 0–60.") var timeout: Double = 10
-        @Option(help: "Seconds between captures, 0–5.") var interval: Double = 0.05
+        @Option(help: "Least seconds between captures while the screen keeps changing, 0–5.") var interval: Double = 0.05
         func run() {
             emit(output) {
                 try waitForScreen(
@@ -677,7 +677,7 @@ extension UI {
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
-        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.1
+        @Option(help: "Least seconds between checks while the screen keeps changing, 0.1–5; a still screen is not checked again. An OCR check itself takes longer.") var interval: Double = 0.1
         func run() {
             emit(output) {
                 try waitForElement(
@@ -694,7 +694,7 @@ extension UI {
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
-        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.1
+        @Option(help: "Least seconds between checks while the screen keeps changing, 0.1–5; a still screen is not checked again. An OCR check itself takes longer.") var interval: Double = 0.1
         func run() {
             emit(output) {
                 try waitForElement(
