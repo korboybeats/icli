@@ -19,6 +19,8 @@ char *icli_rootfs_path(const char *path);
 bool icli_roothide_root_name(const char *name);
 char *icli_roothide_root_in(const char *parent);
 char *icli_processes_json(void);
+/// The pid of a process whose kernel name (p_comm) is `name`, -1 when none runs.
+int icli_process_pid_named(const char *name);
 char *icli_boot_info_json(void);
 char *icli_file_md5(const char *path);
 

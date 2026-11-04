@@ -24,6 +24,13 @@ public func listProcesses(filter: String?) throws -> [String: Any] {
     return ["processes": rows, "count": rows.count]
 }
 
+/// The pid of the process with this kernel name, nil when none runs. The last
+/// answer is kept and checked first, so repeat lookups cost one sysctl.
+public func processPID(named name: String) -> Int32? {
+    let pid = icli_process_pid_named(name)
+    return pid > 0 ? pid : nil
+}
+
 public func listTweaks() throws -> [String: Any] {
     let root = JailbreakRoot.current
     let dirs = [

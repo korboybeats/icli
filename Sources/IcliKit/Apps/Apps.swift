@@ -81,19 +81,22 @@ func onScreenPID() throws -> Int32 {
 }
 
 func systemShellPID() throws -> Int32 {
-    let shell = try listProcesses(filter: SystemShell.processName)["processes"] as? [[String: Any]] ?? []
-    guard let pid = shell.first(where: { $0["name"] as? String == SystemShell.processName })?["pid"] as? Int else {
+    guard let pid = processPID(named: SystemShell.processName) else {
         throw IcliError.failed("\(SystemShell.processName) is not running")
     }
-    return Int32(pid)
+    return pid
 }
+
+/// RunningBoard sees two focal apps for a few hundred ms while one app replaces
+/// another; waits treat this answer as not yet rather than as a failure.
+let unverifiedFrontmost = "frontmost application could not be verified"
 
 func frontmostPID(_ known: [String: Any]? = nil) throws -> Int32 {
     let frontmost = known ?? frontmostApp()
     guard frontmost["verified"] as? Bool == true,
           let bundleID = frontmost["bundle_id"] as? String
     else {
-        throw IcliError.failed("frontmost application could not be verified")
+        throw IcliError.failed(unverifiedFrontmost)
     }
     if let pid = frontmost["pid"] as? Int { return Int32(pid) }
     let processes = try listProcesses(filter: nil)["processes"] as? [[String: Any]] ?? []

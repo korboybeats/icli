@@ -76,6 +76,8 @@ def transitions():
     appeared = perform('element.toggle', '--expect-appeared', 'element.ready')
     observed = state()
     assert appeared['verified'] and observed['delayed_visible'] and observed['toggle_taps'] == 1, (appeared, observed)
+    # The second's wait after the tap is paced by displayed frames, not a sleep.
+    assert appeared['trigger'] == 'frames', appeared
     disappeared = perform('element.toggle', '--expect-disappeared', 'element.ready')
     observed = state()
     assert disappeared['verified'] and not observed['delayed_visible'] and observed['toggle_taps'] == 2, (disappeared, observed)

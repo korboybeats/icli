@@ -681,10 +681,22 @@ public func waitForElement(
     // after each miss the wait sleeps until one is shown.
     var frames = FrameGate()
     defer { frames.close() }
+    var switching: Error?
     repeat {
         frames.mark()
         let checked = ProcessInfo.processInfo.systemUptime
-        let (hits, used) = try selectedElements(selector, source: source, languages: languages)
+        let hits: [[String: Any]], used: ElementSource
+        do {
+            (hits, used) = try selectedElements(selector, source: source, languages: languages)
+            switching = nil
+        } catch let error as IcliError {
+            // Mid app switch: look again once the switch draws its next frame.
+            guard case let .failed(message) = error, message == unverifiedFrontmost else { throw error }
+            switching = error
+            let remaining = timeout - (ProcessInfo.processInfo.systemUptime - start)
+            guard frames.wait(limit: remaining, interval: interval, since: checked) else { break }
+            continue
+        }
         let present = hits.indices.contains(selector.index)
         if present == appear {
             var result: [String: Any] = [
@@ -700,6 +712,7 @@ public func waitForElement(
         let remaining = timeout - (ProcessInfo.processInfo.systemUptime - start)
         guard frames.wait(limit: remaining, interval: interval, since: checked) else { break }
     } while ProcessInfo.processInfo.systemUptime - start <= timeout
+    if let switching { throw switching }
     throw IcliError.failed("element wait timed out")
 }
 

@@ -682,10 +682,20 @@ def ax_waits(d):
     d.cli('url', 'open', 'icli-test://toggle')
     result = d.cli('ui', 'wait', 'Ready element', '--timeout', '4')
     assert result['found'] and d.state()['delayed_visible']
+    # Checks after the first wait for a displayed frame instead of a fixed sleep.
+    assert result['trigger'] == 'frames', result
     d.cli('url', 'open', 'icli-test://toggle')
     result = d.cli('ui', 'wait-gone', 'Ready element', '--timeout', '4')
     assert result['disappeared'] and not d.state()['delayed_visible']
     d.cli('ui', 'wait', 'Never appears', '--timeout', '0.2', expected=1)
+    # A wait that runs while one app replaces another (RunningBoard briefly sees
+    # both focal, so the front app is unverified) waits the switch out.
+    d.cli('app', 'launch', 'com.apple.Preferences')
+    switched = d.run(f'(sleep 0.15; {d.binary} url open icli-test://reset >/dev/null) & '
+                     f'{d.binary} ui wait --identifier counter.increment --timeout 5; status=$?; wait; exit $status')
+    assert switched.returncode == 0 and json.loads(switched.stdout)['found'], switched.stdout + switched.stderr
+    assert d.cli('app', 'frontmost')['bundle_id'] == BUNDLE
+    d.fixture()
 
 
 @case('touch_tap', 'gestures', ['screen tap'])
@@ -1251,6 +1261,30 @@ def home_power(d):
                     break
                 d.cli('button', 'wake', expected=None)
                 time.sleep(0.3)
+    d.fixture()
+
+
+@case('device_lock', 'controls', ['lock', 'unlock'])
+def device_lock(d):
+    if d.user != 'root':
+        d.observations.append('lock and unlock were not run: icli unlock needs root.')
+        return
+    d.fixture()
+    try:
+        locked = d.cli('lock')
+        assert locked == {'status': 0, 'locked': True, 'screen_off': True,
+                          'requested': True, 'already_locked': False}, locked
+        info = d.cli('screen', 'info')
+        assert info['locked'] and info['screen_off'], info
+        # A locked, blanked device is left alone: no second power press.
+        again = d.cli('lock')
+        assert again['already_locked'] and not again['requested'], again
+    finally:
+        # A failure above must not leave a locked device to every later case.
+        unlocked = d.cli('unlock', expected=None)
+    assert unlocked.get('status') == 0, unlocked
+    info = d.cli('screen', 'info')
+    assert not info['locked'] and not info['screen_off'], info
     d.fixture()
 
 
@@ -2624,6 +2658,7 @@ def screen_wait(d):
         d.fixture()
         stable = d.cli('screen', 'wait', '--stable', '--stable-for', '0.5', '--timeout', '5')
         assert stable['stable'] and stable['stable_ms'] >= 500 and stable['frames'] >= 2 and 'changed' not in stable, stable
+        assert stable['trigger'] == 'frames', stable
 
         # A change after a saved baseline is seen, and then waited out until it settles.
         d.cli('screen', 'shot', '--output', baseline)
@@ -3073,6 +3108,7 @@ def ui_tap_expect(d):
     d.fixture()
     tapped = d.cli('ui', 'tap', '--identifier', 'counter.increment', '--expect', 'Count: 1')
     assert tapped['expect']['found'] and 'Count: 1' in tapped['expect']['element']['label'], tapped
+    assert tapped['expect']['trigger'] == 'frames', tapped
     # TestHost saves its state before it shows the new count, so this needs no sleep.
     assert d.state()['counter'] == 1
     # A wait that fails still says the action ran.

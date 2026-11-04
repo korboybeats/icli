@@ -86,6 +86,11 @@ struct VerifiedUIActionEnvironment {
     var hitTest: (Double, Double) throws -> [String: Any]
     var dispatch: (Double, Double) throws -> Bool
     var describeError: (Error) -> String = { $0.localizedDescription }
+    /// Called before each post-dispatch observation; marks what the screen showed.
+    var mark: () -> Void = {}
+    /// Waits for the screen to change after a miss: (limit, interval, time of the
+    /// last check). Without it, a plain sleep of the interval.
+    var waitForChange: ((TimeInterval, TimeInterval, TimeInterval) -> Void)? = nil
     var prepareTarget: ([String: Any]) throws -> [String: Any] = { $0 }
 }
 
@@ -246,6 +251,8 @@ func executeVerifiedUIAction(_ request: VerifiedUIActionRequest,
         sent = try env.dispatch(x, y)
         try requireVerification(sent, "dispatch_incomplete")
         while env.now() < deadline {
+            env.mark()
+            let checked = env.now()
             let observation = try env.observe()
             latest = observation
             try requireVerification(equalJSON(final.context, observation.context), "context_changed_after_dispatch")
@@ -254,7 +261,12 @@ func executeVerifiedUIAction(_ request: VerifiedUIActionRequest,
                 return finish(.verified, "transition_observed")
             }
             let remaining = deadline - env.now()
-            if remaining > 0 { env.wait(min(request.interval, remaining)) }
+            guard remaining > 0 else { break }
+            if let waitForChange = env.waitForChange {
+                waitForChange(remaining, request.interval, checked)
+            } else {
+                env.wait(min(request.interval, remaining))
+            }
         }
         return finish(.sentUnconfirmed, "timeout")
     } catch {

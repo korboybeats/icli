@@ -198,6 +198,42 @@ char *icli_processes_json(void) {
     return icli_system_json(@{@"processes": rows});
 }
 
+static bool processNamed(const struct kinfo_proc *process, const char *name) {
+    return strncmp(process->kp_proc.p_comm, name, sizeof(process->kp_proc.p_comm)) == 0;
+}
+
+int icli_process_pid_named(const char *name) {
+    // The last answer is checked against that one pid first, a single sysctl,
+    // so a respawned process is found again by the full scan.
+    static _Atomic int cached = 0;
+    int pid = cached;
+    if (pid > 0) {
+        int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, pid};
+        struct kinfo_proc process = {0};
+        size_t length = sizeof(process);
+        if (sysctl(mib, 4, &process, &length, NULL, 0) == 0 && length == sizeof(process)
+            && process.kp_proc.p_pid == pid && processNamed(&process, name)) return pid;
+    }
+    int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
+    size_t length = 0;
+    if (sysctl(mib, 3, NULL, &length, NULL, 0)) return -1;
+    length += 64 * sizeof(struct kinfo_proc);
+    struct kinfo_proc *processes = calloc(1, length);
+    if (!processes) return -1;
+    pid = -1;
+    if (sysctl(mib, 3, processes, &length, NULL, 0) == 0) {
+        for (size_t i = 0; i < length / sizeof(struct kinfo_proc); i++) {
+            if (processes[i].kp_proc.p_pid > 0 && processNamed(&processes[i], name)) {
+                pid = processes[i].kp_proc.p_pid;
+                break;
+            }
+        }
+    }
+    free(processes);
+    if (pid > 0) cached = pid;
+    return pid;
+}
+
 /// Kernel boot facts for proving a reboot happened: kern.boottime and the
 /// per-boot session UUID that launchd regenerates on a userspace reboot.
 char *icli_boot_info_json(void) {

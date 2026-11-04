@@ -7,7 +7,8 @@ import IcliPrivate
 public func performVerifiedUIAction(_ request: VerifiedUIActionRequest) -> VerifiedUIActionResult {
     var activationTarget: OpaquePointer?
     var activationError: Int32?
-    defer { icli_ax_activation_target_free(activationTarget) }
+    var frames: FrameGate?
+    defer { icli_ax_activation_target_free(activationTarget); frames?.close() }
     let environment = VerifiedUIActionEnvironment(
         now: { ProcessInfo.processInfo.systemUptime },
         wait: { Thread.sleep(forTimeInterval: $0) },
@@ -45,6 +46,13 @@ public func performVerifiedUIAction(_ request: VerifiedUIActionRequest) -> Verif
             return icli_hid_tap(x, y)
         },
         describeError: { ($0 as? IcliError)?.message ?? $0.localizedDescription },
+        mark: {
+            if frames == nil { frames = FrameGate() }
+            frames!.mark()
+        },
+        waitForChange: { limit, interval, checked in
+            _ = frames?.wait(limit: limit, interval: interval, since: checked)
+        },
         prepareTarget: { original in
             guard request.method == .accessibility else { return original }
             let context = try verifiedUIContext(app: request.app)
@@ -60,6 +68,7 @@ public func performVerifiedUIAction(_ request: VerifiedUIActionRequest) -> Verif
     let executed = executeVerifiedUIAction(request, environment: environment)
     var dispatchEvidence = executed.evidence
     if let activationError { dispatchEvidence["ax_error"] = activationError }
+    if let frames { dispatchEvidence["trigger"] = frames.trigger }
     let result = VerifiedUIActionResult(outcome: executed.outcome, dispatchAttempted: executed.dispatchAttempted,
                                         sent: executed.sent, evidence: dispatchEvidence)
     guard result.outcome != .verified, let path = request.failureScreenshot else { return result }

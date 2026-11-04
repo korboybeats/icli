@@ -37,7 +37,10 @@ Supply exactly one expectation. Appeared requires absence before the tap;
 disappeared requires presence; value-changed requires one visible element
 before and after, with a different AX `value`. A changed label alone does not
 count as a changed value. Already satisfied appearance/disappearance conditions
-refuse the action instead of treating old UI as success.
+refuse the action instead of treating old UI as success. After the tap it looks
+again only once the screen draws a new frame, at most every `--interval`
+(default 0.2 s); `trigger` in the result says `frames`, or `poll` where frame
+notifications are unavailable and it checks every interval.
 
 For a control that implements accessibility activation, add
 `--method accessibility`:
@@ -222,7 +225,7 @@ icli ui tap --source any Copy
 
 ### Waiting for the Screen
 
-`screen wait` compares screenshots, so it sees changes the accessibility tree does not. `--changed` waits until the screen differs from a baseline, `--stable` until it stops changing for `--stable-for` seconds, and both together wait for a change and then for it to settle. A change made before the command starts is invisible to it unless you save a baseline first. `--region x,y,width,height` limits the comparison to a rectangle in points. A timeout exits 1 with `error: timed_out`. It captures again only after the display shows a new frame, at most every `--interval`, so a still screen costs one capture to confirm `--stable-for` and one at the timeout; `trigger` reports `frames`, or `poll` where frame notifications are unavailable and it captures every interval. `ui wait`, `ui wait-gone` and `--expect` pace their checks the same way.
+`screen wait` compares screenshots, so it sees changes the accessibility tree does not. `--changed` waits until the screen differs from a baseline, `--stable` until it stops changing for `--stable-for` seconds, and both together wait for a change and then for it to settle. A change made before the command starts is invisible to it unless you save a baseline first. `--region x,y,width,height` limits the comparison to a rectangle in points. A timeout exits 1 with `error: timed_out`. It captures again only after the display shows a new frame, at most every `--interval`, so a still screen costs one capture to confirm `--stable-for` and one at the timeout; `trigger` reports `frames`, or `poll` where frame notifications are unavailable and it captures every interval. `ui wait`, `ui wait-gone` and `--expect` pace their checks the same way. A wait that starts while one app is replacing another looks again until the switch is done, instead of failing because the front app is briefly unverified.
 
 ```sh
 icli screen shot --output /tmp/before.jpg
