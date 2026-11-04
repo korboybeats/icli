@@ -6,7 +6,7 @@ struct Screen: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Touch, pointer, screenshot, OCR",
         subcommands: [
-            Tap.self, Swipe.self, LongPress.self, DoubleTap.self, Drag.self, Touch.self,
+            Tap.self, Swipe.self, Pinch.self, LongPress.self, DoubleTap.self, Drag.self, Touch.self,
             TouchSequence.self, Click.self, Scroll.self, Shot.self, Wait.self, Info.self, OCR.self, Describe.self
         ],
     )
@@ -40,6 +40,23 @@ extension Screen {
         @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
         func run() {
             emit(output) { try swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps) }
+        }
+    }
+
+    struct Pinch: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Two-finger pinch: the fingers move from --from to --to points apart (larger --to zooms in).",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: pointHelp) var x: Double
+        @Argument(help: pointHelp) var y: Double
+        @Option(help: "Starting distance between the fingers in UI points.") var from: Double
+        @Option(help: "Final distance between the fingers in UI points.") var to: Double
+        @Option(help: "Direction of the line through both fingers in degrees; 0 is horizontal, 90 vertical.") var angle: Double = 0
+        @Option(help: "Duration of the movement in seconds, up to 60.") var seconds: Double = 0.4
+        @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
+        func run() {
+            emit(output) { try pinch(x: x, y: y, from: from, to: to, angle: angle, seconds: seconds, steps: steps) }
         }
     }
 

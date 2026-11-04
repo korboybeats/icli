@@ -371,6 +371,23 @@ def touch_drag(d):
     assert state.get('drag_events', 0) > 3 and state['drag_x'] > 180
 
 
+@case('touch_pinch', 'gestures', ['screen pinch'])
+def touch_pinch(d):
+    d.fixture()
+    # TestHost's gesture area spans y 350-450; the fingers stay inside it on any screen.
+    x = min(180, d.cli('screen', 'info')['width'] / 2)
+    d.cli('screen', 'pinch', str(x), '400', '--from', '40', '--to', '160')
+    time.sleep(0.3)
+    state = d.state()
+    assert state.get('pinch_events', 0) > 3 and state['pinch_scale'] > 2, state
+    d.cli('screen', 'pinch', str(x), '400', '--from', '160', '--to', '40')
+    time.sleep(0.3)
+    assert d.state()['pinch_scale'] < 0.5, d.state()
+    d.cli('screen', 'pinch', str(x), '400', '--from', '20', '--to', '80', '--angle', '90')
+    time.sleep(0.3)
+    assert d.state()['pinch_scale'] > 2, d.state()
+
+
 def pointer_answers(d):
     """iPadOS answers the virtual pointer; iOS on an iPhone only through AssistiveTouch."""
     if d.cli('device', 'info').get('model', '').startswith('iPad'):
@@ -893,7 +910,7 @@ def raster_ocr(d):
     d.cli('screen', 'ocr', '--min-confidence', '2', expected=1)
 
 
-@case('invalid_gesture_parameters', 'gestures', ['screen tap', 'screen swipe', 'screen drag', 'screen long-press', 'screen double-tap'])
+@case('invalid_gesture_parameters', 'gestures', ['screen tap', 'screen swipe', 'screen pinch', 'screen drag', 'screen long-press', 'screen double-tap'])
 def invalid_gestures(d):
     d.cli('screen', 'tap', 'nan', '10', expected=1)
     d.cli('screen', 'tap', '99999', '10', expected=1)
@@ -901,6 +918,9 @@ def invalid_gestures(d):
     d.cli('screen', 'double-tap', '10', '10', '--interval', 'nan', expected=1)
     d.cli('screen', 'drag', '--points', '[{"x":10}]', expected=1)
     d.cli('screen', 'swipe', '--from-x', '10', '--from-y', '10', '--to-x', '20', '--to-y', '20', '--seconds', '0', expected=1)
+    d.cli('screen', 'pinch', '100', '100', '--from', '0', '--to', '50', expected=1)
+    d.cli('screen', 'pinch', '100', '100', '--from', '50', '--to', '99999', expected=1)
+    d.cli('screen', 'pinch', '100', '100', '--from', '10', '--to', '50', '--steps', '0', expected=1)
 
 
 @case('unified_log_events', 'logs', ['log syslog'])

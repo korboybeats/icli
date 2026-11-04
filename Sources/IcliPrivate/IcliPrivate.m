@@ -803,8 +803,9 @@ void icli_screen_point_to_digitizer(double x, double y, double *nx, double *ny) 
     *ny = fy / (geometry.fixed_height > 1 ? geometry.fixed_height : 1);
 }
 
-// nx and ny are 0…1 in the fixed digitizer space.
-static IOHIDEventRef createDigitizerEvent(double nx, double ny, IcliTouchPhase phase) {
+// nx and ny are 0…1 in the fixed digitizer space; one finger event per point,
+// under one hand event, so several fingers move in the same report.
+static IOHIDEventRef createDigitizerEventFingers(const double *nx, const double *ny, int count, IcliTouchPhase phase) {
     if (!pIOHIDEventCreateDigitizerEvent) {
         return NULL;
     }
@@ -853,27 +854,33 @@ static IOHIDEventRef createDigitizerEvent(double nx, double ny, IcliTouchPhase p
         pIOHIDEventSetIntegerValue(parent, kIOHIDEventFieldDigitizerIsDisplayIntegrated, 1);
     }
     if (pIOHIDEventCreateDigitizerFingerEvent && pIOHIDEventAppendEvent) {
-        IOHIDEventRef finger = pIOHIDEventCreateDigitizerFingerEvent(
-            kCFAllocatorDefault,
-            timestamp,
-            0,
-            2,
-            mask,
-            nx,
-            ny,
-            0,
-            0,
-            0,
-            range,
-            isTouch,
-            kIOHIDEventOptionNone
-        );
-        if (finger) {
-            pIOHIDEventAppendEvent(parent, finger, 0);
-            CFRelease(finger);
+        for (int i = 0; i < count; i++) {
+            IOHIDEventRef finger = pIOHIDEventCreateDigitizerFingerEvent(
+                kCFAllocatorDefault,
+                timestamp,
+                (uint32_t)i,
+                (uint32_t)(2 + i),
+                mask,
+                nx[i],
+                ny[i],
+                0,
+                0,
+                0,
+                range,
+                isTouch,
+                kIOHIDEventOptionNone
+            );
+            if (finger) {
+                pIOHIDEventAppendEvent(parent, finger, 0);
+                CFRelease(finger);
+            }
         }
     }
     return parent;
+}
+
+static IOHIDEventRef createDigitizerEvent(double nx, double ny, IcliTouchPhase phase) {
+    return createDigitizerEventFingers(&nx, &ny, 1, phase);
 }
 
 static bool hidTouch(double x, double y, IcliTouchPhase phase) {
@@ -934,6 +941,29 @@ bool icli_hid_drag(const double *xs, const double *ys, int count, double hold, d
 bool icli_hid_swipe(double x1, double y1, double x2, double y2, double seconds, int steps) {
     double xs[] = {x1, x2}, ys[] = {y1, y2};
     return icli_hid_drag(xs, ys, 2, 0, seconds, steps);
+}
+
+// Two fingers on a line through (cx, cy) at angle degrees (0 = horizontal),
+// moving from distance `from` apart to `to` apart in UI points.
+static bool hidPinchAt(double cx, double cy, double distance, double angle, IcliTouchPhase phase) {
+    double r = distance / 2, a = angle * M_PI / 180;
+    double nx[2], ny[2];
+    icli_screen_point_to_digitizer(cx - r * cos(a), cy - r * sin(a), &nx[0], &ny[0]);
+    icli_screen_point_to_digitizer(cx + r * cos(a), cy + r * sin(a), &nx[1], &ny[1]);
+    return dispatchHID(createDigitizerEventFingers(nx, ny, 2, phase));
+}
+
+bool icli_hid_pinch(double cx, double cy, double from, double to, double angle, double seconds, int steps) {
+    icli_private_init();
+    if (steps < 1) return false;
+    if (!hidPinchAt(cx, cy, from, angle, IcliTouchBegan)) return false;
+    usleep(50000);
+    for (int step = 1; step <= steps; step++) {
+        double d = from + (to - from) * step / steps;
+        if (!hidPinchAt(cx, cy, d, angle, IcliTouchMoved)) { hidPinchAt(cx, cy, d, angle, IcliTouchEnded); return false; }
+        usleep((useconds_t)(seconds * 1000000 / steps));
+    }
+    return hidPinchAt(cx, cy, to, angle, IcliTouchEnded);
 }
 
 bool icli_hid_key(uint16_t usage_page, uint16_t usage, bool down) {

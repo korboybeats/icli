@@ -103,6 +103,27 @@ public func swipe(
     return ["from": [x1, y1], "to": [x2, y2]]
 }
 
+public func pinch(
+    x: Double,
+    y: Double,
+    from: Double,
+    to: Double,
+    angle: Double = 0,
+    seconds: Double = 0.4,
+    steps: Int = 20,
+) throws -> [String: Any] {
+    try requirePointInput()
+    guard from > 0, to > 0, from.isFinite, to.isFinite else { throw IcliError.failed("from and to must be positive distances") }
+    guard angle.isFinite else { throw IcliError.failed("angle must be finite") }
+    let r = max(from, to) / 2, a = angle * .pi / 180
+    try validatePoint(x - r * cos(a), y - r * sin(a))
+    try validatePoint(x + r * cos(a), y + r * sin(a))
+    try validateDuration(seconds, name: "seconds")
+    guard (1 ... 2000).contains(steps) else { throw IcliError.failed("steps must be 1–2000") }
+    guard icli_hid_pinch(x, y, from, to, angle, seconds, Int32(steps)) else { throw IcliError.failed("hid pinch unavailable") }
+    return ["center": [x, y], "from": from, "to": to, "angle": angle]
+}
+
 public func drag(
     points: [(Double, Double)],
     seconds: Double,

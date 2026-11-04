@@ -110,6 +110,7 @@ For coordinate input, read the screen dimensions first. Coordinates are **points
 icli screen info
 icli screen tap 100 245
 icli screen swipe --from-x 200 --from-y 600 --to-x 200 --to-y 200
+icli screen pinch 200 400 --from 80 --to 240   # zoom in; swap the distances to zoom out
 icli screen drag --points '[{"x":54,"y":500},{"x":140,"y":480},{"x":240,"y":500}]'
 ```
 

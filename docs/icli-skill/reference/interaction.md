@@ -11,6 +11,7 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `screen double-tap <x> <y>` | Two taps | `--interval 0.1` | no | unlocked |
 | `screen long-press <x> <y>` | Press and hold | `--seconds 0.6` | no | unlocked |
 | `screen swipe` | Straight swipe | `--from-x --from-y --to-x --to-y` (all required), `--seconds 0.25`, `--steps 20` | no | unlocked |
+| `screen pinch` | Two-finger pinch around X Y | `X Y --from D --to D` (points apart; larger `--to` zooms in), `--angle 0`, `--seconds 0.4`, `--steps 20` | no | unlocked |
 | `screen drag` | Press, hold, then move along a path | four endpoint options **or** `--points '<JSON [{x,y},…]>'`, `--hold 0.5`, `--seconds 0.3`, `--steps 20` | no | unlocked |
 | `screen touch <down\|move\|up> <x> <y>` | One raw finger event; a gesture can span several calls | `--normalized` | no | unlocked |
 | `screen touch-sequence` | Several finger events from one process, with exact timing | `--events '<JSON [{phase,x,y,delay_ms},…]>'` (required), `--normalized` | no | unlocked |

@@ -115,6 +115,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
         [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longPressed:)];
     longPress.minimumPressDuration = 0.4;
     [gestures addGestureRecognizer:longPress];
+    [gestures addGestureRecognizer:[[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinched:)]];
     self.dragTarget = [[UIView alloc] initWithFrame:CGRectMake(24, 470, 60, 60)];
     self.dragTarget.backgroundColor = UIColor.systemOrangeColor;
     self.dragTarget.isAccessibilityElement = YES;
@@ -219,6 +220,11 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
         self.state[@"long_presses"] = @([self.state[@"long_presses"] intValue]+1);
         [self save];
     }
+}
+- (void)pinched:(UIPinchGestureRecognizer *)recognizer {
+    self.state[@"pinch_scale"]=@(recognizer.scale);
+    self.state[@"pinch_events"]=@([self.state[@"pinch_events"] intValue]+1);
+    [self save];
 }
 - (void)dragged:(UIPanGestureRecognizer *)recognizer {
     if(recognizer.state==UIGestureRecognizerStateBegan)self.dragStart=self.dragTarget.center;
