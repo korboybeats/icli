@@ -44,13 +44,6 @@ stamp "$selftest" dev.owngoal.icli.SelfTestFixture 'icli Self-Test Fixture' "$ro
 ldid -S"$root/selftest-entitlements.plist" "$selftest/IcliTestHost"
 ldid -S"$root/selftest-entitlements.plist" "$selftest"
 (cd "$root" && rm -f icli-install-fixture.ipa && zip -qr icli-install-fixture.ipa Payload)
-# An App Store-shaped app for container installs: sandboxed in its data
-# container, without the TestHost's platform and no-sandbox entitlements.
-container="$root/container/Payload/IcliContainerFixture.app"
-rm -rf "$root/container"
-mkdir -p "$container"
-cp "$app/IcliTestHost" "$container/IcliTestHost"
-stamp "$container" dev.owngoal.icli.ContainerFixture 'icli Container Fixture' "$root/container-entitlements.plist" --container
 extension_plist() {
   python3 - "$@" <<'PY'
 import plistlib, sys
@@ -72,15 +65,30 @@ bundle, identifier, executable = sys.argv[1:]
 }))
 PY
 }
-# A plug-in, so a container install shows whether LaunchServices registered
+# An App Store-shaped app for container installs: sandboxed in its data
+# container, without the TestHost's platform and no-sandbox entitlements, and
+# with a plug-in, so a container install shows whether LaunchServices registered
 # it. Nothing configures the tunnel, so the extension is never launched.
-# Signing the app below signs it too, with the app's entitlements.
-extension="$container/PlugIns/IcliContainerFixtureTunnel.appex"
-mkdir -p "$extension"
-cp "$app/IcliTestHost" "$extension/IcliContainerFixtureTunnel"
-extension_plist "$extension" dev.owngoal.icli.ContainerFixture.Tunnel IcliContainerFixtureTunnel
-ldid -S"$root/container-entitlements.plist" "$container"
-(cd "$root/container" && rm -f ../icli-container-fixture.ipa && zip -qr ../icli-container-fixture.ipa Payload)
+# Signing the app signs it too, with the app's entitlements.
+# container_app DIR IDENTIFIER NAME IPA
+container_app() {
+  dir="$root/$1"
+  bundle="$dir/Payload/IcliContainerFixture.app"
+  rm -rf "$dir"
+  mkdir -p "$bundle/PlugIns/IcliContainerFixtureTunnel.appex"
+  cp "$app/IcliTestHost" "$bundle/IcliTestHost"
+  stamp "$bundle" "$2" "$3" "$dir-entitlements.plist" --container
+  cp "$app/IcliTestHost" "$bundle/PlugIns/IcliContainerFixtureTunnel.appex/IcliContainerFixtureTunnel"
+  extension_plist "$bundle/PlugIns/IcliContainerFixtureTunnel.appex" "$2.Tunnel" IcliContainerFixtureTunnel
+  ldid -S"$dir-entitlements.plist" "$bundle"
+  (cd "$dir" && rm -f "../$4" && zip -qr "../$4" Payload)
+}
+# Installed with TrollStore and left in place, for the cases that need an app
+# with a data container.
+container_app container dev.owngoal.icli.ContainerFixture 'icli Container Fixture' icli-container-fixture.ipa
+# Installed and removed by install_remove_ipa_container: its own identity, so
+# that case never touches the copy above.
+container_app container-install dev.owngoal.icli.ContainerInstallFixture 'icli Container Install Fixture' icli-container-install-fixture.ipa
 # An unsandboxed app with a no-container plug-in, as Filza has: LaunchServices
 # reports the plug-in as containerized whatever was registered.
 uncontained="$root/uncontained-plugin/IcliUncontainedFixture.app"

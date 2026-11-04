@@ -701,7 +701,9 @@ def ax_waits(d):
     # A wait that runs while one app replaces another (RunningBoard briefly sees
     # both focal, so the front app is unverified) waits the switch out.
     d.cli('app', 'launch', 'com.apple.Preferences')
-    switched = d.run(f'(sleep 0.15; {d.binary} url open icli-test://reset >/dev/null) & '
+    # Both icli commands start inside the shell, where run() cannot add the lease token.
+    lease = f'export ICLI_LEASE={shlex.quote(d.lease)}; ' if d.lease else ''
+    switched = d.run(f'{lease}(sleep 0.15; {d.binary} url open icli-test://reset >/dev/null) & '
                      f'{d.binary} ui wait --identifier counter.increment --timeout 5; status=$?; wait; exit $status')
     assert switched.returncode == 0 and json.loads(switched.stdout)['found'], switched.stdout + switched.stderr
     assert d.cli('app', 'frontmost')['bundle_id'] == BUNDLE
@@ -1178,7 +1180,8 @@ def install_ipa_container(d):
     # at its installed path for the extension to be found (Lakr233/vphone-cli#546).
     for package, bundle, plugins in [
             ('/tmp/icli-install-fixture.ipa', 'dev.owngoal.icli.InstallFixture', []),
-            ('/tmp/icli-container-fixture.ipa', 'dev.owngoal.icli.ContainerFixture', ['dev.owngoal.icli.ContainerFixture.Tunnel'])]:
+            ('/tmp/icli-container-install-fixture.ipa', 'dev.owngoal.icli.ContainerInstallFixture',
+             ['dev.owngoal.icli.ContainerInstallFixture.Tunnel'])]:
         installed = d.cli('app', 'install', package, '--container', timeout=150, sudo=True)
         container, data, app = installed['bundle_container'], installed['data_container'], installed['bundle_path']
         try:
@@ -3375,7 +3378,7 @@ def main():
     device.configure()
     # Install cases read these fixtures from the physical /tmp, which a
     # RootHide shell sees as /rootfs/tmp, so stage them for every run.
-    fixtures = ['icli-install-fixture.deb', 'icli-install-fixture.ipa', 'icli-container-fixture.ipa']
+    fixtures = ['icli-install-fixture.deb', 'icli-install-fixture.ipa', 'icli-container-install-fixture.ipa']
     for name in fixtures:
         fixture = ROOT / '.build/install-fixtures' / name
         if fixture.exists():
