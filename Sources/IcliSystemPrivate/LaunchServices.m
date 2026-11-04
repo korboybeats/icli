@@ -2,6 +2,7 @@
 #import "SystemJSON.h"
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
+#import <objc/message.h>
 #import <stdlib.h>
 #import <string.h>
 
@@ -93,6 +94,15 @@ NSDictionary *icli_ls_app_dictionary(id proxy) {
         if (names.count) d[@"schemes"] = names;
     }
     return d;
+}
+
+bool icli_app_is_installed(const char *bundle_id) {
+    if (!bundle_id) return false;
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (![proxyClass respondsToSelector:lookup]) return false;
+    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, lookup, @(bundle_id));
+    return [proxy respondsToSelector:@selector(bundleURL)] && [proxy performSelector:@selector(bundleURL)] != nil;
 }
 
 char *icli_apps_json(void) {

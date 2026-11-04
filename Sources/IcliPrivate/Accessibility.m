@@ -63,6 +63,44 @@ static BOOL enableSwitches(void) {
     return application || automation;
 }
 
+static void *accessibilitySymbol(const char *name) {
+    void *library = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW);
+    return library ? dlsym(library, name) : NULL;
+}
+
+char *icli_accessibility_json(void) {
+    NSMutableDictionary *settings = [NSMutableDictionary dictionary];
+    icli_as_mobile_user(^{
+        CFStringRef (*copyCategory)(void) = accessibilitySymbol("_AXSCopyPreferredContentSizeCategoryName");
+        NSString *category = copyCategory ? CFBridgingRelease(copyCategory()) : nil;
+        // Nothing is stored until the size is first changed: the default is Large.
+        settings[@"text_size"] = category.length ? category : UIContentSizeCategoryLarge;
+        Boolean (*reduceMotion)(void) = accessibilitySymbol("_AXSReduceMotionEnabled");
+        Boolean (*reduceTransparency)(void) = accessibilitySymbol("_AXSEnhanceBackgroundContrastEnabled");
+        settings[@"reduce_motion"] = @((BOOL)(reduceMotion ? reduceMotion() != 0 : UIAccessibilityIsReduceMotionEnabled()));
+        settings[@"reduce_transparency"] = @((BOOL)(reduceTransparency ? reduceTransparency() != 0 : UIAccessibilityIsReduceTransparencyEnabled()));
+        settings[@"increase_contrast"] = @((BOOL)UIAccessibilityDarkerSystemColorsEnabled());
+    });
+    return icli_json(settings);
+}
+
+bool icli_accessibility_set_flag(const char *name, bool on) {
+    const char *setter = strcmp(name, "reduce_motion") == 0 ? "_AXSSetReduceMotionEnabled"
+        : strcmp(name, "increase_contrast") == 0 ? "_AXSSetDarkenSystemColors"
+        : strcmp(name, "reduce_transparency") == 0 ? "_AXSSetEnhanceBackgroundContrastEnabled" : NULL;
+    void (*set)(Boolean) = setter ? accessibilitySymbol(setter) : NULL;
+    if (!set) return false;
+    icli_as_mobile_user(^{ set(on); });
+    return true;
+}
+
+bool icli_accessibility_set_text_size(const char *category) {
+    void (*set)(CFStringRef) = accessibilitySymbol("_AXSSetPreferredContentSizeCategoryName");
+    if (!set) return false;
+    icli_as_mobile_user(^{ set((__bridge CFStringRef)@(category)); });
+    return true;
+}
+
 static BOOL prepareAX(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -251,6 +289,11 @@ char *icli_ax_elements_json(int pid, int max_elements) {
     NSDictionary *result = elementsResult(pid, max_elements);
     if (enabled && [result[@"count"] unsignedIntegerValue] == 0) {
         usleep(kBundleLoadWait);
+        result = elementsResult(pid, max_elements);
+    }
+    // An app in the middle of loading a screen answers -25216, then recovers.
+    for (int retry = 0; retry < 15 && [result[@"error"] hasSuffix:@"(-25216)"]; retry++) {
+        usleep(100000);
         result = elementsResult(pid, max_elements);
     }
     return icli_json(result);

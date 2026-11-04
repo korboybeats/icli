@@ -150,6 +150,15 @@ class Device:
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)
 
+    def wait_state(self, key, value, timeout=4):
+        deadline = time.monotonic() + timeout
+        while True:
+            state = self.state()
+            if state.get(key) == value or time.monotonic() > deadline:
+                assert state.get(key) == value, f'{key}: {state.get(key)!r}, wanted {value!r}'
+                return state
+            time.sleep(0.1)
+
     def fixture(self, action='reset'):
         self.cli('app', 'launch', BUNDLE)
         time.sleep(0.3)
@@ -311,15 +320,13 @@ def ax_tap_ambiguous(d):
     assert refused['error'] == 'ambiguous' and len(refused['matches']) == 2, refused
     assert d.state()['counter'] == 0
     d.cli('ui', 'tap', 'Increment', '--match', 'exact', '--index', '0')
-    time.sleep(0.2)
-    assert d.state()['counter'] == 1
+    d.wait_state('counter', 1)
     # An exact match outranks partial ones; two partial matches stay ambiguous.
     d.fixture()
     d.fixture('partial-match')
     assert d.cli('ui', 'tap', 'Incr', expected=1)['error'] == 'ambiguous'
     d.cli('ui', 'tap', 'Increment')
-    time.sleep(0.2)
-    assert d.state()['counter'] == 1
+    d.wait_state('counter', 1)
 
 
 @case('ui_fill', 'ax', ['ui fill', 'input paste', 'input type'])
@@ -378,6 +385,227 @@ def ui_alert(d):
     assert refused['error'] == 'human_required' and refused['kind'] == 'passcode', refused
     assert 'alert_result' not in d.state()
     d.cli('url', 'open', 'icli-test://reset')
+
+
+@case('ui_prompt', 'ax', ['ui prompt', 'screen shot', 'screen describe'])
+def ui_prompt(d):
+    d.fixture()
+    assert d.cli('ui', 'prompt')['human_required'] is False
+    assert 'prompt' not in d.cli('screen', 'shot', '--output', '/tmp/icli-prompt.jpg')
+    d.cli('url', 'open', 'icli-test://alert-passcode')
+    time.sleep(0.5)
+    for source in ('ax', 'any'):
+        found = d.cli('ui', 'prompt', '--source', source)
+        assert found['human_required'] and found['kind'] == 'passcode' and found['source'] == 'ax', found
+    assert d.cli('screen', 'shot', '--output', '/tmp/icli-prompt.jpg', '--check-prompt')['prompt']['kind'] == 'passcode'
+    assert d.cli('screen', 'describe')['prompt'] == 'passcode'
+    d.cli('url', 'open', 'icli-test://reset')
+    time.sleep(0.3)
+    assert d.cli('screen', 'describe')['prompt'] is None
+    d.cli('ui', 'prompt', '--source', 'nowhere', expected=1)
+    d.run(['rm', '-f', '/tmp/icli-prompt.jpg'])
+
+
+@case('ui_tree_sources', 'ax', ['ui tree'])
+def ui_tree_sources(d):
+    d.fixture()
+    ax = d.cli('ui', 'tree')
+    assert ax['source'] == 'ax' and ax['system_overlay'] is False, ax
+    assert any(e['identifier'] == 'counter.increment' for e in ax['elements'])
+    ocr = d.cli('ui', 'tree', '--source', 'ocr')
+    assert ocr['source'] == 'ocr' and any('TestHost' in e['label'] for e in ocr['elements']), ocr
+    assert d.cli('ui', 'tree', '--source', 'any')['source'] == 'ax'
+    assert len(d.cli('ui', 'tree', '--source', 'ocr', '--limit', '2')['elements']) == 2
+    d.cli('ui', 'tree', '--source', 'ocr', '--clickable-only', expected=1)
+    d.cli('ui', 'tree', '--scope', 'elsewhere', expected=1)
+
+
+@case('ui_system_scope', 'ax', ['ui tree', 'screen gesture', 'button home'])
+def ui_system_scope(d):
+    d.fixture()
+    status = d.cli('ui', 'tree', '--scope', 'system')['elements']
+    assert status and all(e['y'] < 60 for e in status), status
+    assert 'counter.increment' not in [e['identifier'] for e in d.cli('ui', 'tree', '--scope', 'system')['elements']]
+    both = d.cli('ui', 'tree', '--scope', 'all')['elements']
+    assert any(e['identifier'] == 'counter.increment' for e in both) and any(e.get('scope') == 'system' for e in both)
+    try:
+        d.cli('screen', 'gesture', 'control-center')
+        time.sleep(0.8)
+        over = d.cli('ui', 'tree')
+        assert over['system_overlay'] is True, over
+        airplane = next(e for e in over['elements'] if e['identifier'] == 'airplane-mode-button')
+        assert airplane['scope'] == 'system' and over['elements'][0].get('scope') == 'system', airplane
+        assert any(e['identifier'] == 'counter.increment' for e in over['elements'])
+        assert not any(e['identifier'] == 'airplane-mode-button' for e in d.cli('ui', 'tree', '--scope', 'app')['elements'])
+        assert d.cli('ui', 'wait', '--identifier', 'airplane-mode-button', '--timeout', '1')['found']
+    finally:
+        d.cli('screen', 'gesture', 'home')
+    time.sleep(0.8)
+    assert d.cli('ui', 'tree')['system_overlay'] is False
+    d.cli('screen', 'gesture', 'app-switcher')
+    time.sleep(0.8)
+    assert any(e['identifier'].startswith('card:') for e in d.cli('ui', 'tree', '--scope', 'system')['elements'])
+    d.cli('screen', 'gesture', 'home')
+    time.sleep(0.8)
+    d.cli('screen', 'gesture', 'nowhere', expected=1)
+
+
+@case('ui_home_screen', 'ax', ['ui tree', 'ui tap', 'screen gesture'])
+def ui_home_screen(d):
+    d.fixture()
+    d.cli('screen', 'gesture', 'home')
+    time.sleep(1)
+    assert d.cli('app', 'frontmost')['verified'] is False
+    home = d.cli('ui', 'tree')
+    assert home['count'] > 0 and home['system_overlay'] is False, home
+    # Spotlight is its own process, and only it knows what it shows.
+    d.cli('screen', 'gesture', 'spotlight')
+    time.sleep(1)
+    spotlight = d.cli('ui', 'tree')['elements']
+    assert spotlight and [e['label'] for e in spotlight] != [e['label'] for e in home['elements']], spotlight
+    d.cli('screen', 'gesture', 'home')
+    time.sleep(0.8)
+    d.cli('screen', 'gesture', 'home')
+    time.sleep(0.8)
+    # The Cover Sheet reads as locked, so most commands stop, and home closes it.
+    d.cli('screen', 'gesture', 'notification-center')
+    time.sleep(0.8)
+    try:
+        assert d.cli('screen', 'info')['locked'] is True
+        assert d.cli('ui', 'tree', expected=2)['error'] == 'device_locked'
+        assert d.cli('ui', 'tree', '--scope', 'system')['count'] > 0
+    finally:
+        d.cli('screen', 'gesture', 'home')
+    time.sleep(1)
+    assert d.cli('screen', 'info')['locked'] is False
+    d.fixture()
+
+
+@case('ui_back', 'ax', ['ui back'])
+def ui_back(d):
+    # A navigation bar's back button is labelled with the previous screen's title.
+    d.fixture()
+    d.fixture('nav')
+    d.wait_state('nav_depth', 2)
+    assert d.cli('ui', 'back')['method'] == 'button'
+    d.wait_state('nav_depth', 1)
+    d.cli('url', 'open', 'icli-test://reset')
+    time.sleep(0.3)
+    # Nothing to tap: the swipe comes in from the edge, which UIKit's recognizer accepts.
+    assert d.cli('ui', 'back')['method'] == 'edge_swipe'
+    d.wait_state('edge_pans', 1)
+
+
+@case('input_hide_keyboard', 'ax', ['input hide-keyboard'])
+def input_hide_keyboard(d):
+    d.fixture()
+    assert d.cli('input', 'hide-keyboard')['was_shown'] is False
+    assert d.state()['keyboard_visible'] is False
+    d.cli('url', 'open', 'icli-test://focus')
+    d.wait_state('keyboard_visible', True)
+    assert d.cli('input', 'hide-keyboard') == {'hidden': True, 'was_shown': True}
+    d.wait_state('keyboard_visible', False)
+
+
+@case('screen_record', 'screen', ['screen record'])
+def screen_record(d):
+    d.fixture()
+    movie, result = '/tmp/icli-record.mov', '/tmp/icli-record.json'
+    made = d.cli('screen', 'record', '--seconds', '2', '--output', movie, '--fps', '10', '--codec', 'h264')
+    assert made['path'] == movie and made['codec'] == 'h264' and made['stopped_by'] == 'seconds', made
+    assert 15 <= made['frames'] <= 21 and made['width'] > 0 and made['height'] > 0, made
+    header = base64.b64decode(d.run(f'head -c 32 {movie} | base64').stdout)
+    assert b'ftyp' in header or b'moov' in header or b'wide' in header, header
+    assert d.run(f'test -e {movie}.partial').returncode != 0
+    size = d.cli('screen', 'record', '--seconds', '1', '--output', movie)
+    assert size['codec'] == 'hevc' and size['bytes'] > 0, size
+    # A stop signal finishes the movie rather than abandoning it.
+    stopped = d.run(f'{d.binary} screen record --output {movie} > {result} & p=$!; sleep 2; kill -TERM $p; wait $p; echo status $?; cat {result}')
+    assert 'status 0' in stopped.stdout, stopped.stdout
+    made = json.loads(stopped.stdout.split('status 0', 1)[1])
+    assert made['stopped_by'] == 'signal' and made['frames'] > 0, made
+    d.cli('screen', 'record', '--seconds', '0', expected=1)
+    d.cli('screen', 'record', '--seconds', '1', '--fps', '61', expected=1)
+    d.cli('screen', 'record', '--seconds', '1', '--codec', 'vp9', expected=1)
+    missing = '/nonexistent-icli-directory/x.mov'
+    d.cli('screen', 'record', '--seconds', '1', '--output', missing, expected=1)
+    d.run(f'rm -f {movie} {result}')
+
+
+@case('device_appearance', 'controls', ['device appearance get', 'device appearance set'])
+def device_appearance(d):
+    d.fixture()
+    original = d.cli('device', 'appearance', 'get')['appearance']
+    styles = {'light': 1, 'dark': 2}
+    try:
+        for value in ('light', 'dark'):
+            assert d.cli('device', 'appearance', 'set', value)['appearance'] == value
+            assert d.cli('device', 'appearance', 'get')['appearance'] == value
+            d.wait_state('interface_style', styles[value])
+        d.cli('device', 'appearance', 'set', 'sepia', expected=1)
+    finally:
+        d.cli('device', 'appearance', 'set', original)
+    d.wait_state('interface_style', styles[original])
+
+
+@case('device_accessibility', 'controls', ['device accessibility get', 'device accessibility set'])
+def device_accessibility(d):
+    d.fixture()
+    original = d.cli('device', 'accessibility', 'get')
+    assert original['text_size'] == 'l', original
+    restore = ['--text-size', original['text_size']]
+    for name in ('reduce_motion', 'increase_contrast', 'reduce_transparency'):
+        restore += ['--' + name.replace('_', '-'), 'on' if original[name] else 'off']
+    try:
+        changed = d.cli('device', 'accessibility', 'set', '--text-size', 'xxl', '--reduce-motion', 'on',
+                        '--increase-contrast', 'on', '--reduce-transparency', 'on')
+        assert changed == {'text_size': 'xxl', 'reduce_motion': True, 'increase_contrast': True, 'reduce_transparency': True}, changed
+        d.wait_state('content_size', 'UICTContentSizeCategoryXXL')
+        d.wait_state('reduce_motion', True)
+        d.wait_state('darker_colors', True)
+        d.wait_state('reduce_transparency', True)
+        d.cli('device', 'accessibility', 'set', expected=1)
+        d.cli('device', 'accessibility', 'set', '--text-size', 'huge', expected=1)
+        d.cli('device', 'accessibility', 'set', '--reduce-motion', 'maybe', expected=1)
+    finally:
+        d.cli('device', 'accessibility', 'set', *restore)
+    d.wait_state('content_size', 'UICTContentSizeCategoryL')
+    d.wait_state('reduce_motion', original['reduce_motion'])
+    d.wait_state('darker_colors', original['increase_contrast'])
+    d.wait_state('reduce_transparency', original['reduce_transparency'])
+
+
+@case('log_crash_summary', 'logs', ['log crash'])
+def log_crash_summary(d):
+    path = '/tmp/icli-crash.ips'
+    header = {'app_name': 'Sample', 'bundleID': 'com.example.sample', 'app_version': '1.2', 'build_version': '7',
+              'os_version': 'iPhone OS 17.1.1 (21B91)', 'timestamp': '2026-11-04 09:00:00.00 -0700',
+              'incident_id': 'ABC', 'bug_type': '309'}
+    body = {'procName': 'Sample', 'pid': 42, 'captureTime': '2026-11-04 09:00:01.0 -0700',
+            'bundleInfo': {'CFBundleIdentifier': 'com.example.sample'},
+            'exception': {'type': 'EXC_BAD_ACCESS', 'signal': 'SIGSEGV'},
+            'termination': {'namespace': 'SIGNAL', 'code': 11, 'indicator': 'Segmentation fault: 11'},
+            'faultingThread': 1, 'usedImages': [{'name': 'Sample'}, {'path': '/usr/lib/libfoo.dylib'}],
+            'threads': [{'frames': [{'imageIndex': 0, 'imageOffset': 1}]},
+                        {'name': 'worker', 'queue': 'q', 'frames': [
+                            {'imageIndex': 0, 'imageOffset': 16, 'symbol': 'crash', 'symbolLocation': 4},
+                            {'imageIndex': 1, 'imageOffset': 32}] + [{'imageIndex': 0, 'imageOffset': 64}] * 50}]}
+    d.cli('fs', 'write', path, json.dumps(header) + '\n' + json.dumps(body))
+    summary = d.cli('log', 'crash', path, '--summary')
+    assert summary['process'] == 'Sample' and summary['bundle_id'] == 'com.example.sample' and summary['pid'] == 42, summary
+    assert summary['exception']['type'] == 'EXC_BAD_ACCESS' and summary['termination']['code'] == 11, summary
+    thread = summary['crashed_thread']
+    assert thread['index'] == 1 and thread['name'] == 'worker' and thread['frame_count'] == 52 and len(thread['frames']) == 40, thread
+    assert thread['frames'][0] == {'image': 'Sample', 'offset': 16, 'symbol': 'crash', 'symbol_offset': 4}, thread['frames'][0]
+    assert thread['frames'][1]['image'] == 'libfoo.dylib', thread['frames'][1]
+    assert 'content' not in summary and 'threads' not in summary
+    d.cli('log', 'crash', path, '--summary', '--max-bytes', '10', expected=1)
+    d.cli('fs', 'write', path, json.dumps(header) + '\nDate/Time: now\nEvent: disk writes\n')
+    text = d.cli('log', 'crash', path, '--summary')
+    assert text['body'] == 'text' and 'disk writes' in text['excerpt'], text
+    d.cli('fs', 'write', path, 'not a report')
+    d.cli('log', 'crash', path, '--summary', expected=1)
+    d.run(['rm', '-f', path])
 
 
 @case('ax_identifier', 'ax', ['ui tap'])
@@ -758,6 +986,16 @@ def app_launch_options(d):
     d.cli('app', 'relaunch', BUNDLE)
     time.sleep(0.5)
     assert d.state()['launch_env'] == '', d.state()
+
+
+@case('app_launch_by_name', 'apps', ['app launch', 'app relaunch', 'app frontmost'])
+def app_launch_by_name(d):
+    assert d.cli('app', 'launch', 'icli testhost')['launched'] == BUNDLE
+    assert d.cli('app', 'frontmost')['pid'] > 0
+    # Helpers hidden from the Home Screen share this name.
+    assert d.cli('app', 'launch', 'Settings')['launched'] == 'com.apple.Preferences'
+    assert d.cli('app', 'relaunch', 'icli TestHost')['launched'] == BUNDLE
+    assert 'not found' in d.cli('app', 'launch', 'no such app name', expected=1)['message']
 
 
 @case('app_lifecycle_and_metadata', 'apps', ['app list', 'app launch', 'app kill', 'app running', 'app frontmost', 'app info', 'url open'])

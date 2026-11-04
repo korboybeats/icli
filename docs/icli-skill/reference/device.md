@@ -14,6 +14,10 @@
 | `device rotation lock set <on\|off>` | Turn orientation lock on or off | | no | unlocked |
 | `device devmode get` | Developer Mode: `enabled`, `armed` (turns on after the next restart), `writable` (the device allows changing it) | | no | any |
 | `device devmode enable` | Arm Developer Mode when it is off; returns `already_enabled` and `restart_required`. Does not restart the device | | see notes | any |
+| `device appearance get` | `light` or `dark` | | no | any |
+| `device appearance set <light\|dark>` | Switch appearance; waits until the setting reads the new value | | no | any |
+| `device accessibility get` | `text_size`, `reduce_motion`, `increase_contrast`, `reduce_transparency` | | no | any |
+| `device accessibility set` | Change any of them; waits until they read the new values | `--text-size xs\|s\|m\|l\|xl\|xxl\|xxxl\|ax1…ax5`, `--reduce-motion on\|off`, `--increase-contrast on\|off`, `--reduce-transparency on\|off` | no | any |
 | `device low-power get` | Whether Low Power Mode is on (`method: powerd`) | | no | any |
 | `device low-power set <on\|off>` | Turn Low Power Mode on or off through powerd, like Control Center; waits up to 3 seconds for its reply, then checks the new state | | no | any |
 | `device timezone get` | `identifier` (Olson name), `automatic` (Set Automatically), `seconds_from_gmt` | | no | any |

@@ -5,6 +5,8 @@ icli location set 37.3349 -122.0090
 icli location get
 icli location clear
 icli device low-power set on
+icli device appearance set dark
+icli device accessibility set --text-size xxl --reduce-motion on
 icli device timezone set Asia/Shanghai
 icli notify post com.apple.springboard.lockcomplete
 icli notify get com.apple.springboard.lockstate

@@ -14,6 +14,7 @@ OBJC_EXTERN UIImage *_UICreateScreenUIImage(void) NS_RETURNS_RETAINED;
 #import <dlfcn.h>
 #import <notify.h>
 #import <objc/message.h>
+#import <signal.h>
 #import <mach/mach.h>
 #import <mach/mach_time.h>
 #import <unistd.h>
@@ -583,6 +584,91 @@ bool icli_rotation_lock_set(bool locked) {
     return ok;
 }
 
+void icli_panel_pixels(int *width, int *height) {
+    IcliScreenMetrics m = panelMetrics();
+    *width = (int)(m.width * m.scale);
+    *height = (int)(m.height * m.scale);
+}
+
+static const int kStopSignals[] = {SIGINT, SIGTERM, SIGHUP};
+static dispatch_source_t sStopSources[3];
+static dispatch_semaphore_t sStopSignal;
+
+void icli_stop_signals_catch(void) {
+    sStopSignal = dispatch_semaphore_create(0);
+    dispatch_semaphore_t stop = sStopSignal;
+    for (int i = 0; i < 3; i++) {
+        signal(kStopSignals[i], SIG_IGN);
+        sStopSources[i] = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_SIGNAL, kStopSignals[i], 0, dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0));
+        dispatch_source_set_event_handler(sStopSources[i], ^{ dispatch_semaphore_signal(stop); });
+        dispatch_resume(sStopSources[i]);
+    }
+}
+
+bool icli_stop_signal_wait(double seconds) {
+    return dispatch_semaphore_wait(sStopSignal, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC))) == 0;
+}
+
+void icli_stop_signals_release(void) {
+    for (int i = 0; i < 3; i++) {
+        dispatch_source_cancel(sStopSources[i]);
+        sStopSources[i] = nil;
+        signal(kStopSignals[i], SIG_DFL);
+    }
+    sStopSignal = nil;
+}
+
+bool icli_render_display(void *surface) {
+    static void (*render)(mach_port_t, CFStringRef, void *, int, int);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        void *quartz = dlopen("/System/Library/Frameworks/QuartzCore.framework/QuartzCore", RTLD_NOW);
+        if (quartz) render = dlsym(quartz, "CARenderServerRenderDisplay");
+    });
+    if (!render || !surface) return false;
+    render(0, CFSTR("LCD"), surface, 0, 0);
+    return true;
+}
+
+static id interfaceStyleMode(void) {
+    dlopen("/System/Library/PrivateFrameworks/UIKitServices.framework/UIKitServices", RTLD_NOW);
+    id mode = [NSClassFromString(@"UISUserInterfaceStyleMode") alloc];
+    SEL init = NSSelectorFromString(@"initWithDelegate:");
+    if (![mode respondsToSelector:init]) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(mode, init, nil);
+}
+
+void icli_as_mobile_user(void (^body)(void)) {
+    uid_t user = geteuid();
+    bool switched = user == 0 && seteuid(501) == 0;
+    body();
+    if (switched) seteuid(user);
+}
+
+int icli_appearance_get(void) {
+    __block int result = -1;
+    icli_as_mobile_user(^{
+        id mode = interfaceStyleMode();
+        SEL value = NSSelectorFromString(@"modeValue");
+        if ([mode respondsToSelector:value]) result = (int)((long long (*)(id, SEL))objc_msgSend)(mode, value);
+    });
+    return result;
+}
+
+bool icli_appearance_set(int value) {
+    __block bool done = false;
+    icli_as_mobile_user(^{
+        id mode = interfaceStyleMode();
+        SEL set = NSSelectorFromString(@"setModeValue:");
+        if ([mode respondsToSelector:set]) {
+            ((void (*)(id, SEL, long long))objc_msgSend)(mode, set, value);
+            done = true;
+        }
+    });
+    return done;
+}
+
 static UIImage *screenshotViaRenderServer(void) {
     void *iosurface = dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface", RTLD_NOW);
     void *quartz = dlopen("/System/Library/Frameworks/QuartzCore.framework/QuartzCore", RTLD_NOW);
@@ -803,6 +889,9 @@ void icli_screen_point_to_digitizer(double x, double y, double *nx, double *ny) 
     *ny = fy / (geometry.fixed_height > 1 ? geometry.fixed_height : 1);
 }
 
+// Extra event mask bits for the next touch down.
+static uint32_t sTouchDownFlags;
+
 // nx and ny are 0…1 in the fixed digitizer space; one finger event per point,
 // under one hand event, so several fingers move in the same report.
 static IOHIDEventRef createDigitizerEventFingers(const double *nx, const double *ny, int count, IcliTouchPhase phase) {
@@ -830,6 +919,7 @@ static IOHIDEventRef createDigitizerEventFingers(const double *nx, const double 
         isTouch = NO;
         break;
     }
+    if (phase == IcliTouchBegan) mask |= sTouchDownFlags;
     IOHIDEventRef parent = pIOHIDEventCreateDigitizerEvent(
         kCFAllocatorDefault,
         timestamp,
@@ -952,6 +1042,14 @@ bool icli_hid_stroke(const double *xs, const double *ys, int count, double secon
 bool icli_hid_swipe(double x1, double y1, double x2, double y2, double seconds, int steps) {
     double xs[] = {x1, x2}, ys[] = {y1, y2};
     return icli_hid_drag(xs, ys, 2, 0, seconds, steps);
+}
+
+bool icli_hid_edge_swipe(double x1, double y1, double x2, double y2, double seconds, int steps) {
+    // kIOHIDDigitizerEventFromEdgeTip: UIKit's edge recognizers ignore a touch without it.
+    sTouchDownFlags = 1 << 11;
+    bool sent = icli_hid_swipe(x1, y1, x2, y2, seconds, steps);
+    sTouchDownFlags = 0;
+    return sent;
 }
 
 // Two fingers on a line through (cx, cy) at angle degrees (0 = horizontal),

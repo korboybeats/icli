@@ -89,3 +89,80 @@ public func setLowPowerMode(_ enabled: Bool) throws -> [String: Any] {
     }
     return ["enabled": enabled, "changed": before != enabled, "method": "powerd"]
 }
+
+/// Light or dark mode as SpringBoard holds it.
+public func appearance() throws -> [String: Any] {
+    switch icli_appearance_get() {
+    case 1: return ["appearance": "light"]
+    case 2: return ["appearance": "dark"]
+    default: throw IcliError.unavailable("This device's interface style service is unavailable.")
+    }
+}
+
+public func setAppearance(_ value: String) throws -> [String: Any] {
+    let modes = ["light": Int32(1), "dark": Int32(2)]
+    guard let mode = modes[value] else { throw IcliError.failed("appearance must be light or dark") }
+    let before = try appearance()["appearance"] as? String
+    guard icli_appearance_set(mode) else {
+        throw IcliError.unavailable("This device's interface style service is unavailable.")
+    }
+    let deadline = ProcessInfo.processInfo.systemUptime + 2
+    while icli_appearance_get() != mode {
+        guard ProcessInfo.processInfo.systemUptime < deadline else {
+            throw IcliError.failed("the appearance stayed \(before ?? "unknown")")
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    return ["appearance": value, "changed": before != value]
+}
+
+private let textSizes = [
+    "xs": "UICTContentSizeCategoryXS", "s": "UICTContentSizeCategoryS", "m": "UICTContentSizeCategoryM",
+    "l": "UICTContentSizeCategoryL", "xl": "UICTContentSizeCategoryXL", "xxl": "UICTContentSizeCategoryXXL",
+    "xxxl": "UICTContentSizeCategoryXXXL", "ax1": "UICTContentSizeCategoryAccessibilityM",
+    "ax2": "UICTContentSizeCategoryAccessibilityL", "ax3": "UICTContentSizeCategoryAccessibilityXL",
+    "ax4": "UICTContentSizeCategoryAccessibilityXXL", "ax5": "UICTContentSizeCategoryAccessibilityXXXL",
+]
+
+public func accessibilitySettings() throws -> [String: Any] {
+    var settings = try decodeBridgeJSON(takeCString(icli_accessibility_json()), "accessibility settings")
+    if let category = settings["text_size"] as? String {
+        settings["text_size"] = textSizes.first { $0.value == category }?.key ?? category
+    }
+    return settings
+}
+
+public func setAccessibilitySettings(
+    textSize: String?, reduceMotion: Bool?, increaseContrast: Bool?, reduceTransparency: Bool?,
+) throws -> [String: Any] {
+    guard textSize != nil || reduceMotion != nil || increaseContrast != nil || reduceTransparency != nil else {
+        throw IcliError.failed("give --text-size, --reduce-motion, --increase-contrast or --reduce-transparency")
+    }
+    var category: String?
+    if let textSize {
+        guard let name = textSizes[textSize] else {
+            throw IcliError.failed("text size must be xs, s, m, l, xl, xxl, xxxl or ax1–ax5")
+        }
+        category = name
+    }
+    let unavailable = "This setting is unavailable on this device."
+    if let category, !icli_accessibility_set_text_size(category) { throw IcliError.unavailable(unavailable) }
+    for (name, value) in [("reduce_motion", reduceMotion), ("increase_contrast", increaseContrast),
+                          ("reduce_transparency", reduceTransparency)]
+    {
+        if let value, !icli_accessibility_set_flag(name, value) { throw IcliError.unavailable(unavailable) }
+    }
+    let flags = ["reduce_motion": reduceMotion, "increase_contrast": increaseContrast, "reduce_transparency": reduceTransparency]
+        .compactMapValues { $0 }
+    let deadline = ProcessInfo.processInfo.systemUptime + 2
+    while true {
+        let now = try accessibilitySettings()
+        var stale = flags.filter { now[$0.key] as? Bool != $0.value }.map(\.key)
+        if let textSize, now["text_size"] as? String != textSize { stale.append("text_size") }
+        if stale.isEmpty { return now }
+        guard ProcessInfo.processInfo.systemUptime < deadline else {
+            throw IcliError.failed("these settings did not change: \(stale.sorted().joined(separator: ", "))")
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+}

@@ -267,6 +267,7 @@ static NSString *runningBoardFocalApplication(NSMutableDictionary *why) {
     NSMutableSet<NSString *> *foregroundFocalIDs = [NSMutableSet set];
     NSMutableSet<NSString *> *hiddenFocalIDs = [NSMutableSet set];
     NSMutableSet<NSString *> *focalRoleIDs = [NSMutableSet set];
+    NSMutableDictionary<NSString *, NSNumber *> *focalPIDs = [NSMutableDictionary dictionary];
     for (size_t i = 0; i < length / sizeof(struct kinfo_proc); i++) {
         pid_t pid = processes[i].kp_proc.p_pid;
         char path[4096] = {0};
@@ -320,6 +321,7 @@ static NSString *runningBoardFocalApplication(NSMutableDictionary *why) {
                     foregroundFocal = foregroundFocal || [domain containsString:@"JetsamPriority-ForegroundFocal"];
                 }
             }
+            if (focal && !focalPIDs[bundleID]) focalPIDs[bundleID] = @(pid);
             if (focal && !pathless && hiddenApplication(path)) {
                 [hiddenFocalIDs addObject:bundleID];
             } else if (focal) {
@@ -331,6 +333,7 @@ static NSString *runningBoardFocalApplication(NSMutableDictionary *why) {
         }
     }
     free(processes);
+    why[@"pids"] = focalPIDs;
 #if TARGET_OS_TV
     // The screen saver covers whatever stays focal beneath it, the Home
     // screen included, so while it runs it is the one on screen.
@@ -365,7 +368,15 @@ char *icli_frontmost_app_json(void) {
     icli_launch_init();
     NSMutableDictionary *why = [NSMutableDictionary dictionary];
     NSString *bid = runningBoardFocalApplication(why);
-    if (bid.length) return launchJSON(@{@"bundle_id": bid, @"verified": @YES, @"source": @"runningboard"});
+    NSDictionary *pids = why[@"pids"];
+    [why removeObjectForKey:@"pids"];
+    NSArray *hidden = why[@"hidden_focal"];
+    if (hidden.count == 1 && pids[hidden.firstObject]) why[@"hidden_focal_pid"] = pids[hidden.firstObject];
+    if (bid.length) {
+        NSMutableDictionary *found = [@{@"bundle_id": bid, @"verified": @YES, @"source": @"runningboard"} mutableCopy];
+        if (pids[bid]) found[@"pid"] = pids[bid];
+        return launchJSON(found);
+    }
     if (pSBSCopyFrontmostApplicationDisplayIdentifier)
         bid = pSBSCopyFrontmostApplicationDisplayIdentifier();
     return launchJSON(@{

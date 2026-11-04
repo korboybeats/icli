@@ -1,5 +1,6 @@
 import Foundation
 import IcliPrivate
+import UIKit
 
 /// iOS keeps this many points of a drag before a scroll view starts moving.
 private let scrollSlop = 12.0
@@ -147,7 +148,7 @@ public func scrollToElement(
 
 private func keyboardIsShown() -> Bool {
     // UIAccessibilityTraitKeyboardKey
-    let elements = (try? uiElements(maxElements: 2000)["elements"] as? [[String: Any]]) ?? []
+    let elements = (try? uiElements(maxElements: 2000, scope: .app)["elements"] as? [[String: Any]]) ?? []
     return elements.contains { ($0["traits"] as? Int ?? 0) & 0x20 != 0 }
 }
 
@@ -173,6 +174,51 @@ public func fillField(
     if let value, !value.isEmpty { _ = try pasteText(value) }
     if submit { _ = try pressKey("return") }
     return ["filled": true, "element": tapped["element"] ?? [:], "keyboard_seen": keyboard, "sent": value?.count ?? 0]
+}
+
+/// Puts the software keyboard away. The key toggles it, so it is sent only when
+/// the keyboard is up, and the keyboard going away is what confirms it.
+public func hideKeyboard() throws -> [String: Any] {
+    guard keyboardIsShown() else { return ["hidden": true, "was_shown": false] }
+    // Consumer page: AC Eject, which iOS answers by toggling the on-screen keyboard.
+    guard icli_hid_key(12, 184, true) else { throw IcliError.failed("hid key unavailable") }
+    Thread.sleep(forTimeInterval: 0.08)
+    guard icli_hid_key(12, 184, false) else { throw IcliError.failed("hid key unavailable") }
+    let deadline = ProcessInfo.processInfo.systemUptime + 2
+    while keyboardIsShown() {
+        guard ProcessInfo.processInfo.systemUptime < deadline else {
+            throw IcliError.failed("the keyboard stayed on screen")
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    return ["hidden": true, "was_shown": true]
+}
+
+/// Leaves the screen: its back button when it has one, otherwise a swipe in from
+/// the left edge, which may do nothing.
+public func goBack() throws -> [String: Any] {
+    try requirePointInput()
+    let elements = try uiElements(maxElements: 2000, scope: .app)["elements"] as? [[String: Any]] ?? []
+    let buttons = elements.filter { $0["role"] as? String == "button" && $0["enabled"] as? Bool != false }
+    // UIAccessibilityTraitBackButton, private; a navigation bar's button is labelled with the previous screen's title.
+    let marked = buttons.first { ($0["traits"] as? Int ?? 0) & 0x800_0000 != 0 || $0["identifier"] as? String == "BackButton" }
+    let named = buttons.first { element in
+        let label = (element["label"] as? String ?? "")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return label == "back" || label == "go back"
+    }
+    if let button = marked ?? named,
+       let x = elementCoordinate(button["x"]), let y = elementCoordinate(button["y"])
+    {
+        _ = try tap(x: x, y: y)
+        return ["method": "button", "element": button]
+    }
+    let metrics = icli_screen_metrics()
+    guard icli_hid_edge_swipe(metrics.width * 0.004, metrics.height / 2, metrics.width * 0.7, metrics.height / 2, 0.3, 20) else {
+        throw IcliError.failed("hid swipe unavailable")
+    }
+    return ["method": "edge_swipe"]
 }
 
 /// Prompts only the device's owner may answer, as (kind, lowercase phrases).
@@ -215,6 +261,63 @@ private func alertElements() throws -> [[String: Any]] {
     return trees.flatMap { $0 }
 }
 
+/// The text an element list or OCR result shows.
+func screenText(_ list: Any?) -> [String] {
+    (list as? [[String: Any]] ?? []).flatMap { [$0["label"], $0["value"], $0["text"]].compactMap { $0 as? String } }
+}
+
+/// Which owner-only prompt this text shows, if any.
+func promptKind(in text: [String]) -> String? {
+    let lines = text.map(alertText)
+    return humanPrompts.first { prompt in
+        lines.contains { line in prompt.phrases.contains { line.contains($0) } }
+    }?.kind
+}
+
+/// Whether a prompt only the device's owner may answer is on screen. These often
+/// belong to a process with no tree to read, so text recognition looks when the
+/// trees show none, unless the source says otherwise.
+public func currentPrompt(source: ElementSource = .any, languages: [String] = ["en-US"]) throws -> [String: Any] {
+    if source != .ocr, let kind = promptKind(in: screenText(try alertElements())) {
+        return ["human_required": true, "kind": kind, "source": "ax"]
+    }
+    if source != .ax {
+        let blocks = try recognizeScreen(languages: languages, minConfidence: 0.3)["blocks"]
+        if let kind = promptKind(in: screenText(blocks)) {
+            return ["human_required": true, "kind": kind, "source": "ocr"]
+        }
+    }
+    return ["human_required": false]
+}
+
+/// Moves the system answers to a finger, in fractions of the screen, as (from, to,
+/// seconds, seconds resting at the end).
+public func systemGesture(_ name: String) throws -> [String: Any] {
+    try requirePointInput()
+    let metrics = icli_screen_metrics()
+    let path: (fromX: Double, fromY: Double, toX: Double, toY: Double, seconds: Double, rest: Double)
+    switch name {
+    case "home":
+        _ = try pressButton("home")
+        return ["gesture": name, "method": "button"]
+    case "app-switcher": path = (0.5, 0.999, 0.5, 0.6, 0.45, 0.7)
+    case "control-center": path = (0.97, 0.001, 0.9, 0.5, 0.3, 0)
+    case "notification-center":
+        let x = UIDevice.current.userInterfaceIdiom == .pad ? 0.25 : 0.3
+        path = (x, 0.001, x, 0.6, 0.3, 0)
+    case "spotlight": path = (0.5, 0.3, 0.5, 0.55, 0.3, 0)
+    default:
+        throw IcliError.failed("gesture must be home, app-switcher, control-center, notification-center or spotlight")
+    }
+    let steps = 20
+    let xs = (0 ... steps).map { path.fromX + (path.toX - path.fromX) * Double($0) / Double(steps) }.map { $0 * metrics.width }
+    let ys = (0 ... steps).map { path.fromY + (path.toY - path.fromY) * Double($0) / Double(steps) }.map { $0 * metrics.height }
+    guard icli_hid_stroke(xs, ys, Int32(xs.count), path.seconds, path.rest) else {
+        throw IcliError.failed("hid stroke unavailable")
+    }
+    return ["gesture": name, "method": "touch"]
+}
+
 private func alertTextElements() throws -> [[String: Any]] {
     let blocks = try recognizeScreen(languages: ["en-US"], minConfidence: 0.3)["blocks"] as? [[String: Any]] ?? []
     return blocks.map { block in
@@ -237,10 +340,9 @@ public func answerAlert(action: String?, button: String?) throws -> [String: Any
     let usesText = matches(in: tree).isEmpty
     let elements = usesText ? try alertTextElements() : tree
     let source = usesText ? "ocr" : "ax"
-    let screenText = elements.flatMap { [$0["label"] as? String ?? "", $0["value"] as? String ?? ""] }.map(alertText)
-    for prompt in humanPrompts where screenText.contains(where: { line in prompt.phrases.contains { line.contains($0) } }) {
+    if let kind = promptKind(in: screenText(elements)) {
         throw IcliError.commandFailed([
-            "error": "human_required", "kind": prompt.kind, "status": 1,
+            "error": "human_required", "kind": kind, "status": 1,
             "message": "only the device's owner may answer this prompt; nothing was tapped",
         ])
     }

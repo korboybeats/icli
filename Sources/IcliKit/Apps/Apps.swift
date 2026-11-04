@@ -65,13 +65,37 @@ private func appPIDs(_ app: [String: Any], in processes: [[String: Any]]) -> [In
     return pids
 }
 
-func frontmostPID() throws -> Int32 {
+/// The process drawing what is on screen: the app in front, a hidden app such
+/// as Spotlight when it is the only one focal, or SpringBoard on the Home Screen,
+/// where RunningBoard reports no focal app at all.
+func onScreenPID() throws -> Int32 {
     let frontmost = frontmostApp()
+    let why = frontmost["runningboard"] as? [String: Any]
+    if frontmost["verified"] as? Bool != true, why?["reason"] as? String == "no_focal_app",
+       frontmost["bundle_id"] as? String == SystemShell.bundleID
+    {
+        if let hidden = why?["hidden_focal_pid"] as? Int { return Int32(hidden) }
+        return try systemShellPID()
+    }
+    return try frontmostPID(frontmost)
+}
+
+func systemShellPID() throws -> Int32 {
+    let shell = try listProcesses(filter: SystemShell.processName)["processes"] as? [[String: Any]] ?? []
+    guard let pid = shell.first(where: { $0["name"] as? String == SystemShell.processName })?["pid"] as? Int else {
+        throw IcliError.failed("\(SystemShell.processName) is not running")
+    }
+    return Int32(pid)
+}
+
+func frontmostPID(_ known: [String: Any]? = nil) throws -> Int32 {
+    let frontmost = known ?? frontmostApp()
     guard frontmost["verified"] as? Bool == true,
           let bundleID = frontmost["bundle_id"] as? String
     else {
         throw IcliError.failed("frontmost application could not be verified")
     }
+    if let pid = frontmost["pid"] as? Int { return Int32(pid) }
     let processes = try listProcesses(filter: nil)["processes"] as? [[String: Any]] ?? []
     if bundleID == SystemShell.bundleID,
        let process = processes.first(where: { $0["name"] as? String == SystemShell.processName }),
@@ -84,6 +108,30 @@ func frontmostPID() throws -> Int32 {
         throw IcliError.failed("frontmost app process not found: \(bundleID)")
     }
     return Int32(pid)
+}
+
+/// The bundle ID an argument names: a bundle ID as it stands, or an installed
+/// app's display name when exactly one app has that name.
+public func resolveAppName(_ text: String) throws -> String {
+    if appIsInstalled(text) { return text }
+    let apps = try listApps()["apps"] as? [[String: Any]] ?? []
+    if apps.contains(where: { $0["bundle_id"] as? String == text }) { return text }
+    var named = apps.filter { ($0["name"] as? String)?.compare(text, options: .caseInsensitive) == .orderedSame }
+    // Helpers hidden from the Home Screen share names with the apps people mean: Settings has two.
+    let shown = named.filter { app in
+        let info = (app["bundle_path"] as? String).flatMap { NSDictionary(contentsOfFile: $0 + "/Info.plist") }
+        return (info?["SBAppTags"] as? [String])?.contains("hidden") != true
+    }
+    if !shown.isEmpty { named = shown }
+    guard let first = named.first?["bundle_id"] as? String else { throw IcliError.failed("app not found: \(text)") }
+    guard named.count == 1 else {
+        throw IcliError.commandFailed([
+            "error": "ambiguous", "status": 1,
+            "message": "\(named.count) apps are named \(text); use a bundle ID",
+            "matches": named.map { $0.filter { ["name", "bundle_id"].contains($0.key) } },
+        ])
+    }
+    return first
 }
 
 public func appInfo(_ bundleID: String) throws -> [String: Any] {
@@ -140,17 +188,15 @@ public func launchAppVerified(
     }
     let start = ProcessInfo.processInfo.systemUptime
     _ = try launchApp(bundleID, arguments: arguments, environment: environment)
-    let app = try appInfo(bundleID)
     repeat {
         let frontmost = frontmostApp()
-        if frontmost["verified"] as? Bool == true, frontmost["bundle_id"] as? String == bundleID {
-            let processes = try listProcesses(filter: nil)["processes"] as? [[String: Any]] ?? []
-            if let pid = appPIDs(app, in: processes).first {
-                return [
-                    "launched": bundleID, "frontmost": true, "verified": true, "pid": pid,
-                    "waited_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000),
-                ]
-            }
+        if frontmost["verified"] as? Bool == true, frontmost["bundle_id"] as? String == bundleID,
+           let pid = frontmost["pid"] as? Int
+        {
+            return [
+                "launched": bundleID, "frontmost": true, "verified": true, "pid": pid,
+                "waited_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000),
+            ]
         }
         Thread.sleep(forTimeInterval: 0.1)
     } while ProcessInfo.processInfo.systemUptime - start < timeout

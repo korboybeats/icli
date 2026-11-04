@@ -31,9 +31,12 @@ public func frontmostApp() -> [String: Any] {
 public func launchApp(
     _ bundleID: String, arguments: [String] = [], environment: [String: String] = [:],
 ) throws -> [String: Any] {
-    let apps = try listApps()["apps"] as? [[String: Any]] ?? []
-    guard !bundleID.isEmpty, apps.contains(where: { $0["bundle_id"] as? String == bundleID }) else {
-        throw IcliError.failed("app not found: \(bundleID)")
+    guard !bundleID.isEmpty else { throw IcliError.failed("app not found: \(bundleID)") }
+    if !appIsInstalled(bundleID) {
+        let apps = try listApps()["apps"] as? [[String: Any]] ?? []
+        guard apps.contains(where: { $0["bundle_id"] as? String == bundleID }) else {
+            throw IcliError.failed("app not found: \(bundleID)")
+        }
     }
     var refusal: UnsafeMutablePointer<CChar>?
     let result: IcliLaunchResult

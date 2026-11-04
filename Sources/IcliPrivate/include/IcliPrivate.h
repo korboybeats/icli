@@ -34,6 +34,27 @@ void icli_screen_fixed_to_point(double fx, double fy, double *x, double *y);
 /// Converts a point in the upright interface to 0…1 digitizer coordinates.
 void icli_screen_point_to_digitizer(double x, double y, double *nx, double *ny);
 
+/// The panel's size in pixels, the fixed space the render server draws in.
+void icli_panel_pixels(int *width, int *height);
+/// Takes over SIGINT, SIGTERM and SIGHUP: instead of ending the process they end
+/// icli_stop_signal_wait, until icli_stop_signals_release gives them back.
+void icli_stop_signals_catch(void);
+/// True as soon as a signal came, false after this many seconds without one.
+bool icli_stop_signal_wait(double seconds);
+void icli_stop_signals_release(void);
+/// Draws what the display shows into an IOSurface this process has not locked.
+bool icli_render_display(void *surface);
+/// Runs a block as the mobile user. Appearance and text size live in that user's
+/// preferences, so root would read and change a copy that no app ever looks at.
+void icli_as_mobile_user(void (^body)(void));
+/// 1 is light, 2 dark, -1 unavailable.
+int icli_appearance_get(void);
+bool icli_appearance_set(int mode);
+char *icli_accessibility_json(void);
+/// reduce_motion, increase_contrast or reduce_transparency.
+bool icli_accessibility_set_flag(const char *name, bool on);
+bool icli_accessibility_set_text_size(const char *category);
+
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution);
 char *icli_ax_elements_json(int pid, int max_elements);
 char *icli_ax_element_at_json(int pid, double x, double y);
@@ -57,6 +78,8 @@ bool icli_hid_drag(const double *xs, const double *ys, int count, double hold, d
 /// One finger through every point in UI points, evenly over `seconds`; it rests
 /// on the last point for `rest` seconds before lifting, so a scroll view keeps no
 /// velocity.
+/// A swipe whose touch comes in from the screen's edge, as UIKit's edge recognizers require.
+bool icli_hid_edge_swipe(double x1, double y1, double x2, double y2, double seconds, int steps);
 bool icli_hid_stroke(const double *xs, const double *ys, int count, double seconds, double rest);
 /// Two-finger pinch centred on (cx, cy) in UI points: the fingers sit on a line at
 /// `angle` degrees and move from `from` to `to` points apart (to > from zooms in).

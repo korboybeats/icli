@@ -106,6 +106,75 @@ public func readCrashLog(_ path: String, maxBytes: Int? = nil) throws -> [String
     ]
 }
 
+private let crashFrameLimit = 40
+
+/// A report's frames with their image names in place of indexes.
+private func crashFrames(_ frames: Any?, images: [[String: Any]]) -> [[String: Any]] {
+    (frames as? [[String: Any]] ?? []).map { frame in
+        var row: [String: Any] = [:]
+        if let index = frame["imageIndex"] as? Int, images.indices.contains(index) {
+            row["image"] = images[index]["name"] ?? images[index]["path"].map { ($0 as? NSString)?.lastPathComponent as Any }
+        }
+        row["offset"] = frame["imageOffset"]
+        row["symbol"] = frame["symbol"]
+        row["symbol_offset"] = frame["symbolLocation"]
+        row["file"] = frame["sourceFile"]
+        row["line"] = frame["sourceLine"]
+        return row
+    }
+}
+
+/// What a crash report says went wrong. A report is one line of JSON and a body,
+/// which is JSON in crashes and most others and plain text in resource reports.
+public func summarizeCrashLog(_ path: String) throws -> [String: Any] {
+    let report = try readCrashLog(path)
+    let content = report["content"] as? String ?? ""
+    let split = content.firstIndex(of: "\n") ?? content.endIndex
+    let header = (try? JSONSerialization.jsonObject(with: Data(content[..<split].utf8))) as? [String: Any]
+    guard let header else { throw IcliError.failed("crash report: the first line is not JSON") }
+    let rest = String(content[split...])
+    var summary: [String: Any] = [
+        "path": path, "size": report["size"] ?? 0,
+        "process": header["app_name"] ?? header["name"] ?? NSNull(),
+        "bundle_id": header["bundleID"] ?? NSNull(),
+        "version": header["app_version"] ?? NSNull(),
+        "build": header["build_version"] ?? NSNull(),
+        "os": header["os_version"] ?? NSNull(),
+        "time": header["timestamp"] ?? NSNull(),
+        "incident": header["incident_id"] ?? NSNull(),
+        "bug_type": header["bug_type"] ?? NSNull(),
+    ]
+    guard let body = (try? JSONSerialization.jsonObject(with: Data(rest.utf8))) as? [String: Any] else {
+        summary["body"] = "text"
+        summary["excerpt"] = String(rest.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1500))
+        return summary
+    }
+    summary["body"] = "json"
+    summary["process"] = header["app_name"] ?? header["name"] ?? body["procName"] ?? NSNull()
+    if let time = body["captureTime"] { summary["time"] = time }
+    if let info = body["bundleInfo"] as? [String: Any], let id = info["CFBundleIdentifier"] { summary["bundle_id"] = id }
+    for (from, to) in [("pid", "pid"), ("exception", "exception"), ("termination", "termination"),
+                       ("vmRegionInfo", "vm_region"), ("asi", "application_info")]
+    {
+        if let value = body[from] { summary[to] = value }
+    }
+    let images = body["usedImages"] as? [[String: Any]] ?? []
+    if let backtrace = body["lastExceptionBacktrace"] {
+        summary["last_exception_backtrace"] = Array(crashFrames(backtrace, images: images).prefix(crashFrameLimit))
+    }
+    let threads = body["threads"] as? [[String: Any]] ?? []
+    let index = (body["faultingThread"] as? Int).flatMap { threads.indices.contains($0) ? $0 : nil }
+        ?? threads.firstIndex { $0["triggered"] as? Bool == true }
+    if let index {
+        let frames = crashFrames(threads[index]["frames"], images: images)
+        var thread: [String: Any] = ["index": index, "frames": Array(frames.prefix(crashFrameLimit)), "frame_count": frames.count]
+        thread["name"] = threads[index]["name"]
+        thread["queue"] = threads[index]["queue"]
+        summary["crashed_thread"] = thread
+    }
+    return summary
+}
+
 public func dumpKeychain() throws -> [String: Any] {
     try listKeychain(className: nil, service: nil, account: nil, server: nil, group: nil, includeData: false)
 }

@@ -11,7 +11,7 @@
 // Test-only application. Its state file is an independent oracle for CLI tests.
 static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/state.json";
 
-@interface TestController : UIViewController <UITextViewDelegate, UIScrollViewDelegate>
+@interface TestController : UIViewController <UITextViewDelegate, UIScrollViewDelegate, UINavigationControllerDelegate>
 @property(nonatomic) NSMutableDictionary *state;
 @property(nonatomic) UITextView *input;
 @property(nonatomic) UILabel *status;
@@ -26,6 +26,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
 @property(nonatomic) BOOL directActivation;
 @property(nonatomic) BOOL rejectActivation;
 - (void)save;
+@property(nonatomic) BOOL keyboardVisible;
 - (void)reset;
 - (void)handleURL:(NSURL *)url;
 @end
@@ -64,6 +65,24 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.state = [NSMutableDictionary dictionary];
+    for (NSNotificationName name in @[UIContentSizeCategoryDidChangeNotification,
+                                      UIAccessibilityReduceMotionStatusDidChangeNotification,
+                                      UIAccessibilityReduceTransparencyStatusDidChangeNotification,
+                                      UIAccessibilityDarkerSystemColorsStatusDidChangeNotification]) {
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(save) name:name object:nil];
+    }
+    [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardDidShowNotification object:nil queue:nil usingBlock:^(NSNotification *n) {
+        self.keyboardVisible = YES;
+        [self save];
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:UIKeyboardDidHideNotification object:nil queue:nil usingBlock:^(NSNotification *n) {
+        self.keyboardVisible = NO;
+        [self save];
+    }];
+    UIScreenEdgePanGestureRecognizer *edgePan =
+        [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(edgePanned:)];
+    edgePan.edges = UIRectEdgeLeft;
+    [self.view addGestureRecognizer:edgePan];
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(24, 65, 370, 40)];
     title.text = @"icli TestHost";
     title.font = [UIFont boldSystemFontOfSize:28];
@@ -157,6 +176,19 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
         os_log_with_type(OS_LOG_DEFAULT, OS_LOG_TYPE_ERROR, "icli-testhost-heartbeat");
     }];
 }
+- (void)edgePanned:(UIScreenEdgePanGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateEnded) return;
+    self.state[@"edge_pans"] = @([self.state[@"edge_pans"] intValue] + 1);
+    [self save];
+}
+- (void)navigationController:(UINavigationController *)nav didShowViewController:(UIViewController *)shown animated:(BOOL)animated {
+    self.state[@"nav_depth"] = @(nav.viewControllers.count);
+    [self save];
+}
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+    [super traitCollectionDidChange:previous];
+    if (self.state) [self save];
+}
 - (void)save {
     self.state[@"text"] = self.input.text ?: @"";
     self.state[@"delayed_visible"] = @(!self.delayed.hidden);
@@ -167,6 +199,12 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     self.state[@"launch_env"] = NSProcessInfo.processInfo.environment[@"ICLI_TEST"] ?: @"";
     self.state[@"language"] = NSLocale.preferredLanguages.firstObject ?: @"";
     self.state[@"locale"] = NSLocale.currentLocale.localeIdentifier ?: @"";
+    self.state[@"interface_style"] = @(self.traitCollection.userInterfaceStyle);
+    self.state[@"content_size"] = UIApplication.sharedApplication.preferredContentSizeCategory ?: @"";
+    self.state[@"reduce_motion"] = @(UIAccessibilityIsReduceMotionEnabled());
+    self.state[@"reduce_transparency"] = @(UIAccessibilityIsReduceTransparencyEnabled());
+    self.state[@"darker_colors"] = @(UIAccessibilityDarkerSystemColorsEnabled());
+    self.state[@"keyboard_visible"] = @(self.keyboardVisible);
     self.status.text = [NSString stringWithFormat:@"Count: %@",self.state[@"counter"]];
     self.status.accessibilityValue = [self.state[@"counter"] stringValue];
     [[NSFileManager defaultManager] createDirectoryAtPath:StatePath.stringByDeletingLastPathComponent
@@ -321,6 +359,18 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
             }]];
         }
         [self presentViewController:alert animated:NO completion:nil];
+    }
+    else if([url.host isEqual:@"nav"]) {
+        UIViewController *root = [UIViewController new];
+        root.title = @"Nav root";
+        root.view.backgroundColor = UIColor.systemBackgroundColor;
+        UIViewController *pushed = [UIViewController new];
+        pushed.title = @"Nav pushed";
+        pushed.view.backgroundColor = UIColor.systemBackgroundColor;
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:root];
+        nav.modalPresentationStyle = UIModalPresentationFullScreen;
+        nav.delegate = self;
+        [self presentViewController:nav animated:NO completion:^{ [nav pushViewController:pushed animated:NO]; }];
     }
     else if([url.host isEqual:@"focus"]) [self.input becomeFirstResponder];
     else if([url.host isEqual:@"blur"]) [self.input resignFirstResponder];

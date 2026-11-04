@@ -7,7 +7,7 @@ struct Screen: ParsableCommand {
         abstract: "Touch, pointer, screenshot, OCR",
         subcommands: [
             Tap.self, Swipe.self, Pinch.self, LongPress.self, DoubleTap.self, Drag.self, Touch.self,
-            TouchSequence.self, Click.self, Scroll.self, ScrollBy.self, Shot.self, Wait.self, Info.self, OCR.self, Describe.self
+            TouchSequence.self, Click.self, Scroll.self, ScrollBy.self, Gesture.self, Shot.self, Record.self, Wait.self, Info.self, OCR.self, Describe.self
         ],
     )
 }
@@ -227,14 +227,45 @@ extension Screen {
         @Flag(help: "Full device pixels instead of one pixel per UI point.") var nativeResolution = false
         @Flag(help: "Write the raw JPEG to stdout and nothing else; errors go to stderr as JSON.")
         var stdout = false
+        @Flag(help: "Also say whether a prompt only the device's owner may answer is on screen; runs text recognition.")
+        var checkPrompt = false
         func run() {
             if stdout {
                 writeShotToStdout()
                 return
             }
             emit(allowWhenLocked: true, output) {
-                try takeScreenshot(path: path, base64: base64, nativeResolution: nativeResolution)
+                var shot = try takeScreenshot(path: path, base64: base64, nativeResolution: nativeResolution)
+                if checkPrompt { shot["prompt"] = try currentPrompt() }
+                return shot
             }
+        }
+    }
+
+    struct Record: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Record the screen to a .mov, for --seconds or until SIGINT, SIGTERM or SIGHUP.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Option(help: "Seconds to record, up to 3600; omit it to record until stopped, also up to 3600.") var seconds: Double?
+        @Option(name: .customLong("output"), help: "Destination .mov path, replaced if it exists; defaults to a temporary file.")
+        var path: String?
+        @Option(help: "Frames per second, 1–60.") var fps: Int = 30
+        @Option(help: "hevc or h264.") var codec: String = "hevc"
+        func run() {
+            emit(allowWhenLocked: true, output) { try recordScreen(seconds: seconds, path: path, fps: fps, codec: codec) }
+        }
+    }
+
+    struct Gesture: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Perform a system gesture.",
+            discussion: "spotlight works from the Home Screen. notification-center shows the Cover Sheet, which the device reports as locked until home or `icli unlock` closes it.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "home, app-switcher, control-center, notification-center or spotlight.") var name: String
+        func run() {
+            emit(allowWhenLocked: name == "home", output) { try systemGesture(name) }
         }
     }
 
@@ -353,11 +384,22 @@ extension Button {
 struct Input: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Text and raw key input",
-        subcommands: [Paste.self, TypeText.self, Key.self, HID.self],
+        subcommands: [Paste.self, TypeText.self, Key.self, HID.self, HideKeyboard.self],
     )
 }
 
 extension Input {
+    struct HideKeyboard: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            commandName: "hide-keyboard",
+            abstract: "Put the software keyboard away, and wait until it has gone.",
+        )
+        @OptionGroup var output: OutputOptions
+        func run() {
+            emit(output) { try hideKeyboard() }
+        }
+    }
+
     struct Paste: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Text sent in one piece, up to 64 KiB; the clipboard is not used.") var text: String
@@ -424,7 +466,7 @@ struct UI: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Accessibility / OCR elements",
         subcommands: [
-            Tree.self, At.self, Tap.self, Fill.self, ScrollTo.self, Alert.self, Perform.self, Wait.self, WaitGone.self
+            Tree.self, At.self, Tap.self, Back.self, Fill.self, ScrollTo.self, Alert.self, Prompt.self, Perform.self, Wait.self, WaitGone.self
         ],
     )
 }
@@ -497,13 +539,22 @@ extension UI {
         @Option(help: "Most elements to print after filtering, 1–2000.") var limit: Int?
         @Flag(help: "Include elements outside the visible screen.") var includeOffscreen = false
         @Flag(help: "Only elements that can be tapped.") var clickableOnly = false
+        @Option(help: "auto (the app or Home Screen, after anything over it, such as an alert or Control Center), app, system (SpringBoard, status bar included; also reads the Lock Screen) or all.")
+        var scope: String = "auto"
+        @OptionGroup var from: ElementSourceOptions
         func run() {
-            emit(output) {
-                try uiElements(
+            emit(allowWhenLocked: scope == "system", output) {
+                guard let scope = ElementScope(rawValue: scope) else {
+                    throw IcliError.failed("scope must be auto, app, system or all")
+                }
+                return try screenElements(
+                    source: from.parsed(),
+                    languages: from.lang,
                     maxElements: maxElements,
                     visibleOnly: !includeOffscreen,
                     clickableOnly: clickableOnly,
                     limit: limit,
+                    scope: scope,
                 )
             }
         }
@@ -524,6 +575,34 @@ extension UI {
         @OptionGroup var from: ElementSourceOptions
         func run() {
             emit(output) { try tapElement(selection.selector(), source: from.parsed(), languages: from.lang) }
+        }
+    }
+
+    struct Back: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Go back: tap the screen's back button, or else swipe in from the left edge.",
+            discussion: "method says which. A swipe does nothing on a screen with nowhere to go back to, so check the result.",
+        )
+        @OptionGroup var output: OutputOptions
+        func run() {
+            emit(output) { try goBack() }
+        }
+    }
+
+    struct Prompt: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Say whether a prompt only the device's owner may answer is on screen.",
+            discussion: "Passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts. By default the accessibility trees are read and then the screen's text.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Option(help: "ax (trees only, faster), ocr or any.") var source: String = "any"
+        func run() {
+            emit(allowWhenLocked: true, output) {
+                guard let source = ElementSource(rawValue: source) else {
+                    throw IcliError.failed("source must be ax, ocr or any")
+                }
+                return try currentPrompt(source: source)
+            }
         }
     }
 

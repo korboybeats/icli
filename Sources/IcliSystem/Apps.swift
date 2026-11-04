@@ -5,6 +5,12 @@ import IcliSystemPrivate
 /// LaunchServices' registrations, plus the application directories of every
 /// bootstrap layout. Read-only: bundle identifier, name, paths (a `data_path`
 /// means the record has a data container), version and build.
+/// True when LaunchServices knows the bundle ID. False is not final: the full
+/// list also finds apps only on disk.
+public func appIsInstalled(_ bundleID: String) -> Bool {
+    icli_app_is_installed(bundleID)
+}
+
 public func listApps() throws -> [String: Any] {
     var apps = decodeJSONArray(takeCString(icli_apps_json()))
     apps.append(contentsOf: scanApplicationDirs())

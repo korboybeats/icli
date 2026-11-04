@@ -7,7 +7,7 @@ struct Device: ParsableCommand {
         abstract: "Device info and settings",
         subcommands: [
             Info.self, Jetsam.self, Brightness.self, Volume.self, Rotation.self, Network.self,
-            Ioreg.self, Devmode.self, Passcode.self, LowPower.self, Timezone.self, Reboot.self, Bootlogo.self
+            Ioreg.self, Devmode.self, Passcode.self, LowPower.self, Appearance.self, Accessibility.self, Timezone.self, Reboot.self, Bootlogo.self
         ],
     )
 }
@@ -180,6 +180,58 @@ extension Device {
             @OptionGroup var output: OutputOptions
             func run() {
                 emit(allowWhenLocked: true, output) { try enableDeveloperMode() }
+            }
+        }
+    }
+
+    struct Appearance: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Light or dark mode",
+            subcommands: [Get.self, Set.self],
+        )
+        struct Get: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            func run() {
+                emit(allowWhenLocked: true, output) { try appearance() }
+            }
+        }
+
+        struct Set: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            @Argument(help: "light or dark.") var value: String
+            func run() {
+                emit(allowWhenLocked: true, output) { try setAppearance(value) }
+            }
+        }
+    }
+
+    struct Accessibility: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Text size and display accommodations",
+            subcommands: [Get.self, Set.self],
+        )
+        struct Get: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            func run() {
+                emit(allowWhenLocked: true, output) { try accessibilitySettings() }
+            }
+        }
+
+        struct Set: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            @Option(help: "xs, s, m, l (the default), xl, xxl, xxxl, or ax1–ax5 for the larger accessibility sizes.") var textSize: String?
+            @Option(help: "on or off.") var reduceMotion: String?
+            @Option(help: "on or off.") var increaseContrast: String?
+            @Option(help: "on or off.") var reduceTransparency: String?
+            func run() {
+                emit(allowWhenLocked: true, output) {
+                    try setAccessibilitySettings(
+                        textSize: textSize,
+                        reduceMotion: reduceMotion.map(parseOnOff),
+                        increaseContrast: increaseContrast.map(parseOnOff),
+                        reduceTransparency: reduceTransparency.map(parseOnOff),
+                    )
+                }
             }
         }
     }

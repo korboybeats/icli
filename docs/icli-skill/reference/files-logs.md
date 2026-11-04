@@ -28,4 +28,4 @@ All paths are physical device paths. On RootHide, the SSH shell's `/` is the boo
 | --- | --- | --- | --- | --- |
 | `log syslog` | Capture the live unified log for a period; filters apply before the line cap | `--seconds 3` (0.1–60), `--process <name>`, `--pid <n>`, `--subsystem <id>` (and dotted children), `--category <name>`, `--message-contains <text>`, `--level all\|debug\|info\|default\|error\|fault`, `--max-lines 500` (1–5000) | no | any |
 | `log crashes` | List crash report paths | `--bundle-id <id>` | no | unlocked |
-| `log crash <path>` | Read one crash report | `--max-bytes <n>` (1–67108864) | no | unlocked |
+| `log crash <path>` | Read one crash report; `--summary` gives the process, exception, termination and the crashed thread's first 40 frames | `--summary`, `--max-bytes <n>` (1–67108864) | no | unlocked |

@@ -105,7 +105,7 @@ extension App {
 
     struct Launch: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument var bundleID: String
+        @Argument(help: "Bundle ID, or an installed app's display name when only one app has it.") var app: String
         @Flag(help: "Return only once RunningBoard verifies the app in front, with its PID.") var waitForeground = false
         @Option(help: "Seconds --wait-foreground waits, 0–60.") var timeout: Double = 15
         @Option(name: .customLong("arg"), help: "Launch argument for this launch, repeatable; write a dash value as --arg=-Flag. Stops a running app.")
@@ -116,6 +116,7 @@ extension App {
         @Option(help: "Use this region format for this launch, such as fr_FR. Stops a running app.") var locale: String?
         func run() {
             emit(output) {
+                let bundleID = try resolveAppName(app)
                 if !arguments.isEmpty || !environment.isEmpty || language != nil || locale != nil {
                     return try launchAppWithOptions(
                         bundleID, arguments: arguments, environment: environment, language: language, locale: locale,
@@ -133,10 +134,10 @@ extension App {
             discussion: "Reports the old PIDs, the new PID, and launched_at for 'log crashes --since'.",
         )
         @OptionGroup var output: OutputOptions
-        @Argument var bundleID: String
+        @Argument(help: "Bundle ID, or an installed app's display name when only one app has it.") var app: String
         @Option(help: "Seconds to wait for the verified foreground app, 0–60.") var timeout: Double = 15
         func run() {
-            emit(output) { try relaunchApp(bundleID, timeout: timeout) }
+            emit(output) { try relaunchApp(resolveAppName(app), timeout: timeout) }
         }
     }
 

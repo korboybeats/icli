@@ -175,9 +175,33 @@ icli ui alert accept
 
 `ui fill` taps the field and waits for the on-screen keyboard before it selects all, deletes and sends the text. `ui scroll-to` fails with `error: not_found` and `reason` `end_of_content` or `max_scrolls`. `ui alert` reads SpringBoard's accessibility tree as well as the app's, because a system alert is not in the app's, then falls back to text recognition. It chooses from a list of allowing or refusing button names, and refuses prompts only the device's owner should answer, with `error: human_required`.
 
+### What Is on Screen
+
+`ui tree` lists what can be reached now: the app in front, or the Home Screen, or Spotlight, with whatever SpringBoard shows over it first. Those elements carry `scope: system`, and `system_overlay` is true; `ui tap` and `ui wait` search the same list and, between equal matches, prefer the overlay. `--scope system` reads SpringBoard alone, including the status bar and the Lock Screen; `--scope app` ignores it.
+
+`ui back` taps the screen's back button, or swipes in from the left edge when it has none. `method` says which, and a swipe does nothing on a screen with nowhere to go back to. `input hide-keyboard` sends the key that toggles the on-screen keyboard only while it is up, and returns once it has gone.
+
+```sh
+icli screen gesture control-center
+icli ui tree                                   # Control Center first, then the app beneath it
+icli screen gesture home                       # closes it; pressed again, leaves the app
+icli ui prompt                                 # {"human_required":false}
+```
+
+`ui prompt` says whether a passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile or purchase prompt is on screen: nothing an agent should answer. Some of these belong to processes with no readable tree, so it reads the trees and then the screen's text; `--source ax` skips the text. `screen describe` always carries `prompt`, and `screen shot --check-prompt` adds it to a screenshot.
+
+### Recording the Screen
+
+```sh
+icli screen record --seconds 10 --output /tmp/run.mov
+icli screen record --output /tmp/run.mov &     # until SIGINT, SIGTERM or SIGHUP
+```
+
+Recording draws each frame straight into the hardware encoder's buffers at the panel's full resolution, 30 frames per second by default and up to 60 (`--fps`). `--codec` picks `hevc` (the default) or `h264`. The movie appears at its path only once it is complete, and a stop signal finishes it rather than abandoning it. The result has `frames`, `dropped`, the achieved `fps` and `stopped_by`.
+
 ### Text Recognition Selectors
 
-`ui tap`, `ui wait` and `ui wait-gone` take `--source ax|ocr|any` (default `ax`). `ocr` matches on-screen text found by text recognition, for UI missing from the accessibility tree such as system share sheets; it accepts text only, not `--identifier` or `--role`, and taps the centre of the matched text within its line. `any` tries the tree first and falls back to text recognition when the tree has no match. Results from `ocr` and `any` include `source`. Add `--lang` to change the recognition languages.
+`ui tree`, `ui tap`, `ui wait` and `ui wait-gone` take `--source ax|ocr|any` (default `ax`). `ocr` matches on-screen text found by text recognition, for UI missing from the accessibility tree such as system share sheets; it accepts text only, not `--identifier` or `--role`, and taps the centre of the matched text within its line. `any` tries the tree first and falls back to text recognition when the tree has no match. Results from `ocr` and `any` include `source`. Add `--lang` to change the recognition languages.
 
 ```sh
 icli ui wait --source ocr Copy --timeout 5

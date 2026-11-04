@@ -39,6 +39,8 @@ int icli_launchd_stop(const char *label);
 const char *icli_launchd_strerror(int error);
 
 char *icli_apps_json(void);
+// Quicker than listing every app: true only when LaunchServices knows it.
+bool icli_app_is_installed(const char *bundle_id);
 char *icli_jetsam_json(void);
 
 #ifdef __OBJC__

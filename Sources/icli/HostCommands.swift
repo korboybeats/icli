@@ -53,8 +53,13 @@ extension Log {
         @OptionGroup var output: OutputOptions
         @Argument var path: String
         @Option(help: "Read at most this many bytes; truncated says the report goes on") var maxBytes: Int?
+        @Flag(help: "The process, exception, termination and crashed thread's stack instead of the whole report.")
+        var summary = false
         func run() {
-            emit(output) { try readCrashLog(path, maxBytes: maxBytes) }
+            emit(output) {
+                guard !summary || maxBytes == nil else { throw IcliError.failed("--summary reads the whole report; omit --max-bytes") }
+                return summary ? try summarizeCrashLog(path) : try readCrashLog(path, maxBytes: maxBytes)
+            }
         }
     }
 }

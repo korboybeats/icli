@@ -285,19 +285,74 @@ private func recognizeImage(path: String, languages: [String], minConfidence: Fl
     }
 }
 
+/// Whose elements a query reads. `auto` is what can be reached now: the app on
+/// screen, with anything SpringBoard shows over it (an alert, a banner, Control
+/// Center, the app switcher) listed first. `app` and `system` read one side only;
+/// `all` reads both, the status bar included.
+public enum ElementScope: String {
+    case auto, app, system, all
+}
+
+/// Everything SpringBoard lists while an app is in front sits in the status bar,
+/// whose elements all centre above this line on the phones measured.
+private let statusBarBottom = 60.0
+
+private func tagged(_ elements: [[String: Any]], scope: String) -> [[String: Any]] {
+    elements.map { element in
+        var element = element
+        element["scope"] = scope
+        return element
+    }
+}
+
+private func axElements(pid: Int32, maxElements: Int) throws -> [String: Any] {
+    try decodeBridgeJSON(takeCString(icli_ax_elements_json(pid, Int32(maxElements))), "AX response")
+}
+
 public func uiElements(
     maxElements: Int = 250,
     visibleOnly: Bool = true,
     clickableOnly: Bool = false,
     limit: Int? = nil,
+    scope: ElementScope = .auto,
 ) throws -> [String: Any] {
     guard (1 ... 2000).contains(maxElements), limit == nil || (limit! > 0 && limit! <= 2000) else {
         throw IcliError.failed("element limits must be between 1 and 2000")
     }
-    var result = try decodeBridgeJSON(
-        takeCString(icli_ax_elements_json(frontmostPID(), Int32(maxElements))),
-        "AX response",
-    )
+    var result: [String: Any]
+    switch scope {
+    case .auto:
+        let front = try onScreenPID()
+        result = try axElements(pid: front, maxElements: maxElements)
+        // Over SpringBoard itself or a hidden app such as Spotlight there is nothing to add.
+        var overlay = false
+        if let shell = try? systemShellPID(), shell != front,
+           let system = try? axElements(pid: shell, maxElements: maxElements)
+        {
+            let covering = (system["elements"] as? [[String: Any]] ?? []).filter {
+                $0["visible"] as? Bool == true && (elementCoordinate($0["y"]) ?? 0) > statusBarBottom
+            }
+            if !covering.isEmpty {
+                overlay = true
+                result["elements"] = tagged(covering, scope: "system") + (result["elements"] as? [[String: Any]] ?? [])
+            }
+        }
+        result["system_overlay"] = overlay
+    case .app:
+        result = try axElements(pid: onScreenPID(), maxElements: maxElements)
+    case .system:
+        result = try axElements(pid: systemShellPID(), maxElements: maxElements)
+    case .all:
+        let shell = try systemShellPID()
+        result = try axElements(pid: shell, maxElements: maxElements)
+        let front = try onScreenPID()
+        if front != shell {
+            let app = try axElements(pid: front, maxElements: maxElements)
+            result["elements"] = tagged(result["elements"] as? [[String: Any]] ?? [], scope: "system")
+                + (app["elements"] as? [[String: Any]] ?? [])
+            if app["truncated"] as? Bool == true { result["truncated"] = true }
+        }
+    }
     var elements = result["elements"] as? [[String: Any]] ?? []
     if visibleOnly {
         elements = elements.filter { $0["visible"] as? Bool == true }
@@ -311,6 +366,35 @@ public func uiElements(
     result["elements"] = elements
     result["count"] = elements.count
     return result
+}
+
+/// The screen's elements from the accessibility tree, from text recognition, or
+/// from the tree and, when it lists nothing, from text recognition.
+public func screenElements(
+    source: ElementSource, languages: [String], maxElements: Int = 250, visibleOnly: Bool = true,
+    clickableOnly: Bool = false, limit: Int? = nil, scope: ElementScope = .auto,
+) throws -> [String: Any] {
+    guard source == .ax || !clickableOnly else {
+        throw IcliError.failed("text recognition does not know what can be tapped; --clickable-only needs --source ax")
+    }
+    if source != .ocr {
+        let tree = try uiElements(
+            maxElements: maxElements, visibleOnly: visibleOnly, clickableOnly: clickableOnly, limit: limit, scope: scope,
+        )
+        if source == .ax || !(tree["elements"] as? [[String: Any]] ?? []).isEmpty { return tree }
+    }
+    guard limit == nil || (limit! > 0 && limit! <= 2000) else {
+        throw IcliError.failed("element limits must be between 1 and 2000")
+    }
+    let blocks = try recognizeScreen(languages: languages, minConfidence: 0.3)["blocks"] as? [[String: Any]] ?? []
+    let elements = blocks.map { block -> [String: Any] in
+        var element = block
+        element["label"] = block["text"]
+        element["visible"] = true
+        return element
+    }
+    let shown = limit.map { Array(elements.prefix($0)) } ?? elements
+    return ["elements": shown, "count": shown.count, "truncated": false, "source": "ocr"]
 }
 
 public func describeScreen() throws -> [String: Any] {
@@ -350,6 +434,8 @@ public func describeScreen() throws -> [String: Any] {
     do { payload["ocr"] = try recognizeImage(path: path, languages: ["zh-Hans", "en-US"], minConfidence: 0.3) }
     catch let error as IcliError { payload["ocr"] = error.payload }
     catch { payload["ocr"] = ["error": "failed", "message": error.localizedDescription] }
+    let read = [payload["elements"], payload["ocr"]].compactMap { $0 as? [String: Any] }
+    payload["prompt"] = promptKind(in: read.flatMap { screenText($0["elements"] ?? $0["blocks"]) }) as Any? ?? NSNull()
     let after = frontmostApp()
     payload["context_changed"] = frontmost["verified"] as? Bool != true
         || after["verified"] as? Bool != true
@@ -359,7 +445,7 @@ public func describeScreen() throws -> [String: Any] {
 
 public func elementAt(x: Double, y: Double) throws -> [String: Any] {
     try validatePoint(x, y)
-    return try decodeBridgeJSON(takeCString(icli_ax_element_at_json(frontmostPID(), x, y)), "AX response")
+    return try decodeBridgeJSON(takeCString(icli_ax_element_at_json(onScreenPID(), x, y)), "AX response")
 }
 
 /// Turns the system-wide accessibility switches that element queries turned on
@@ -495,7 +581,8 @@ func bestMatches(_ hits: [[String: Any]], _ selector: ElementSelector) -> [[Stri
     }
     func rank(_ element: [String: Any]) -> [Int] {
         // OCR text has no enabled or clickable state, so only exactness ranks it.
-        [isExact(element) ? 0 : 1, element["enabled"] as? Bool == false ? 1 : 0, element["clickable"] as? Bool == false ? 1 : 0]
+        [isExact(element) ? 0 : 1, element["scope"] as? String == "system" ? 0 : 1,
+         element["enabled"] as? Bool == false ? 1 : 0, element["clickable"] as? Bool == false ? 1 : 0]
     }
     guard let best = hits.map(rank).min(by: { $0.lexicographicallyPrecedes($1) }) else { return [] }
     let tied = hits.filter { rank($0) == best }.enumerated().sorted { a, b in
@@ -523,7 +610,7 @@ func ambiguousMatches(_ matches: [[String: Any]]) -> IcliError {
         "message": "\(matches.count) elements match equally well, so nothing was tapped; "
             + "use more of the text, --match exact, --identifier, --role or --index",
         "matches": matches.map { element in
-            element.filter { ["label", "identifier", "value", "role", "x", "y"].contains($0.key) }
+            element.filter { ["label", "identifier", "value", "role", "x", "y", "scope"].contains($0.key) }
         },
         "status": 1,
     ])

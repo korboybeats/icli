@@ -16,7 +16,9 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `screen drag` | Press, hold, then move along a path | four endpoint options **or** `--points '<JSON [{x,y},…]>'`, `--hold 0.5`, `--seconds 0.3`, `--steps 20` | no | unlocked |
 | `screen touch <down\|move\|up> <x> <y>` | One raw finger event; a gesture can span several calls | `--normalized` | no | unlocked |
 | `screen touch-sequence` | Several finger events from one process, with exact timing | `--events '<JSON [{phase,x,y,delay_ms},…]>'` (required), `--normalized` | no | unlocked |
-| `screen shot` | JPEG screenshot, upright | `--output <path>` (default: temporary file), `--base64`, `--native-resolution` | no | any |
+| `screen gesture <name>` | System gesture: `home`, `app-switcher`, `control-center`, `notification-center`, `spotlight` | | no | unlocked (`home`: any) |
+| `screen shot` | JPEG screenshot, upright | `--output <path>` (default: temporary file), `--base64`, `--native-resolution`, `--check-prompt` | no | any |
+| `screen record` | Record a .mov at the panel's full resolution | `--seconds N` (omit to record until SIGINT, SIGTERM or SIGHUP; up to 3600), `--output <path>`, `--fps 30` (1–60), `--codec hevc\|h264` | no | any |
 | `screen ocr` | Vision text recognition of the current screen | `--lang <code>` (repeatable; default zh-Hans and en-US), `--min-confidence 0.3` | no | unlocked |
 | `screen describe` | Screenshot (base64), OCR and accessibility elements from one call | | no | unlocked |
 
@@ -25,18 +27,25 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 - In `screen ocr`, `blocks` holds each recognized text with its confidence and point frame. On a device without text recognition the command fails with `unavailable`, as it does on iOS 15 over SSH, where icli has no Metal device for Vision.
 - `screen describe` returns `frontmost`, `screen`, `screenshot`, `ocr` and `elements`. Each component can carry its own `error`. If `context_changed` is true, the foreground app changed during the call, so do not combine its parts.
 
-## ui (accessibility of the frontmost app)
+- `screen record` writes `<path>.partial` and renames it when the movie is complete, so a movie at the path is always whole. A stop signal finishes the movie and the command exits 0 with `stopped_by: signal`. `dropped` counts frames the encoder had no room for. Protected content records black.
+- `screen gesture home` presses Home, so it closes what is over an app before it leaves the app. `spotlight` needs the Home Screen. `notification-center` shows the Cover Sheet, during which the device reports `locked: true` and most commands exit 2 until `screen gesture home` or `icli unlock` closes it.
+
+## ui (accessibility of what is on screen)
 
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
 | `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only` | no | unlocked |
 | `ui at <x> <y>` | Element at a point | | no | unlocked |
+| `ui back` | Tap the screen's back button, or else swipe in from the left edge; `method` says which, and a swipe may do nothing | | no | unlocked |
+| `ui prompt` | Whether a prompt only the owner may answer is on screen (`human_required`, `kind`, `source`) | `--source ax\|ocr\|any` (default `any`) | no | any |
 | `ui tap [<text>]` | Find an element and tap its centre; refuses ambiguous matches (`error: ambiguous`, with `matches`) | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index N` | no | unlocked |
 | `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit` | no | unlocked |
 | `ui scroll-to [<text>]` | Scroll until an element is on screen and report where; stops at the end of the content | same selectors, `--direction down`, `--max-scrolls 10`, `--x`, `--y` | no | unlocked |
 | `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action | no | unlocked |
 | `ui wait [<text>]` | Poll until the element appears | same selectors, `--timeout 10`, `--interval 0.3` | no | unlocked |
 | `ui wait-gone [<text>]` | Poll until the element disappears | same as `ui wait` | no | unlocked |
+
+`ui tree` reads what can be reached now (`--scope auto`): the app in front, or the Home Screen or Spotlight, with anything SpringBoard shows over it listed first and marked `scope: system`, and `system_overlay` true. That covers alerts, banners, Control Center and the app switcher. `ui tap` and `ui wait` search the same list, and between equal matches prefer the overlay. `--scope app` and `--scope system` read one side, `system` with the status bar and on the Lock Screen too; `all` reads both. `--source ocr` lists on-screen text instead of the tree, and `--source any` does so when the tree is empty; text has no tap state, so neither takes `--clickable-only`.
 
 Reading the AX tree needs the system's accessibility and automation switches, which are system-wide and stored in the `com.apple.Accessibility` preference domain as `ApplicationAccessibilityEnabled` and `AutomationEnabled`. icli turns on whichever of the two is off before each query and puts both back when the process exits, so the device is left as it was found. A long-running IcliKit host calls `restoreAccessibilitySwitches()` when it stops reading the UI, since a process that is killed never reaches its exit handler. The query that turns them on waits once for the app to load its accessibility bundles, so it is slower than the ones after it. A device whose last icli run was 0.7.1 or earlier may still have them on: `prefs read com.apple.Accessibility ApplicationAccessibilityEnabled` reads the stored value, and `prefs delete` clears it.
 
@@ -47,6 +56,7 @@ Selectors: `<text>` matches an element's label, identifier or value. Matching ig
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
 | `input paste <text>` | Send the whole string as Unicode key events. Does not touch the clipboard | `--clear`, `--submit` | no | unlocked |
+| `input hide-keyboard` | Put the software keyboard away and wait until it has gone; does nothing when it is not up (`was_shown`) | | no | unlocked |
 | `input type <text>` | Send one grapheme at a time | `--delay-ms 30`, `--clear`, `--submit` | no | unlocked |
 | `input key <name>` | One key or chord | | no | unlocked |
 | `input hid <page> <usage>` | Raw HID usage: press (down, 100 ms, up), or only one edge | `--down`, `--up` | no | unlocked |

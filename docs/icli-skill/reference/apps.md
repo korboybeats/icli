@@ -9,7 +9,7 @@
 | `app running` | Live app processes with PIDs, from RunningBoard when available (`source` reports a process-list fallback) | | no | unlocked |
 | `app frontmost` | Foreground app bundle ID with `verified` and `source`; the home screen may report `com.apple.springboard` with `verified: false` | | no | unlocked |
 | `app info <bundle-id>` | LaunchServices record: bundle path, executable, version, entitlements | | no | unlocked |
-| `app launch <bundle-id>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground` | no | unlocked |
+| `app launch <bundle-id or name>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground` | no | unlocked |
 | `app open <url>` | Open a URL, optionally in a specific app | `--bundle <bundle-id>` | no | unlocked |
 | `app kill <bundle-id>` | SIGTERM the app's processes and wait for them to exit | `--force` required | no | unlocked |
 | `app install <path>` | `.deb` → native package install; `.ipa` → install into the bootstrap and register; `.app` → register | `--container` installs an `.ipa` into its own app container (see below); `--registration user\|system` (default user) | required for .deb and .ipa | unlocked |
@@ -39,6 +39,28 @@
 | Command | Purpose | Root | Screen |
 | --- | --- | --- | --- |
 | `url open <url>` | Open a URL in its registered app | no | unlocked |
+
+### Settings pages
+
+`icli url open 'prefs:root=<page>'` opens these pages, each confirmed on iOS 17.1.1:
+
+| Page | `<page>` | Page | `<page>` |
+| --- | --- | --- | --- |
+| Wi-Fi | `WIFI` | About | `General&path=About` |
+| Bluetooth | `Bluetooth` | Software Update | `General&path=SOFTWARE_UPDATE_LINK` |
+| Cellular | `MOBILE_DATA_SETTINGS_ID` | Keyboards | `General&path=Keyboard` |
+| Personal Hotspot | `INTERNET_TETHERING` | Tracking | `Privacy&path=USER_TRACKING` |
+| Notifications | `NOTIFICATIONS_ID` | Language & Region | `General&path=INTERNATIONAL` |
+| Sounds & Haptics | `Sounds` | Date & Time | `General&path=DATE_AND_TIME` |
+| Focus | `DO_NOT_DISTURB` | VPN & Device Management | `General&path=ManagedConfigurationList` |
+| Screen Time | `SCREEN_TIME` | Privacy & Security | `Privacy` |
+| General | `General` | Location Services | `Privacy&path=LOCATION` |
+| Display & Brightness | `DISPLAY` | Photos | `Privacy&path=PHOTOS` |
+| Accessibility | `ACCESSIBILITY` | Camera | `Privacy&path=CAMERA` |
+| Wallpaper | `Wallpaper` | Contacts | `Privacy&path=CONTACTS` |
+| Siri & Search | `SIRI` | Calendars | `Privacy&path=CALENDARS` |
+| Battery | `BATTERY_USAGE` | Reminders | `Privacy&path=REMINDERS` |
+| Motion & Fitness | `Privacy&path=MOTION` | | |
 
 ## sb (SpringBoard)
 

@@ -22,12 +22,15 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Wake the screen | `icli button wake` (does not remove a passcode) |
 | Find which app is in front | `icli app frontmost` |
 | Find an app's bundle ID | `icli app search <name>` or `icli app list` |
+| Launch an app by its name | `icli app launch Settings` (a bundle ID also works; two visible apps with the name are refused) |
 | Launch an app once with arguments, environment or a language | `icli app launch <bundle-id> --arg=-Flag --env NAME=VALUE --language fr --locale fr_FR` (stops it first) |
 | Launch an app and wait until it is in front | `icli app launch <bundle-id> --wait-foreground` (verified, with `pid`) |
 | Restart an app and prove a new process is in front | `icli app relaunch <bundle-id>` (reports `old_pids`, `pid`, `launched_at`) |
 | Open a URL or deep link | `icli url open <url>` or `icli app open <url> --bundle <bundle-id>` |
 | Quit an app | `icli app kill <bundle-id> --force` |
-| List what is on screen | `icli ui tree` (add `--clickable-only`, `--limit N`) |
+| List what is on screen, Home Screen and system overlays included | `icli ui tree` (add `--clickable-only`, `--limit N`, `--source any`) |
+| Check whether only the owner can answer what is on screen | `icli ui prompt` (`human_required`, `kind`) |
+| Go back a screen | `icli ui back` (`method` says button or edge swipe) |
 | Tap a button by its label | `icli ui tap 'Label' --match exact` |
 | Tap by accessibility identifier | `icli ui tap --identifier <id>` |
 | Replace a field's text in one call | `icli ui fill 'Label' --value 'text'` (add `--submit` for Return) |
@@ -40,6 +43,9 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Tap, double-tap or long-press a point | `icli screen tap <x> <y>` / `double-tap` / `long-press --seconds 1` |
 | Swipe or scroll | `icli screen swipe --from-x X --from-y Y --to-x X --to-y Y` |
 | Scroll an exact distance, with no fling | `icli screen scroll-by down 200` |
+| Open Control Center, the app switcher, Spotlight or Notification Center | `icli screen gesture control-center` / `app-switcher` / `spotlight` / `notification-center`; `screen gesture home` closes them |
+| Record the screen | `icli screen record --seconds 10 --output /tmp/r.mov` (or no `--seconds` and send SIGTERM) |
+| Put the keyboard away | `icli input hide-keyboard` |
 | Drag along a path | `icli screen drag --points '[{"x":10,"y":10},{"x":90,"y":40}]'` |
 | Type text into the focused field | `icli input paste 'text'` (fast, Unicode) or `icli input type 'text'` |
 | Press Return, Tab, arrows or a shortcut | `icli input key return` / `icli input key cmd+a` |
@@ -54,13 +60,16 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Simulate the GPS location, then stop | `icli location set 37.3349 -122.009` / `icli location clear` |
 | Read the current location | `icli location get` (check `fresh` and `simulated`) |
 | Post a Darwin notification or read its state | `icli notify post <name> [--state N]` / `icli notify get <name>` |
+| Switch to light or dark mode | `icli device appearance set dark` |
+| Change the text size, Reduce Motion, Increase Contrast or Reduce Transparency | `icli device accessibility set --text-size xxl --reduce-motion on` |
+| Open a Settings page | `icli url open 'prefs:root=General&path=About'` (table in [apps](reference/apps.md)) |
 | Rotate the screen or lock rotation | `icli device rotation set landscape-left` / `rotation lock set on` |
 | Read, write or list files | `icli fs read <p>` / `fs write <p> <text>` / `fs ls <dir>` |
 | Read or edit a plist | `icli fs plist <p>` / `icli fs plist-set <p> <key> '<json>'` |
 | Read or change preferences (like `defaults`) | `icli prefs read <domain> [<key>]` / `prefs write <domain> <key> <value> --type int` / `prefs delete <domain> <key>` |
 | Change an app's own container preferences | `icli prefs write --app <bundle-id> --force <key> <value> --type bool` (stops the app) |
 | Capture live logs | `icli log syslog --seconds 5 --process <name> --level error` |
-| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m]` then `icli log crash <path>` |
+| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m]` then `icli log crash <path> --summary` (add nothing for the whole report) |
 | Run several commands in one process with checks | `echo '[["app","frontmost"],{"argv":["ui","wait","Ready"],"expect":{"found":true}}]' \| icli batch` |
 | Install a .deb or .ipa | `sudo icli app install /tmp/x.deb` (or `.ipa`) |
 | Uninstall an app or package | `sudo icli app uninstall <bundle-id> --force` / `sudo icli pkg remove <pkg>` |

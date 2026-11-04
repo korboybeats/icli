@@ -10,7 +10,7 @@ git diff --check
 rsync -a --delete --exclude=.git --exclude=.build ./ "mac:$MAC_DIR/"
 # The linker embeds Info.plist with -sectcreate, which SwiftPM does not track:
 # drop the linked products so a version change always relinks.
-ssh mac "zsh -l -c 'cd $MAC_DIR && rm -f .build/swiftpm-*/*/*/icli && rtk err --shell bash \"set -o pipefail; make deb-rootless CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= 2>&1 | tee .build/automation-build.log\"'"
+ssh mac "zsh -l -c 'cd $MAC_DIR && setopt nonomatch && rm -f .build/swiftpm-*/*/*/icli && rtk err --shell bash \"set -o pipefail; make deb-rootless CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= 2>&1 | tee .build/automation-build.log\"'"
 scp "mac:$MAC_DIR/.build/icli" .build/icli
 scp "mac:$MAC_DIR/.build/$DEB" ".build/$DEB"
 scp "mac:$MAC_DIR/.build/automation-build.log" .build/
