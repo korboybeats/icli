@@ -302,6 +302,84 @@ def ax_tree(d):
     d.cli('ui', 'tap', 'no-such-element', expected=1)
 
 
+@case('ax_tap_ambiguous', 'ax', ['ui tap'])
+def ax_tap_ambiguous(d):
+    d.fixture()
+    d.cli('url', 'open', 'icli-test://verified-duplicate')
+    time.sleep(0.3)
+    refused = d.cli('ui', 'tap', 'Increment', '--match', 'exact', expected=1)
+    assert refused['error'] == 'ambiguous' and len(refused['matches']) == 2, refused
+    assert d.state()['counter'] == 0
+    d.cli('ui', 'tap', 'Increment', '--match', 'exact', '--index', '0')
+    time.sleep(0.2)
+    assert d.state()['counter'] == 1
+    # An exact match outranks partial ones; two partial matches stay ambiguous.
+    d.fixture()
+    d.fixture('partial-match')
+    assert d.cli('ui', 'tap', 'Incr', expected=1)['error'] == 'ambiguous'
+    d.cli('ui', 'tap', 'Increment')
+    time.sleep(0.2)
+    assert d.state()['counter'] == 1
+
+
+@case('ui_fill', 'ax', ['ui fill', 'input paste', 'input type'])
+def ui_fill(d):
+    d.fixture()
+    d.cli('ui', 'fill', '--identifier', 'input.text', '--value', 'first')
+    time.sleep(0.3)
+    assert d.state()['text'] == 'first'
+    d.cli('ui', 'fill', '--identifier', 'input.text', '--value', '中文 second')
+    time.sleep(0.3)
+    assert d.state()['text'] == '中文 second'
+    d.cli('input', 'paste', 'third', '--clear')
+    time.sleep(0.3)
+    assert d.state()['text'] == 'third'
+    d.cli('input', 'type', 'x', '--clear', '--submit')
+    time.sleep(0.3)
+    assert d.state()['text'] == 'x\n'
+    d.cli('ui', 'fill', '--identifier', 'input.text')
+    time.sleep(0.3)
+    assert d.state()['text'] == ''
+
+
+@case('ui_scroll_to', 'ax', ['ui scroll-to'])
+def ui_scroll_to(d):
+    d.fixture()
+    point = ['--x', '180', '--y', '600']
+    found = d.cli('ui', 'scroll-to', 'Row 19', '--match', 'exact', *point)
+    assert found['found'] and found['scrolls'] > 0, found
+    time.sleep(0.2)
+    assert d.state()['scroll_y'] > 400
+    missing = d.cli('ui', 'scroll-to', 'no-such-row', '--match', 'exact', '--max-scrolls', '20', *point, expected=1)
+    assert missing['error'] == 'not_found' and missing['reason'] == 'end_of_content', missing
+    capped = d.cli('ui', 'scroll-to', 'no-such-row', '--direction', 'up', '--max-scrolls', '1', *point, expected=1)
+    assert capped['reason'] == 'max_scrolls', capped
+
+
+@case('ui_alert', 'ax', ['ui alert'])
+def ui_alert(d):
+    d.fixture()
+    assert d.cli('ui', 'alert', 'accept', expected=1)['error'] == 'no_alert'
+    d.cli('url', 'open', 'icli-test://alert')
+    time.sleep(0.5)
+    assert d.cli('ui', 'alert', 'accept')['tapped']
+    time.sleep(0.4)
+    assert d.state()['alert_result'] == 'Allow'
+    d.fixture()
+    d.cli('url', 'open', 'icli-test://alert')
+    time.sleep(0.5)
+    d.cli('ui', 'alert', 'dismiss')
+    time.sleep(0.4)
+    assert d.state()['alert_result'] == 'Don\u2019t Allow'
+    d.fixture()
+    d.cli('url', 'open', 'icli-test://alert-passcode')
+    time.sleep(0.5)
+    refused = d.cli('ui', 'alert', 'accept', expected=1)
+    assert refused['error'] == 'human_required' and refused['kind'] == 'passcode', refused
+    assert 'alert_result' not in d.state()
+    d.cli('url', 'open', 'icli-test://reset')
+
+
 @case('ax_identifier', 'ax', ['ui tap'])
 def ax_identifier(d):
     d.fixture()
@@ -360,6 +438,32 @@ def touch_swipe(d):
     d.cli('screen', 'swipe', '--from-x', str(x), '--from-y', str(y), '--to-x', str(x), '--to-y', str(y - 65), '--seconds', '0.4')
     time.sleep(0.3)
     assert d.state().get('scroll_y', 0) > 20
+
+
+@case('touch_scroll_exact', 'gestures', ['screen scroll-by', 'screen swipe'])
+def touch_scroll_exact(d):
+    d.fixture()
+    point = ['--x', '180', '--y', '600']
+    d.cli('screen', 'scroll-by', 'down', '200', *point)
+    time.sleep(0.3)
+    first = d.state()['scroll_y']
+    assert abs(first - 200) <= 8, first
+    d.cli('screen', 'scroll-by', 'up', '100', *point)
+    time.sleep(0.3)
+    second = d.state()['scroll_y']
+    assert abs(second - (first - 100)) <= 8, second
+    d.fixture()
+    d.cli('screen', 'swipe', '--from-x', '180', '--from-y', '640', '--to-x', '180', '--to-y', '440', '--no-momentum')
+    time.sleep(0.5)
+    assert abs(d.state()['scroll_y'] - 188) <= 8, d.state()['scroll_y']
+    # Longer than one stroke can reach from here: the strokes must add up.
+    d.fixture()
+    long = d.cli('screen', 'scroll-by', 'down', '700', *point)
+    assert long['strokes'] > 1, long
+    time.sleep(0.3)
+    assert abs(d.state()['scroll_y'] - 700) <= 16, d.state()['scroll_y']
+    d.cli('screen', 'scroll-by', 'sideways', '10', expected=1)
+    d.cli('screen', 'scroll-by', 'down', '0', expected=1)
 
 
 @case('touch_drag_path', 'gestures', ['screen drag'])
@@ -632,6 +736,28 @@ def clipboard_image(d):
         d.run(['rm', '-f', d.sh(source), d.sh(output)])
         d.cli('clipboard', 'set', original['text'])
     assert d.cli('clipboard', 'get')['text'] == original['text']
+
+
+@case('app_launch_options', 'apps', ['app launch'])
+def app_launch_options(d):
+    launched = d.cli('app', 'launch', BUNDLE, '--wait-foreground', '--arg=-IcliFlag', '--arg=YES', '--env', 'ICLI_TEST=1',
+                     '--language', 'fr', '--locale', 'fr_FR')
+    assert launched['verified'], launched
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        state = d.state()
+        if '-IcliFlag' in state.get('launch_arguments', []):
+            break
+        time.sleep(0.2)
+    assert '-IcliFlag' in state['launch_arguments'] and state['launch_env'] == '1', state
+    assert state['language'].startswith('fr') and state['locale'].startswith('fr'), state
+    assert launched['arguments'][-4:] == ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR'], launched
+    d.cli('app', 'launch', BUNDLE, '--env', 'broken', expected=1)
+    d.cli('app', 'launch', BUNDLE, '--language', 'not a language', expected=1)
+    # A plain relaunch must not keep this launch's options.
+    d.cli('app', 'relaunch', BUNDLE)
+    time.sleep(0.5)
+    assert d.state()['launch_env'] == '', d.state()
 
 
 @case('app_lifecycle_and_metadata', 'apps', ['app list', 'app launch', 'app kill', 'app running', 'app frontmost', 'app info', 'url open'])

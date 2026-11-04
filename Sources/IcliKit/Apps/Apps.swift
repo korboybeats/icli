@@ -132,12 +132,14 @@ public func killApp(_ bundleID: String, force: Bool) throws -> [String: Any] {
 
 /// Launches an app and returns once RunningBoard verifies it in front, with
 /// its PID. launchApp alone can answer from an unverified SpringBoard query.
-public func launchAppVerified(_ bundleID: String, timeout: TimeInterval = 15) throws -> [String: Any] {
+public func launchAppVerified(
+    _ bundleID: String, timeout: TimeInterval = 15, arguments: [String] = [], environment: [String: String] = [:],
+) throws -> [String: Any] {
     guard timeout.isFinite, (0 ... 60).contains(timeout) else {
         throw IcliError.failed("timeout must be 0–60 seconds")
     }
     let start = ProcessInfo.processInfo.systemUptime
-    _ = try launchApp(bundleID)
+    _ = try launchApp(bundleID, arguments: arguments, environment: environment)
     let app = try appInfo(bundleID)
     repeat {
         let frontmost = frontmostApp()
@@ -153,6 +155,43 @@ public func launchAppVerified(_ bundleID: String, timeout: TimeInterval = 15) th
         Thread.sleep(forTimeInterval: 0.1)
     } while ProcessInfo.processInfo.systemUptime - start < timeout
     throw IcliError.failed("\(bundleID) was not verified in front within \(timeout) seconds; it may have crashed")
+}
+
+/// Launch arguments and environment for one launch, with `-AppleLanguages` and
+/// `-AppleLocale` for a language and a region format. They reach a new process
+/// only, so a running app is stopped first.
+public func launchAppWithOptions(
+    _ bundleID: String, arguments: [String], environment: [String], language: String?, locale: String?,
+    waitForeground: Bool, timeout: TimeInterval,
+) throws -> [String: Any] {
+    var argv = arguments
+    let code = #"^[A-Za-z]{2,3}([_-][A-Za-z0-9]{2,8})*$"#
+    if let language {
+        guard language.range(of: code, options: .regularExpression) != nil else {
+            throw IcliError.failed("language must be a language code such as fr, pt-BR or zh-Hans")
+        }
+        argv += ["-AppleLanguages", "(\(language))"]
+    }
+    if let locale {
+        guard locale.range(of: code, options: .regularExpression) != nil else {
+            throw IcliError.failed("locale must be a locale identifier such as fr_FR or en_GB")
+        }
+        argv += ["-AppleLocale", locale]
+    }
+    var env: [String: String] = [:]
+    for pair in environment {
+        guard let separator = pair.firstIndex(of: "="), separator != pair.startIndex else {
+            throw IcliError.failed("environment must be NAME=VALUE: \(pair)")
+        }
+        env[String(pair[..<separator])] = String(pair[pair.index(after: separator)...])
+    }
+    _ = try killApp(bundleID, force: true)
+    var result = waitForeground
+        ? try launchAppVerified(bundleID, timeout: timeout, arguments: argv, environment: env)
+        : try launchApp(bundleID, arguments: argv, environment: env)
+    result["arguments"] = argv
+    result["environment"] = env
+    return result
 }
 
 /// Stops an app, starts it again and proves the process in front is a new one.

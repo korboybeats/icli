@@ -7,7 +7,7 @@ struct Screen: ParsableCommand {
         abstract: "Touch, pointer, screenshot, OCR",
         subcommands: [
             Tap.self, Swipe.self, Pinch.self, LongPress.self, DoubleTap.self, Drag.self, Touch.self,
-            TouchSequence.self, Click.self, Scroll.self, Shot.self, Wait.self, Info.self, OCR.self, Describe.self
+            TouchSequence.self, Click.self, Scroll.self, ScrollBy.self, Shot.self, Wait.self, Info.self, OCR.self, Describe.self
         ],
     )
 }
@@ -38,8 +38,31 @@ extension Screen {
         @Option(help: "End y in UI points.") var toY: Double
         @Option(help: "Duration of the movement in seconds, up to 60.") var seconds: Double = 0.25
         @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
+        @Flag(help: "Slow the finger to a stop before it lifts, so a scroll view does not fling; takes at least 0.6 seconds.")
+        var noMomentum = false
         func run() {
-            emit(output) { try swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps) }
+            emit(output) {
+                noMomentum
+                    ? try swipeWithoutMomentum(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps)
+                    : try swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps)
+            }
+        }
+    }
+
+    struct ScrollBy: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            commandName: "scroll-by",
+            abstract: "Scroll content an exact distance with touch, without a fling.",
+            discussion: "up reveals content above, down content below. A long distance takes several strokes; "
+                + "the content stops sooner where it ends.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "up, down, left or right.") var direction: String
+        @Argument(help: "Points the content moves.") var points: Double
+        @Option(help: "A point in the scroll view, x in UI points; default: the middle of the screen.") var x: Double?
+        @Option(help: "A point in the scroll view, y in UI points; default: the middle of the screen.") var y: Double?
+        func run() {
+            emit(output) { try scrollBy(direction: direction, points: points, x: x, y: y) }
         }
     }
 
@@ -338,8 +361,15 @@ extension Input {
     struct Paste: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Text sent in one piece, up to 64 KiB; the clipboard is not used.") var text: String
+        @Flag(help: "Empty the focused field first.") var clear = false
+        @Flag(help: "Press Return afterwards.") var submit = false
         func run() {
-            emit(output) { try pasteText(text) }
+            emit(output) {
+                if clear { try clearFocusedField() }
+                let result = try pasteText(text)
+                if submit { _ = try pressKey("return") }
+                return result
+            }
         }
     }
 
@@ -348,8 +378,15 @@ extension Input {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Text sent one character at a time, up to 64 KiB.") var text: String
         @Option(name: .customLong("delay-ms"), help: "Pause after each character in milliseconds, 0–1000.") var delayMS: Double = 30
+        @Flag(help: "Empty the focused field first.") var clear = false
+        @Flag(help: "Press Return afterwards.") var submit = false
         func run() {
-            emit(output) { try typeText(text, delayMS: delayMS) }
+            emit(output) {
+                if clear { try clearFocusedField() }
+                let result = try typeText(text, delayMS: delayMS)
+                if submit { _ = try pressKey("return") }
+                return result
+            }
         }
     }
 
@@ -386,7 +423,9 @@ extension Input {
 struct UI: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Accessibility / OCR elements",
-        subcommands: [Tree.self, At.self, Tap.self, Perform.self, Wait.self, WaitGone.self],
+        subcommands: [
+            Tree.self, At.self, Tap.self, Fill.self, ScrollTo.self, Alert.self, Perform.self, Wait.self, WaitGone.self
+        ],
     )
 }
 
@@ -411,7 +450,7 @@ struct ElementOptions: ParsableArguments {
     var identifier: String?
     @Option(help: "button, text, control (any tappable element) or element (no filter).") var role: String?
     @Option(help: "Text matching mode: contains or exact; both ignore case.") var match: String = "contains"
-    @Option(help: "Zero-based index among matching elements; 0 selects the first match.") var index: Int = 0
+    @Option(help: "Zero-based index among all matches. ui tap refuses ambiguous matches unless this is given.") var index: Int?
     func selector() throws -> ElementSelector {
         try ElementSelector(text: text, identifier: identifier, role: role, match: match, index: index)
     }
@@ -485,6 +524,57 @@ extension UI {
         @OptionGroup var from: ElementSourceOptions
         func run() {
             emit(output) { try tapElement(selection.selector(), source: from.parsed(), languages: from.lang) }
+        }
+    }
+
+    struct Fill: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Replace a text field's text: tap the field, empty it, then enter the new text.",
+        )
+        @OptionGroup var output: OutputOptions
+        @OptionGroup var selection: ElementOptions
+        @OptionGroup var from: ElementSourceOptions
+        @Option(help: "The field's new text; omit it to only empty the field.") var value: String?
+        @Flag(help: "Press Return afterwards.") var submit = false
+        func run() {
+            emit(output) {
+                try fillField(selection.selector(), value: value, submit: submit, source: from.parsed(), languages: from.lang)
+            }
+        }
+    }
+
+    struct ScrollTo: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            commandName: "scroll-to",
+            abstract: "Scroll until an element is on screen and say where it is; stops at the end of the content.",
+        )
+        @OptionGroup var output: OutputOptions
+        @OptionGroup var selection: ElementOptions
+        @OptionGroup var from: ElementSourceOptions
+        @Option(help: "up, down, left or right.") var direction: String = "down"
+        @Option(help: "Most strokes before giving up, 1–100.") var maxScrolls: Int = 10
+        @Option(help: "A point in the scroll view, x in UI points; default: the middle of the screen.") var x: Double?
+        @Option(help: "A point in the scroll view, y in UI points; default: the middle of the screen.") var y: Double?
+        func run() {
+            emit(output) {
+                try scrollToElement(
+                    selection.selector(), direction: direction, maxScrolls: maxScrolls, x: x, y: y,
+                    source: from.parsed(), languages: from.lang,
+                )
+            }
+        }
+    }
+
+    struct Alert: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Answer the alert on screen: accept taps its allowing button, dismiss its refusing one.",
+            discussion: "Refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "accept or dismiss; omit it with --button.") var action: String?
+        @Option(help: "The button's text, instead of an action.") var button: String?
+        func run() {
+            emit(output) { try answerAlert(action: action, button: button) }
         }
     }
 

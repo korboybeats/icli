@@ -106,6 +106,52 @@ static BOOL frontBoardOpen(NSString *bundleID, NSString **reason) {
 }
 #endif
 
+IcliLaunchResult icli_launch_app_with_options(
+    const char *bundle_id, const char *arguments_json, const char *environment_json, char **reason) {
+    icli_launch_init();
+    if (reason) *reason = NULL;
+    NSString *refusal = @"FrontBoard's open service is unavailable";
+    @autoreleasepool {
+        dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices", RTLD_NOW);
+        Class serviceClass = NSClassFromString(@"FBSOpenApplicationService");
+        Class optionsClass = NSClassFromString(@"FBSOpenApplicationOptions");
+        SEL shared = NSSelectorFromString(@"serviceWithDefaultShellEndpoint");
+        SEL make = NSSelectorFromString(@"optionsWithDictionary:");
+        SEL open = NSSelectorFromString(@"openApplication:withOptions:completion:");
+        NSData *argumentData = [NSData dataWithBytes:arguments_json length:strlen(arguments_json)];
+        NSData *environmentData = [NSData dataWithBytes:environment_json length:strlen(environment_json)];
+        id arguments = [NSJSONSerialization JSONObjectWithData:argumentData options:0 error:nil];
+        id environment = [NSJSONSerialization JSONObjectWithData:environmentData options:0 error:nil];
+        id service = [serviceClass respondsToSelector:shared]
+            ? ((id (*)(id, SEL))objc_msgSend)(serviceClass, shared) : nil;
+        if ([service respondsToSelector:open] && [optionsClass respondsToSelector:make] && arguments && environment) {
+            id options = ((id (*)(id, SEL, id))objc_msgSend)(optionsClass, make, @{
+                @"__ActivateSuspended": @NO,
+                @"__DebugOptions": @{@"__Arguments": arguments, @"__Environment": environment},
+            });
+            __block NSError *failure = nil;
+            dispatch_semaphore_t done = dispatch_semaphore_create(0);
+            void (^completion)(id, NSError *) = ^(id process, NSError *error) {
+                failure = error;
+                dispatch_semaphore_signal(done);
+            };
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(service, open, @(bundle_id), options, completion);
+            if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC)) != 0) {
+                refusal = @"FrontBoard did not answer the open request";
+            } else if (!failure) {
+                return IcliLaunchAccepted;
+            } else {
+                NSError *cause = failure.userInfo[NSUnderlyingErrorKey];
+                refusal = cause.localizedFailureReason ?: cause.localizedDescription
+                    ?: failure.localizedFailureReason ?: failure.localizedDescription;
+            }
+        }
+        if (reason && refusal.length) *reason = strdup(refusal.UTF8String);
+    }
+    IcliLockStatus lock = icli_lock_status();
+    return lock.locked || lock.screen_off ? IcliLaunchLocked : IcliLaunchRefused;
+}
+
 // SpringBoardServices launches for a caller with
 // com.apple.springboard.launchapplications. Any other caller falls back to
 // LaunchServices, which needs no entitlement and answers NO while the device

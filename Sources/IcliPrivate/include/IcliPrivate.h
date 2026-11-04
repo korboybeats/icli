@@ -54,6 +54,10 @@ bool icli_hid_double_tap(double x, double y, double interval);
 bool icli_hid_long_press(double x, double y, double seconds);
 bool icli_hid_swipe(double x1, double y1, double x2, double y2, double seconds, int steps);
 bool icli_hid_drag(const double *xs, const double *ys, int count, double hold, double seconds, int steps);
+/// One finger through every point in UI points, evenly over `seconds`; it rests
+/// on the last point for `rest` seconds before lifting, so a scroll view keeps no
+/// velocity.
+bool icli_hid_stroke(const double *xs, const double *ys, int count, double seconds, double rest);
 /// Two-finger pinch centred on (cx, cy) in UI points: the fingers sit on a line at
 /// `angle` degrees and move from `from` to `to` points apart (to > from zooms in).
 bool icli_hid_pinch(double cx, double cy, double from, double to, double angle, double seconds, int steps);

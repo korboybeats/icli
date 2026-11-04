@@ -27,6 +27,9 @@ Entitlements do not make a process root. Package installation/removal, account p
 | `com.apple.backboardd.launchapplications` | `true` | BackBoard app launch client capability. |
 | `com.apple.springboard.launchapplications` | `true` | SpringBoard app launch client capability. |
 | `com.apple.frontboard.launchapplications` | `true` | FrontBoard launch/relaunch actions. |
+| `com.apple.backboardd.debugapplications` | `true` | Debug options on a launch: `app launch --arg`, `--env`, `--language`, `--locale`. |
+| `com.apple.springboard.debugapplications` | `true` | Debug options on a launch: `app launch --arg`, `--env`, `--language`, `--locale`. |
+| `com.apple.frontboard.debugapplications` | `true` | Debug options on a launch: `app launch --arg`, `--env`, `--language`, `--locale`. |
 | `com.apple.frontboard.shutdown` | `true` | FrontBoard shutdown/relaunch action used by respring. |
 | `com.apple.springboard.opensensitiveurl` | `true` | SpringBoard URL opening profile; URL handling still depends on the OS. |
 | `com.apple.private.mobileinstall.allowedSPI` | `Browse`, `Lookup`, `Install`, `Uninstall`, `InstallForLaunchServices`, `UninstallForLaunchServices`, `CopyInstalledAppsForLaunchServices` | Allowed MobileInstallation SPI names: discovery, installation/removal, and LaunchServices-specific registration bookkeeping. |

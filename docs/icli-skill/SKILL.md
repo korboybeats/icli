@@ -22,6 +22,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Wake the screen | `icli button wake` (does not remove a passcode) |
 | Find which app is in front | `icli app frontmost` |
 | Find an app's bundle ID | `icli app search <name>` or `icli app list` |
+| Launch an app once with arguments, environment or a language | `icli app launch <bundle-id> --arg=-Flag --env NAME=VALUE --language fr --locale fr_FR` (stops it first) |
 | Launch an app and wait until it is in front | `icli app launch <bundle-id> --wait-foreground` (verified, with `pid`) |
 | Restart an app and prove a new process is in front | `icli app relaunch <bundle-id>` (reports `old_pids`, `pid`, `launched_at`) |
 | Open a URL or deep link | `icli url open <url>` or `icli app open <url> --bundle <bundle-id>` |
@@ -29,12 +30,16 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | List what is on screen | `icli ui tree` (add `--clickable-only`, `--limit N`) |
 | Tap a button by its label | `icli ui tap 'Label' --match exact` |
 | Tap by accessibility identifier | `icli ui tap --identifier <id>` |
+| Replace a field's text in one call | `icli ui fill 'Label' --value 'text'` (add `--submit` for Return) |
+| Find an element further down a list | `icli ui scroll-to 'Text' --match exact` |
+| Answer a permission or app alert | `icli ui alert accept` / `icli ui alert dismiss` |
 | Wait for an element to appear or disappear | `icli ui wait 'Text' --timeout 5` / `icli ui wait-gone 'Loading'` |
 | Tap or wait for text missing from the accessibility tree | `icli ui tap --source ocr 'Copy'` / `ui wait --source any 'Copy'` |
 | Wait for the screen to change and settle instead of sleeping | `icli screen wait --baseline /tmp/before.jpg --changed --stable` |
 | Find which element is at a point | `icli ui at <x> <y>` |
 | Tap, double-tap or long-press a point | `icli screen tap <x> <y>` / `double-tap` / `long-press --seconds 1` |
 | Swipe or scroll | `icli screen swipe --from-x X --from-y Y --to-x X --to-y Y` |
+| Scroll an exact distance, with no fling | `icli screen scroll-by down 200` |
 | Drag along a path | `icli screen drag --points '[{"x":10,"y":10},{"x":90,"y":40}]'` |
 | Type text into the focused field | `icli input paste 'text'` (fast, Unicode) or `icli input type 'text'` |
 | Press Return, Tab, arrows or a shortcut | `icli input key return` / `icli input key cmd+a` |

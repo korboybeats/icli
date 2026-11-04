@@ -938,6 +938,17 @@ bool icli_hid_drag(const double *xs, const double *ys, int count, double hold, d
     return hidTouch(xs[count - 1], ys[count - 1], IcliTouchEnded);
 }
 
+bool icli_hid_stroke(const double *xs, const double *ys, int count, double seconds, double rest) {
+    if (!xs || !ys || count < 2) return false;
+    if (!hidTouch(xs[0], ys[0], IcliTouchBegan)) return false;
+    for (int i = 1; i < count; i++) {
+        if (!hidTouch(xs[i], ys[i], IcliTouchMoved)) { hidTouch(xs[i], ys[i], IcliTouchEnded); return false; }
+        usleep((useconds_t)(seconds * 1000000 / (count - 1)));
+    }
+    usleep((useconds_t)(rest * 1000000));
+    return hidTouch(xs[count - 1], ys[count - 1], IcliTouchEnded);
+}
+
 bool icli_hid_swipe(double x1, double y1, double x2, double y2, double seconds, int steps) {
     double xs[] = {x1, x2}, ys[] = {y1, y2};
     return icli_hid_drag(xs, ys, 2, 0, seconds, steps);

@@ -110,6 +110,7 @@ For coordinate input, read the screen dimensions first. Coordinates are **points
 icli screen info
 icli screen tap 100 245
 icli screen swipe --from-x 200 --from-y 600 --to-x 200 --to-y 200
+icli screen scroll-by down 200                 # exactly 200 points, no fling
 icli screen pinch 200 400 --from 80 --to 240   # zoom in; swap the distances to zoom out
 icli screen drag --points '[{"x":54,"y":500},{"x":140,"y":480},{"x":240,"y":500}]'
 ```
@@ -158,6 +159,21 @@ Screenshot paths are on the device. Default screenshots have one image pixel per
 `screen describe` uses one capture for its JPEG and OCR results and collects accessibility elements separately. Check its component errors and `context_changed` before combining the results.
 
 OCR uses Apple's Vision framework. If system text recognition is unavailable, the command returns an `unavailable` error; that includes a process with no Metal device, such as one started over SSH on iOS 15, where Vision would otherwise crash. A successful scan with no recognized text returns an empty result.
+
+### Tapping, Filling and Scrolling to Elements
+
+`ui tap` taps only an unmistakable match. An exact match beats a partial one, then an enabled element, then one that can be tapped; an element whose tap point lies inside a better one counts as the same control. If several remain, nothing is tapped and the result is `error: ambiguous` with their `matches`. `--index N` skips this and picks among all matches.
+
+A quick swipe flings: a scroll view keeps moving after the finger lifts, so a 200-point `screen swipe` at the default speed moved Settings about 490 points. `screen scroll-by` and `screen swipe --no-momentum` slow the finger to a stop before it lifts. `scroll-by` also adds the distance iOS keeps before a scroll view starts moving, and lands within a few points of the distance asked for, or sooner where the content ends.
+
+```sh
+icli ui fill 'Email' --value 'me@example.com' --submit
+icli input paste 'replacement' --clear
+icli ui scroll-to 'Developer' --match exact
+icli ui alert accept
+```
+
+`ui fill` taps the field and waits for the on-screen keyboard before it selects all, deletes and sends the text. `ui scroll-to` fails with `error: not_found` and `reason` `end_of_content` or `max_scrolls`. `ui alert` reads SpringBoard's accessibility tree as well as the app's, because a system alert is not in the app's, then falls back to text recognition. It chooses from a list of allowing or refusing button names, and refuses prompts only the device's owner should answer, with `error: human_required`.
 
 ### Text Recognition Selectors
 

@@ -10,7 +10,8 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `screen tap <x> <y>` | Tap one point | | no | unlocked |
 | `screen double-tap <x> <y>` | Two taps | `--interval 0.1` | no | unlocked |
 | `screen long-press <x> <y>` | Press and hold | `--seconds 0.6` | no | unlocked |
-| `screen swipe` | Straight swipe | `--from-x --from-y --to-x --to-y` (all required), `--seconds 0.25`, `--steps 20` | no | unlocked |
+| `screen swipe` | Straight swipe | `--from-x --from-y --to-x --to-y` (all required), `--seconds 0.25`, `--steps 20`, `--no-momentum` | no | unlocked |
+| `screen scroll-by <up\|down\|left\|right> <points>` | Scroll content an exact distance by touch, with no fling; long distances take several strokes | `--x`, `--y` (a point in the scroll view) | no | unlocked |
 | `screen pinch` | Two-finger pinch around X Y | `X Y --from D --to D` (points apart; larger `--to` zooms in), `--angle 0`, `--seconds 0.4`, `--steps 20` | no | unlocked |
 | `screen drag` | Press, hold, then move along a path | four endpoint options **or** `--points '<JSON [{x,y},…]>'`, `--hold 0.5`, `--seconds 0.3`, `--steps 20` | no | unlocked |
 | `screen touch <down\|move\|up> <x> <y>` | One raw finger event; a gesture can span several calls | `--normalized` | no | unlocked |
@@ -30,7 +31,10 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | --- | --- | --- | --- | --- |
 | `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only` | no | unlocked |
 | `ui at <x> <y>` | Element at a point | | no | unlocked |
-| `ui tap [<text>]` | Find an element and tap its centre | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index 0` | no | unlocked |
+| `ui tap [<text>]` | Find an element and tap its centre; refuses ambiguous matches (`error: ambiguous`, with `matches`) | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index N` | no | unlocked |
+| `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit` | no | unlocked |
+| `ui scroll-to [<text>]` | Scroll until an element is on screen and report where; stops at the end of the content | same selectors, `--direction down`, `--max-scrolls 10`, `--x`, `--y` | no | unlocked |
+| `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action | no | unlocked |
 | `ui wait [<text>]` | Poll until the element appears | same selectors, `--timeout 10`, `--interval 0.3` | no | unlocked |
 | `ui wait-gone [<text>]` | Poll until the element disappears | same as `ui wait` | no | unlocked |
 
@@ -42,8 +46,8 @@ Selectors: `<text>` matches an element's label, identifier or value. Matching ig
 
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
-| `input paste <text>` | Send the whole string as Unicode key events. Does not touch the clipboard | | no | unlocked |
-| `input type <text>` | Send one grapheme at a time | `--delay-ms 30` | no | unlocked |
+| `input paste <text>` | Send the whole string as Unicode key events. Does not touch the clipboard | `--clear`, `--submit` | no | unlocked |
+| `input type <text>` | Send one grapheme at a time | `--delay-ms 30`, `--clear`, `--submit` | no | unlocked |
 | `input key <name>` | One key or chord | | no | unlocked |
 | `input hid <page> <usage>` | Raw HID usage: press (down, 100 ms, up), or only one edge | `--down`, `--up` | no | unlocked |
 

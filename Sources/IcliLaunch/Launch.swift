@@ -25,13 +25,25 @@ public func frontmostApp() -> [String: Any] {
 /// refusal (with the system shell's reason when it gave one), an app
 /// LaunchServices does not know, or an app that never came to the front is
 /// `IcliError.failed`.
-public func launchApp(_ bundleID: String) throws -> [String: Any] {
+///
+/// Arguments and environment variables reach a new process only, so a caller
+/// that passes them stops the app first.
+public func launchApp(
+    _ bundleID: String, arguments: [String] = [], environment: [String: String] = [:],
+) throws -> [String: Any] {
     let apps = try listApps()["apps"] as? [[String: Any]] ?? []
     guard !bundleID.isEmpty, apps.contains(where: { $0["bundle_id"] as? String == bundleID }) else {
         throw IcliError.failed("app not found: \(bundleID)")
     }
     var refusal: UnsafeMutablePointer<CChar>?
-    let result = icli_launch_app(bundleID, &refusal)
+    let result: IcliLaunchResult
+    if arguments.isEmpty, environment.isEmpty {
+        result = icli_launch_app(bundleID, &refusal)
+    } else {
+        let argumentJSON = String(decoding: try JSONSerialization.data(withJSONObject: arguments), as: UTF8.self)
+        let environmentJSON = String(decoding: try JSONSerialization.data(withJSONObject: environment), as: UTF8.self)
+        result = icli_launch_app_with_options(bundleID, argumentJSON, environmentJSON, &refusal)
+    }
     let reason = refusal.map { String(cString: $0) }
     free(refusal)
     switch result {

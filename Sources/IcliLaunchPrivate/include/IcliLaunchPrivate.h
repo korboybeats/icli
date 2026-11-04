@@ -29,6 +29,10 @@ IcliLockStatus icli_lock_status(void);
 /// On a refusal, `reason` (when not NULL) receives the system shell's
 /// explanation when it gave one (PineBoard on tvOS), to be released with free().
 IcliLaunchResult icli_launch_app(const char *bundle_id, char **reason);
+/// FrontBoard's open request with debug options, which reach the new process
+/// only: JSON for an array of arguments and an object of environment variables.
+IcliLaunchResult icli_launch_app_with_options(
+    const char *bundle_id, const char *arguments_json, const char *environment_json, char **reason);
 char *icli_frontmost_app_json(void);
 
 #ifdef __cplusplus

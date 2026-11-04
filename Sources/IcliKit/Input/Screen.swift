@@ -376,14 +376,19 @@ public struct ElementSelector {
     public let role: String?
     public let match: String
     public let index: Int
+    /// A caller that names an index picks among the matches itself, so a tap
+    /// skips the ranking and the refusal of ambiguous matches.
+    public let indexIsExplicit: Bool
 
     public init(
         text: String?,
         identifier: String? = nil,
         role: String? = nil,
         match: String = "contains",
-        index: Int = 0,
+        index: Int? = nil,
     ) throws {
+        indexIsExplicit = index != nil
+        let index = index ?? 0
         guard text?.isEmpty == false || identifier?.isEmpty == false, ["contains", "exact"].contains(match),
               index >= 0
         else {
@@ -454,7 +459,7 @@ private func ocrElements(_ selector: ElementSelector, languages: [String]) throw
 
 /// The matches and the source that produced them. `any` falls through to OCR
 /// only when the tree answered without a match; a failed tree query still stops.
-private func selectedElements(
+func selectedElements(
     _ selector: ElementSelector, source: ElementSource, languages: [String],
 ) throws -> (hits: [[String: Any]], source: ElementSource) {
     switch source {
@@ -469,6 +474,61 @@ private func selectedElements(
     }
 }
 
+/// AX points are Double, OCR points CGFloat; `as? Double` rejects a CGFloat.
+func elementCoordinate(_ value: Any?) -> Double? {
+    switch value {
+    case let value as Double: value
+    case let value as CGFloat: Double(value)
+    default: nil
+    }
+}
+
+/// The matches a tap could mean: an exact match beats a partial one, then an
+/// enabled element, then one that can be tapped. An element whose tap point lies
+/// inside a better one is the same control described twice, so it does not count.
+func bestMatches(_ hits: [[String: Any]], _ selector: ElementSelector) -> [[String: Any]] {
+    func isExact(_ element: [String: Any]) -> Bool {
+        guard selector.identifier == nil, let text = selector.text else { return true }
+        return ["label", "identifier", "value"].contains {
+            (element[$0] as? String ?? "").compare(text, options: .caseInsensitive) == .orderedSame
+        }
+    }
+    func rank(_ element: [String: Any]) -> [Int] {
+        // OCR text has no enabled or clickable state, so only exactness ranks it.
+        [isExact(element) ? 0 : 1, element["enabled"] as? Bool == false ? 1 : 0, element["clickable"] as? Bool == false ? 1 : 0]
+    }
+    guard let best = hits.map(rank).min(by: { $0.lexicographicallyPrecedes($1) }) else { return [] }
+    let tied = hits.filter { rank($0) == best }.enumerated().sorted { a, b in
+        let lengths = [a.element, b.element].map { ($0["label"] as? String ?? "").count }
+        return lengths[0] != lengths[1] ? lengths[0] < lengths[1] : a.offset < b.offset
+    }.map(\.element)
+    var kept: [[String: Any]] = []
+    for element in tied {
+        let nested = kept.contains { outer in
+            guard let frame = outer["frame"] as? [String: Any],
+                  let left = elementCoordinate(frame["x"]), let top = elementCoordinate(frame["y"]),
+                  let width = elementCoordinate(frame["width"]), let height = elementCoordinate(frame["height"]),
+                  let x = elementCoordinate(element["x"]), let y = elementCoordinate(element["y"])
+            else { return false }
+            return x >= left - 1 && x <= left + width + 1 && y >= top - 1 && y <= top + height + 1
+        }
+        if !nested { kept.append(element) }
+    }
+    return kept
+}
+
+func ambiguousMatches(_ matches: [[String: Any]]) -> IcliError {
+    .commandFailed([
+        "error": "ambiguous",
+        "message": "\(matches.count) elements match equally well, so nothing was tapped; "
+            + "use more of the text, --match exact, --identifier, --role or --index",
+        "matches": matches.map { element in
+            element.filter { ["label", "identifier", "value", "role", "x", "y"].contains($0.key) }
+        },
+        "status": 1,
+    ])
+}
+
 public func tapElement(
     _ selector: ElementSelector,
     source: ElementSource = .ax,
@@ -476,17 +536,17 @@ public func tapElement(
 ) throws -> [String: Any] {
     try requirePointInput()
     let (hits, used) = try selectedElements(selector, source: source, languages: languages)
-    guard hits.indices.contains(selector.index) else { throw IcliError.failed("element not found") }
-    let hit = hits[selector.index]
-    // AX points are Double, OCR points CGFloat; `as? Double` rejects a CGFloat.
-    func coordinate(_ value: Any?) -> Double? {
-        switch value {
-        case let value as Double: value
-        case let value as CGFloat: Double(value)
-        default: nil
-        }
+    let hit: [String: Any]
+    if selector.indexIsExplicit {
+        guard hits.indices.contains(selector.index) else { throw IcliError.failed("element not found") }
+        hit = hits[selector.index]
+    } else {
+        let best = bestMatches(hits, selector)
+        guard let first = best.first else { throw IcliError.failed("element not found") }
+        guard best.count == 1 else { throw ambiguousMatches(best) }
+        hit = first
     }
-    guard let x = coordinate(hit["x"]), let y = coordinate(hit["y"]) else {
+    guard let x = elementCoordinate(hit["x"]), let y = elementCoordinate(hit["y"]) else {
         throw IcliError.failed("element has no tap point")
     }
     _ = try tap(x: x, y: y)

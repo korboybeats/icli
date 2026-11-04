@@ -108,8 +108,22 @@ extension App {
         @Argument var bundleID: String
         @Flag(help: "Return only once RunningBoard verifies the app in front, with its PID.") var waitForeground = false
         @Option(help: "Seconds --wait-foreground waits, 0–60.") var timeout: Double = 15
+        @Option(name: .customLong("arg"), help: "Launch argument for this launch, repeatable; write a dash value as --arg=-Flag. Stops a running app.")
+        var arguments: [String] = []
+        @Option(name: .customLong("env"), help: "NAME=VALUE environment variable for this launch, repeatable. Stops a running app.")
+        var environment: [String] = []
+        @Option(help: "Run in this language for this launch, such as fr or pt-BR. Stops a running app.") var language: String?
+        @Option(help: "Use this region format for this launch, such as fr_FR. Stops a running app.") var locale: String?
         func run() {
-            emit(output) { waitForeground ? try launchAppVerified(bundleID, timeout: timeout) : try launchApp(bundleID) }
+            emit(output) {
+                if !arguments.isEmpty || !environment.isEmpty || language != nil || locale != nil {
+                    return try launchAppWithOptions(
+                        bundleID, arguments: arguments, environment: environment, language: language, locale: locale,
+                        waitForeground: waitForeground, timeout: timeout,
+                    )
+                }
+                return waitForeground ? try launchAppVerified(bundleID, timeout: timeout) : try launchApp(bundleID)
+            }
         }
     }
 

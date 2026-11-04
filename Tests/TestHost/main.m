@@ -163,6 +163,10 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     self.state[@"drag_x"] = @(self.dragTarget.center.x);
     self.state[@"drag_y"] = @(self.dragTarget.center.y);
     self.state[@"counter"] = self.state[@"counter"] ?: @0;
+    self.state[@"launch_arguments"] = NSProcessInfo.processInfo.arguments;
+    self.state[@"launch_env"] = NSProcessInfo.processInfo.environment[@"ICLI_TEST"] ?: @"";
+    self.state[@"language"] = NSLocale.preferredLanguages.firstObject ?: @"";
+    self.state[@"locale"] = NSLocale.currentLocale.localeIdentifier ?: @"";
     self.status.text = [NSString stringWithFormat:@"Count: %@",self.state[@"counter"]];
     self.status.accessibilityValue = [self.state[@"counter"] stringValue];
     [[NSFileManager defaultManager] createDirectoryAtPath:StatePath.stringByDeletingLastPathComponent
@@ -186,6 +190,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
         if (view.tag == 7301) [view removeFromSuperview];
     }
     [self.input resignFirstResponder];
+    if (self.presentedViewController) [self dismissViewControllerAnimated:NO completion:nil];
     [self.state removeAllObjects];
     self.input.text = @"";
     self.delayed.hidden = YES;
@@ -283,6 +288,39 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
             : ([url.host isEqual:@"verified-label"] ? @"counter.other" : @"counter.increment");
         [fixture addTarget:self action:@selector(verifiedOtherTap:) forControlEvents:UIControlEventTouchUpInside];
         [self.view addSubview:fixture];
+    }
+    else if([url.host isEqual:@"permission-camera"] || [url.host isEqual:@"permission-microphone"]) {
+        // A real permission alert, drawn by the system outside this app. iOS asks
+        // once per app, so this suits a manual check rather than a repeatable case.
+        [AVCaptureDevice requestAccessForMediaType:[url.host hasSuffix:@"camera"] ? AVMediaTypeVideo : AVMediaTypeAudio
+                                 completionHandler:^(BOOL granted) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.state[@"permission_granted"] = @(granted);
+                [self save];
+            });
+        }];
+    }
+    else if([url.host isEqual:@"partial-match"]) {
+        UIButton *fixture = [UIButton buttonWithType:UIButtonTypeSystem];
+        fixture.tag = 7301;
+        fixture.frame = CGRectMake(210, 460, 174, 44);
+        [fixture setTitle:@"Increment more" forState:UIControlStateNormal];
+        fixture.accessibilityIdentifier = @"counter.more";
+        [fixture addTarget:self action:@selector(verifiedOtherTap:) forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:fixture];
+    }
+    else if([url.host isEqual:@"alert"] || [url.host isEqual:@"alert-passcode"]) {
+        BOOL passcode = [url.host isEqual:@"alert-passcode"];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:passcode ? @"Enter iPhone Passcode" : @"Fixture alert"
+                                                                       message:nil
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        for (NSString *title in @[@"Don\u2019t Allow", @"Allow"]) {
+            [alert addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                self.state[@"alert_result"] = title;
+                [self save];
+            }]];
+        }
+        [self presentViewController:alert animated:NO completion:nil];
     }
     else if([url.host isEqual:@"focus"]) [self.input becomeFirstResponder];
     else if([url.host isEqual:@"blur"]) [self.input resignFirstResponder];

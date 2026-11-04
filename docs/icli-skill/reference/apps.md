@@ -9,7 +9,7 @@
 | `app running` | Live app processes with PIDs, from RunningBoard when available (`source` reports a process-list fallback) | | no | unlocked |
 | `app frontmost` | Foreground app bundle ID with `verified` and `source`; the home screen may report `com.apple.springboard` with `verified: false` | | no | unlocked |
 | `app info <bundle-id>` | LaunchServices record: bundle path, executable, version, entitlements | | no | unlocked |
-| `app launch <bundle-id>` | Launch and wait up to 5 s for the app to be frontmost | | no | unlocked |
+| `app launch <bundle-id>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground` | no | unlocked |
 | `app open <url>` | Open a URL, optionally in a specific app | `--bundle <bundle-id>` | no | unlocked |
 | `app kill <bundle-id>` | SIGTERM the app's processes and wait for them to exit | `--force` required | no | unlocked |
 | `app install <path>` | `.deb` → native package install; `.ipa` → install into the bootstrap and register; `.app` → register | `--container` installs an `.ipa` into its own app container (see below); `--registration user\|system` (default user) | required for .deb and .ipa | unlocked |

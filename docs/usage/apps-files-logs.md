@@ -30,6 +30,15 @@ DEB operations read archives and update the bootstrap's dpkg database directly. 
 
 Maintainer scripts and package triggers are not executed. Transactions report skipped scripts in `scripts_not_run` and register installed app bundles through LaunchServices. Packages that require script-driven setup need that setup handled separately; icli is not a complete dpkg or APT replacement.
 
+### Launch Arguments and Environment
+
+`app launch` can pass launch arguments and environment variables, and run an app in another language or region format. They last for that launch and reach a new process only, so a running app is stopped first. Write a value that starts with a dash as `--arg=-Flag`.
+
+```sh
+icli app launch example.bundle.id --arg=-FeatureFlag --arg=YES --env API_URL=https://staging.example.com
+icli app launch example.bundle.id --language fr --locale fr_FR
+```
+
 ### Verified Launches and Crash Checks
 
 `app launch --wait-foreground` returns only after RunningBoard verifies the app in front, with its `pid`. `app relaunch <bundle-id>` stops the app, launches it, verifies a new process is in front, and reports `old_pids`, `pid` and `launched_at`. Pass `launched_at` to `log crashes --since`, which also takes epoch seconds or an age such as `30s`, `5m` or `2h`.
