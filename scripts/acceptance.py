@@ -768,6 +768,15 @@ def touch_scroll_exact(d):
     assert long['strokes'] > 1, long
     time.sleep(0.3)
     assert abs(d.state()['scroll_y'] - 700) <= 4, d.state()['scroll_y']
+    # Sideways, and over several strokes: each must stop before the next starts.
+    for points in (167, 1000):
+        d.fixture()
+        d.cli('screen', 'scroll-by', 'right', str(points), '--x', '200', '--y', '800')
+        time.sleep(0.5)
+        assert abs(d.state().get('scroll_x', 0) - points) <= 2, (points, d.state().get('scroll_x'))
+    d.cli('screen', 'scroll-by', 'left', '500', '--x', '200', '--y', '800')
+    time.sleep(0.5)
+    assert abs(d.state()['scroll_x'] - 500) <= 2, d.state()['scroll_x']
     d.cli('screen', 'scroll-by', 'sideways', '10', expected=1)
     d.cli('screen', 'scroll-by', 'down', '0', expected=1)
 

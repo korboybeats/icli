@@ -158,6 +158,18 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
         [scroll addSubview:row];
     }
     [self.view addSubview:scroll];
+    // A sideways list: 20 columns 80 points apart in a 360-point viewport.
+    UIScrollView *columns = [[UIScrollView alloc] initWithFrame:CGRectMake(24, 770, 360, 60)];
+    columns.contentSize = CGSizeMake(1600, 60);
+    columns.backgroundColor = UIColor.secondarySystemBackgroundColor;
+    columns.accessibilityIdentifier = @"scroll.columns";
+    columns.delegate = self;
+    for(int i=0;i<20;i++) {
+        UILabel *column = [[UILabel alloc] initWithFrame:CGRectMake(i*80+5, 10, 70, 40)];
+        column.text = [NSString stringWithFormat:@"Col %d",i];
+        [columns addSubview:column];
+    }
+    [self.view addSubview:columns];
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(360, 80)];
     UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
         [UIColor.whiteColor setFill]; [context fillRect:CGRectMake(0,0,360,80)];
@@ -287,7 +299,8 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
 }
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     if(scrollView==self.input)return;
-    self.state[@"scroll_y"]=@(scrollView.contentOffset.y);
+    if([scrollView.accessibilityIdentifier isEqual:@"scroll.columns"]) self.state[@"scroll_x"]=@(scrollView.contentOffset.x);
+    else self.state[@"scroll_y"]=@(scrollView.contentOffset.y);
     [self save];
 }
 - (void)textViewDidChange:(UITextView *)textView { [self save]; }

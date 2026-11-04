@@ -324,7 +324,10 @@ static BOOL isElement(id value) {
     return value && CFGetTypeID((__bridge CFTypeRef)value) != CFArrayGetTypeID();
 }
 
-char *icli_ax_scroll_page_json(int pid, double x, double y, const char *direction) {
+// The scroll view the first page of a search moved.
+static id sPagedView;
+
+char *icli_ax_scroll_page_json(int pid, double x, double y, const char *direction, bool sameView) {
     uint32_t action = 0, ancestorKey = 0;
     for (size_t i = 0; direction && i < sizeof(kScrollDirections) / sizeof(*kScrollDirections); i++) {
         if (strcmp(direction, kScrollDirections[i].name) == 0) {
@@ -342,9 +345,19 @@ char *icli_ax_scroll_page_json(int pid, double x, double y, const char *directio
     double fx = x, fy = y;
     icli_screen_point_to_fixed(x, y, &fx, &fy);
     hitTest(root, &hit, (float)fx, (float)fy);
-    id ancestor = hit ? attribute(hit, ancestorKey) : nil;
-    if (hit) CFRelease(hit);
-    if (!isElement(ancestor)) {
+    NSMutableArray *candidates = [NSMutableArray array];
+    if (hit) [candidates addObject:(__bridge_transfer id)hit];
+    // The scroll view this direction, if it is the one already being paged: past the
+    // end of a list an element can name another, such as one in SpringBoard.
+    if (!sameView) sPagedView = nil;
+    id (^usable)(id) = ^id(id element) {
+        id candidate = attribute((__bridge AXElement)element, ancestorKey);
+        if (!isElement(candidate)) return nil;
+        if (sameView && !(sPagedView && CFEqual((__bridge CFTypeRef)candidate, (__bridge CFTypeRef)sPagedView))) return nil;
+        return candidate;
+    };
+    id ancestor = hit ? usable(candidates[0]) : nil;
+    if (!ancestor) {
         // The point can fall between rows or on something outside the list:
         // the nearest elements tell which scroll view is meant.
         BOOL fixedSpace = framesInFixedSpace(pid);
@@ -360,14 +373,31 @@ char *icli_ax_scroll_page_json(int pid, double x, double y, const char *directio
             [near addObject:@[@(hypot(dx, dy)), element]];
         }
         [near sortUsingComparator:^NSComparisonResult(NSArray *a, NSArray *b) { return [a[0] compare:b[0]]; }];
-        for (NSUInteger i = 0; i < near.count && i < 8 && !isElement(ancestor); i++) {
-            ancestor = attribute((__bridge AXElement)near[i][1], ancestorKey);
-        }
+        for (NSUInteger i = 0; i < near.count && i < 8; i++) [candidates addObject:near[i][1]];
+        for (NSUInteger i = hit ? 1 : 0; i < candidates.count && !ancestor; i++) ancestor = usable(candidates[i]);
     }
     CFRelease(root);
-    if (!isElement(ancestor)) return icli_json(@{@"moved": @NO, @"ancestor": @NO});
-    int error = performAction((__bridge AXElement)ancestor, action);
-    return icli_json(@{@"moved": @(error == 0), @"ancestor": @YES, @"ax_error": @(error)});
+    if (isElement(ancestor)) {
+        int error = performAction((__bridge AXElement)ancestor, action);
+        if (error == 0) sPagedView = ancestor;
+        return icli_json(@{@"moved": @(error == 0), @"ancestor": @YES, @"ax_error": @(error)});
+    }
+    // No page this way. A scroll view that pages some other way still says how
+    // big it is, so a touch stroke can be kept short enough not to skip anything.
+    NSMutableDictionary *result = [@{@"moved": @NO, @"ancestor": @NO} mutableCopy];
+    for (id element in candidates) {
+        for (size_t i = 0; i < sizeof(kScrollDirections) / sizeof(*kScrollDirections); i++) {
+            id other = attribute((__bridge AXElement)element, kScrollDirections[i].ancestor);
+            id value = isElement(other) ? attribute((__bridge AXElement)other, 2057) : nil;
+            CGRect visible;
+            if (value && getAXValue((__bridge CFTypeRef)value, 3, &visible) && !CGRectIsEmpty(visible)) {
+                result[@"viewport_width"] = @(visible.size.width);
+                result[@"viewport_height"] = @(visible.size.height);
+                return icli_json(result);
+            }
+        }
+    }
+    return icli_json(result);
 }
 
 char *icli_ax_reveal_json(int pid, const char *label, const char *identifier, double x, double y) {

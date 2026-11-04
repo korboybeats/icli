@@ -2,7 +2,6 @@ import Foundation
 import IcliPrivate
 import UIKit
 
-/// iOS keeps this many points of a drag before a scroll view starts moving.
 /// How far a scroll view's pan runs behind the finger, measured with the stroke
 /// below: a stroke of this plus n points scrolls n, to within a point.
 private let scrollSlop = 11.0
@@ -81,7 +80,11 @@ public func scrollBy(direction: String, points: Double, x: Double? = nil, y: Dou
     try validatePoint(x1, y1)
     try validatePoint(x2, y2)
     let path = strokePath(x1: x1, y1: y1, x2: x2, y2: y2)
-    for _ in 0 ..< strokes {
+    for index in 0 ..< strokes {
+        // A stroke leaves the content drifting for a moment: back to back, each sideways
+        // stroke after the first scrolled a point too far. A 30 ms pause ends that;
+        // waiting for frames to stop cannot, as TestHost never stopped drawing.
+        if index > 0 { Thread.sleep(forTimeInterval: 0.03) }
         guard icli_hid_stroke(path.xs, path.ys, Int32(path.xs.count), path.seconds, 0) else {
             throw IcliError.failed("hid stroke unavailable")
         }
@@ -89,8 +92,27 @@ public func scrollBy(direction: String, points: Double, x: Double? = nil, y: Dou
     return ["direction": direction, "points": points, "strokes": strokes]
 }
 
+/// Runs `body` again while RunningBoard is between two focal apps, which it can be
+/// for a few hundred ms (see `unverifiedFrontmost`), so that one moment fails nothing.
+private func throughAppSwitch<T>(_ body: () throws -> T) throws -> T {
+    let deadline = ProcessInfo.processInfo.systemUptime + 2
+    while true {
+        do {
+            return try body()
+        } catch let IcliError.failed(message)
+            where message == unverifiedFrontmost && ProcessInfo.processInfo.systemUptime < deadline
+        {
+            Thread.sleep(forTimeInterval: 0.03)
+        }
+    }
+}
+
 /// What is on screen and where, to tell whether a stroke moved anything.
 private func screenSignature(source: ElementSource, languages: [String]) throws -> String {
+    try throughAppSwitch { try currentSignature(source: source, languages: languages) }
+}
+
+private func currentSignature(source: ElementSource, languages: [String]) throws -> String {
     if source == .ocr {
         let blocks = try recognizeScreen(languages: languages, minConfidence: 0.3)["blocks"] as? [[String: Any]] ?? []
         return blocks.map { ($0["text"] as? String ?? "") }.joined(separator: "\n")
@@ -127,7 +149,7 @@ private struct ScreenReading {
     let signature: String
 
     init() throws {
-        let result = try uiElements(maxElements: 2000)
+        let result = try throughAppSwitch { try uiElements(maxElements: 2000) }
         guard result["truncated"] as? Bool != true else {
             throw IcliError.failed("AX query was truncated; narrow the screen before selecting an element")
         }
@@ -164,7 +186,8 @@ public func scrollToElement(
     try requirePointInput()
     guard (1 ... 100).contains(maxScrolls) else { throw IcliError.failed("max-scrolls must be 1–100") }
     let metrics = icli_screen_metrics()
-    let stroke = (direction == "left" || direction == "right" ? metrics.width : metrics.height) * 0.45
+    let horizontal = direction == "left" || direction == "right"
+    var stroke = (horizontal ? metrics.width : metrics.height) * 0.45
     let endOfContent = { (scrolls: Int) in
         IcliError.commandFailed([
             "error": "not_found", "reason": "end_of_content", "scrolls": scrolls, "status": 1,
@@ -173,7 +196,7 @@ public func scrollToElement(
     }
     var frames = FrameGate()
     defer { frames.close() }
-    var scrolls = 0, pages = 0
+    var scrolls = 0, pages = 0, rechecked = false
     var reading: ScreenReading?
     func pick(_ hits: [[String: Any]]) -> (element: [String: Any], count: Int)? {
         let best = selector.indexIsExplicit
@@ -188,11 +211,11 @@ public func scrollToElement(
             reading = current
             (hits, used) = (current.elements.filter(selector.matches), .ax)
         } else {
-            (hits, used) = try selectedElements(selector, source: source, languages: languages)
+            (hits, used) = try throughAppSwitch { try selectedElements(selector, source: source, languages: languages) }
         }
         if var found = pick(hits) {
             var revealed = false
-            if used == .ax, let pid = try? onScreenPID(), let px = elementCoordinate(found.element["x"]),
+            if used == .ax, let pid = try? throughAppSwitch(onScreenPID), let px = elementCoordinate(found.element["x"]),
                let py = elementCoordinate(found.element["y"])
             {
                 // Found with its tap point clipped by the list's edge or a bar: a tap there would miss.
@@ -219,33 +242,47 @@ public func scrollToElement(
                 "message": "scrolled \(direction) \(scrolls) times without finding it; raise --max-scrolls or try the other direction",
             ])
         }
-        let before = try reading?.signature ?? screenSignature(source: source, languages: languages)
+        // The tree tells when a page has finished, also when the search reads text
+        // from the screen: a tree read is 30 ms, recognizing the screen far longer.
+        let before = reading?.signature ?? (try? ScreenReading())?.signature
         // The page action first: no touch, no momentum, and a page never skips content.
         frames.mark()
-        let page = (try? onScreenPID()).flatMap { pid in
+        let page = (try? throughAppSwitch(onScreenPID)).flatMap { pid in
             try? decodeBridgeJSON(takeCString(icli_ax_scroll_page_json(
-                pid, x ?? metrics.width / 2, y ?? metrics.height / 2, direction)), "AX scroll")
+                pid, x ?? metrics.width / 2, y ?? metrics.height / 2, direction, pages > 0)), "AX scroll")
         }
         if page?["moved"] as? Bool == true {
-            if source == .ax {
-                if let after = try readingAfterChange(from: before, frames: &frames) {
-                    reading = after
-                    scrolls += 1
-                    pages += 1
-                    continue
-                }
-            } else {
-                if !frames.waitStill(quiet: 0.15, limit: 2) { Thread.sleep(forTimeInterval: 0.35) }
+            let after = try before.flatMap { try readingAfterChange(from: $0, frames: &frames) }
+            if source == .ax, let after {
+                reading = after
                 scrolls += 1
                 pages += 1
-                if try screenSignature(source: source, languages: languages) != before { continue }
-                throw endOfContent(scrolls)
+                continue
+            }
+            if source != .ax {
+                // Moved, by accessibility's word; where the tree shows nothing of it,
+                // the screen going still says the page is done.
+                if after == nil, !frames.waitStill(quiet: 0.15, limit: 2) { Thread.sleep(forTimeInterval: 0.35) }
+                scrolls += 1
+                pages += 1
+                continue
             }
         } else if pages > 0 {
-            // It has been scrolling this view, so no ancestor left means the end.
+            // It has been scrolling this view, so no ancestor left means the end. The
+            // tree has once been seen to lag a row behind there, so it is read again.
+            if source == .ax, !rechecked {
+                rechecked = true
+                reading = try ScreenReading()
+                continue
+            }
             throw endOfContent(scrolls)
         }
-        // Accessibility cannot scroll this view: a stroke, and the screen says whether it moved.
+        // Accessibility cannot scroll this view: a stroke, and the screen says whether it
+        // moved. Three quarters of the view's size, where it is known, keeps the screens
+        // overlapping so no row is skipped.
+        if let extent = page?[horizontal ? "viewport_width" : "viewport_height"] as? Double, extent >= 40 {
+            stroke = min(stroke, extent * 0.75)
+        }
         reading = nil
         let settledBefore = try settledSignature(source: source, languages: languages)
         _ = try scrollBy(direction: direction, points: stroke, x: x, y: y)

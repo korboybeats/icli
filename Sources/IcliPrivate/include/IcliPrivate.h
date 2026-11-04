@@ -82,8 +82,9 @@ bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool n
 char *icli_ax_elements_json(int pid, int max_elements);
 /// Scrolls the scroll view at or nearest a point by one page with accessibility's
 /// own action: direction is down, up, left or right. moved is false at the end of
-/// the content or where accessibility cannot scroll that view.
-char *icli_ax_scroll_page_json(int pid, double x, double y, const char *direction);
+/// the content or where accessibility cannot scroll that view. With sameView, only
+/// the scroll view the last page moved is paged.
+char *icli_ax_scroll_page_json(int pid, double x, double y, const char *direction, bool sameView);
 /// Scrolls an element into view when its tap point is clipped; the element is the
 /// one with this label and identifier at this point in the element list.
 char *icli_ax_reveal_json(int pid, const char *label, const char *identifier, double x, double y);
