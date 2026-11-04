@@ -13,7 +13,7 @@ rm -rf "$stage"
 app="$stage$PREFIX/Applications/IcliTestHost.app"
 mkdir -p "$app" "$stage/DEBIAN"
 xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
-  -fobjc-arc -fmodules -fmodules-cache-path=.build/module-cache -framework Foundation -framework UIKit -framework Vision -framework AVFoundation -framework Security \
+  -fobjc-arc -fmodules -fmodules-cache-path=.build/module-cache -framework Foundation -framework UIKit -framework Vision -framework AVFoundation -framework Security -framework CoreLocation \
   Tests/TestHost/main.m -o "$app/IcliTestHost"
 cp Tests/TestHost/Info.plist "$app/Info.plist"
 ldid -STests/TestHost/entitlements.plist "$app/IcliTestHost"

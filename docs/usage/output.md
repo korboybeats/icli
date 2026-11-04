@@ -10,6 +10,14 @@ Most commands reject execution while the device is locked or the screen is off. 
 
 Audio buttons try hardware events first and fall back to the system audio controller when needed. Their JSON reports the method and resulting state. `button mute` toggles the active audio category's mute state; physical ringer-switch behavior has not been verified.
 
+## Test Runs
+
+`icli status` returns lock and screen state, the app in front, whether the keyboard, a SpringBoard overlay or an owner-only prompt is up, and `springboard_pid` and `boot_time`. A runner that compares the last two between steps knows another agent resprang or rebooted the device under it.
+
+`icli lease acquire --owner <name> --ttl <seconds>` claims the device: until the lease is released or runs out, icli commands without its token fail with exit 75 and `error: leased`. Pass the printed `token` as `ICLI_LEASE`. `lease` and `status` always run.
+
+`ICLI_FAILURE_ARTIFACTS=<dir>` makes every failed command save `error.json`, `screen.jpg` and `tree.json` in a new folder under `<dir>`, named in the error's `artifacts`.
+
 ## Paths on RootHide
 
 icli reads and writes real filesystem paths. On RootHide, the bootstrap's shell, `scp`, and other tools treat `/` as the bootstrap root and reach the real filesystem under `/rootfs`. A file that icli writes to `/tmp/screen.jpg` therefore appears in the shell as `/rootfs/tmp/screen.jpg`. To pass a file from the shell to icli, prefix its path with the `jbroot` value that `icli env` reports.

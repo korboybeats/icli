@@ -19,7 +19,7 @@ struct Batch: ParsableCommand {
 
         Prints one JSON report: ok, completed, failed_step, and for each step its \
         result, exit_code and elapsed_ms. The exit status is the failed step's, 0 when every step passed. A step that crashes \
-        ends the whole batch without a report. batch, probe, tests and 'screen shot --stdout' \
+        ends the whole batch without a report. batch, session, probe, tests and 'screen shot --stdout' \
         cannot be steps.
         """,
     )
@@ -61,7 +61,7 @@ struct Batch: ParsableCommand {
     }
 }
 
-private struct BatchStep {
+struct BatchStep {
     let argv: [String]
     let expect: [String: Any]
     let delay: TimeInterval
@@ -72,12 +72,12 @@ private struct BatchStep {
         guard let argv = fields["argv"] as? [String], let command = argv.first else {
             throw IcliError.failed("step \(index): needs a non-empty list of string arguments")
         }
-        guard !["batch", "probe", "tests"].contains(command) else {
-            throw IcliError.failed("step \(index): \(command) cannot run inside a batch")
+        guard !["batch", "session", "probe", "tests"].contains(command) else {
+            throw IcliError.failed("step \(index): \(command) cannot run inside a batch or session")
         }
         // Its JPEG would go to the batch's stdout; refuse it before any step runs.
         guard !(argv.starts(with: ["screen", "shot"]) && argv.contains("--stdout")) else {
-            throw IcliError.failed("step \(index): screen shot --stdout cannot run inside a batch")
+            throw IcliError.failed("step \(index): screen shot --stdout cannot run inside a batch or session")
         }
         let known: Set = ["argv", "expect", "delay_ms", "continue_on_error"]
         if let unknown = fields.keys.first(where: { !known.contains($0) }) {
@@ -99,6 +99,7 @@ private struct BatchStep {
     func execute() -> [String: Any] {
         let start = ProcessInfo.processInfo.systemUptime
         Envelope.capturing = true
+        Envelope.argv = argv
         Envelope.capturedResult = nil
         Envelope.capturedStatus = 0
         var parseError: String?

@@ -151,12 +151,15 @@ icli screen scroll 400 500 --dy 300
 icli screen shot --output /tmp/screen.jpg
 icli screen shot --base64
 icli screen ocr
+icli screen ocr --region 0,100,430,60 --fast --lang en-US
 icli screen describe
 ```
 
 Screenshot paths are on the device. Default screenshots have one image pixel per point. Add `--native-resolution` for native pixel dimensions; the result includes a `coordinate_scale` to relate pixels to points.
 
 `screen describe` uses one capture for its JPEG and OCR results and collects accessibility elements separately. Check its component errors and `context_changed` before combining the results.
+
+`--region x,y,width,height` reads only that rectangle, in points, and reports blocks in screen coordinates. `--fast` uses Vision's fast recognition level, which Apple documents as quicker and less accurate. On an iPhone 15 Pro Max a full read took about 0.5 s, `--fast --lang en-US` about 0.2 s.
 
 OCR uses Apple's Vision framework. If system text recognition is unavailable, the command returns an `unavailable` error; that includes a process with no Metal device, such as one started over SSH on iOS 15, where Vision would otherwise crash. A successful scan with no recognized text returns an empty result.
 
@@ -173,7 +176,16 @@ icli ui scroll-to 'Developer' --match exact
 icli ui alert accept
 ```
 
-`ui fill` taps the field and waits for the on-screen keyboard before it selects all, deletes and sends the text. `ui scroll-to` fails with `error: not_found` and `reason` `end_of_content` or `max_scrolls`. `ui alert` reads SpringBoard's accessibility tree as well as the app's, because a system alert is not in the app's, then falls back to text recognition. It chooses from a list of allowing or refusing button names, and refuses prompts only the device's owner should answer, with `error: human_required`.
+`ui fill` taps the field and waits for the on-screen keyboard before it selects all, deletes and sends the text. `ui scroll-to` fails with `error: not_found` and `reason` `end_of_content` or `max_scrolls`. `ui alert` reads SpringBoard's accessibility tree as well as the app's, because a system alert is not in the app's, then falls back to text recognition. It chooses from a list of allowing or refusing button names, and refuses prompts only the device's owner should answer, with `error: human_required`. A tap made while the alert is still animating in is dropped, so `ui alert` waits for the alert to close. It taps once more when the same alert, with the same button and title, is still there after a second (`attempts: 2`), and fails with `error: alert_open` if it stays.
+
+### Waiting for the Result of an Action
+
+`screen tap`, `ui tap`, `ui fill`, `ui alert` and `ui back` take `--expect <text>`, which waits after the action until an element whose label, identifier or value contains the text is on screen, or `--expect-gone <text>`, which waits until none does. The wait is in the result as `expect`. If it runs out (`--expect-timeout`, default 10 s), the command exits 1 with `error: expect_failed`, and its `action` shows that the action itself ran.
+
+```sh
+icli ui tap 'Sign In' --expect 'Welcome'
+icli screen tap 200 640 --expect-gone 'Loading' --expect-timeout 20
+```
 
 ### What Is on Screen
 
@@ -222,10 +234,18 @@ icli screen wait --baseline /tmp/before.jpg --changed --stable
 
 ### Batches
 
-`icli batch` reads a JSON array of steps from stdin and runs them in one process, stopping at the first failure. A step is an argument list or an object with `argv`, and optionally `expect` (result fields that must match; dotted keys read nested fields), `delay_ms` and `continue_on_error`. The result lists each step's `result`, `exit_code` and `elapsed_ms`; the exit status is the first failed step's. `batch`, `probe`, `tests` and `screen shot --stdout` cannot be steps.
+`icli batch` reads a JSON array of steps from stdin and runs them in one process, stopping at the first failure. A step is an argument list or an object with `argv`, and optionally `expect` (result fields that must match; dotted keys read nested fields), `delay_ms` and `continue_on_error`. The result lists each step's `result`, `exit_code` and `elapsed_ms`; the exit status is the first failed step's. `batch`, `session`, `probe`, `tests` and `screen shot --stdout` cannot be steps.
 
 ```sh
 echo '[["app","relaunch","com.example"],
        {"argv":["app","frontmost"],"expect":{"bundle_id":"com.example","verified":true}},
        ["ui","wait","Ready"]]' | icli batch
+```
+
+### Sessions
+
+`icli session` keeps one process open for a runner that sends commands as it goes, one JSON line each, and answers each with one JSON line, so no command pays for process start-up or an SSH login. A line is an argument list or an object with `argv`, `expect`, `delay_ms` and an `id` the reply repeats. The first line out is `{"ready":true,...}`. A failed command does not end the session; end of input or SIGINT, SIGTERM or SIGHUP does.
+
+```sh
+printf '%s\n' '{"id":1,"argv":["app","frontmost"]}' '["ui","tap","Continue","--expect","Done"]' | icli session
 ```

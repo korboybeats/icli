@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <CoreLocation/CoreLocation.h>
 #import <AVFoundation/AVFoundation.h>
 #import <os/log.h>
 #import <Vision/Vision.h>
@@ -27,6 +28,8 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
 @property(nonatomic) BOOL rejectActivation;
 - (void)save;
 @property(nonatomic) BOOL keyboardVisible;
+@property(nonatomic) NSInteger resetGeneration;
+@property(nonatomic) CLLocationManager *locationManager;
 - (void)reset;
 - (void)handleURL:(NSURL *)url;
 @end
@@ -65,6 +68,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.state = [NSMutableDictionary dictionary];
+    self.locationManager = [CLLocationManager new];
     for (NSNotificationName name in @[UIContentSizeCategoryDidChangeNotification,
                                       UIAccessibilityReduceMotionStatusDidChangeNotification,
                                       UIAccessibilityReduceTransparencyStatusDidChangeNotification,
@@ -205,6 +209,10 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     self.state[@"reduce_transparency"] = @(UIAccessibilityIsReduceTransparencyEnabled());
     self.state[@"darker_colors"] = @(UIAccessibilityDarkerSystemColorsEnabled());
     self.state[@"keyboard_visible"] = @(self.keyboardVisible);
+    self.state[@"reset_generation"] = @(self.resetGeneration);
+    self.state[@"camera_status"] = @([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo]);
+    self.state[@"microphone_status"] = @([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]);
+    if (@available(iOS 14.0, *)) self.state[@"location_status"] = @(self.locationManager.authorizationStatus);
     self.status.text = [NSString stringWithFormat:@"Count: %@",self.state[@"counter"]];
     self.status.accessibilityValue = [self.state[@"counter"] stringValue];
     [[NSFileManager defaultManager] createDirectoryAtPath:StatePath.stringByDeletingLastPathComponent
@@ -230,6 +238,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
     [self.input resignFirstResponder];
     if (self.presentedViewController) [self dismissViewControllerAnimated:NO completion:nil];
     [self.state removeAllObjects];
+    self.resetGeneration++;
     self.input.text = @"";
     self.delayed.hidden = YES;
     self.dragTarget.center = CGPointMake(54,500);
@@ -372,6 +381,7 @@ static NSString *const StatePath = @"/var/mobile/Library/Caches/icli-testhost/st
         nav.delegate = self;
         [self presentViewController:nav animated:NO completion:^{ [nav pushViewController:pushed animated:NO]; }];
     }
+    else if([url.host isEqual:@"refresh"]) [self save];
     else if([url.host isEqual:@"focus"]) [self.input becomeFirstResponder];
     else if([url.host isEqual:@"blur"]) [self.input resignFirstResponder];
     else if([url.host isEqual:@"toggle"]) [self toggleDelayed:nil];

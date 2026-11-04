@@ -176,6 +176,26 @@ public func fillField(
     return ["filled": true, "element": tapped["element"] ?? [:], "keyboard_seen": keyboard, "sent": value?.count ?? 0]
 }
 
+/// Runs after an action: waits until an element with `appear` is on screen, or
+/// none with `gone` is. A wait that fails says the action itself ran.
+public func expectAfter(_ action: [String: Any], appear: String?, gone: String?, timeout: Double) throws -> [String: Any] {
+    guard let text = appear ?? gone else { return action }
+    do {
+        let waited = try waitForElement(ElementSelector(text: text), appear: appear != nil, timeout: timeout, interval: 0.1)
+        var result = action
+        result["expect"] = waited
+        return result
+    } catch {
+        let reason = (error as? IcliError)?.message ?? error.localizedDescription
+        throw IcliError.commandFailed([
+            "error": "expect_failed", "status": 1, "action": action,
+            "message": reason == "element wait timed out"
+                ? "the action ran, but \(text) \(appear != nil ? "did not appear within" : "was still on screen after") \(timeout) s"
+                : "the action ran, but waiting for \(text) failed: \(reason)",
+        ])
+    }
+}
+
 /// Puts the software keyboard away. The key toggles it, so it is sent only when
 /// the keyboard is up, and the keyboard going away is what confirms it.
 public func hideKeyboard() throws -> [String: Any] {
@@ -361,5 +381,52 @@ public func answerAlert(action: String?, button: String?) throws -> [String: Any
         throw IcliError.failed("alert button has no tap point")
     }
     _ = try tap(x: x, y: y)
-    return ["tapped": true, "button": hit["label"] ?? "", "x": x, "y": y, "source": source]
+    // A tap that lands while the alert is still animating in is dropped, so
+    // the alert closing is what confirms the answer. Only the same alert, its
+    // button at the same point under the same title, gets a second tap: the
+    // next alert an app opens in its place must not be answered for it.
+    let label = alertText(hit["label"] as? String ?? "")
+    let body = usesText ? [] : alertBody(elements, above: hit)
+    func sameAlertShown() throws -> Bool {
+        let now = usesText ? try alertTextElements() : try alertElements()
+        let button = now.contains {
+            alertText($0["label"] as? String ?? "") == label
+                && abs((elementCoordinate($0["x"]) ?? -100) - x) < 3 && abs((elementCoordinate($0["y"]) ?? -100) - y) < 3
+        }
+        return button && body.isSubset(of: Set(now.compactMap { $0["label"] as? String }))
+    }
+    var attempts = 1
+    var deadline = ProcessInfo.processInfo.systemUptime + 1
+    while try sameAlertShown() {
+        if ProcessInfo.processInfo.systemUptime >= deadline {
+            guard attempts < 2, !body.isEmpty else {
+                throw IcliError.commandFailed([
+                    "error": "alert_open", "status": 1, "button": hit["label"] ?? "", "attempts": attempts, "source": source,
+                    "message": "tapped \(hit["label"] as? String ?? "the button"), but the alert is still on screen",
+                ])
+            }
+            _ = try tap(x: x, y: y)
+            attempts += 1
+            deadline = ProcessInfo.processInfo.systemUptime + 1
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    return ["tapped": true, "closed": true, "attempts": attempts, "button": hit["label"] ?? "", "x": x, "y": y, "source": source]
+}
+
+/// The labels above a button that sit across its tap point: the alert's title
+/// and message, which tell this alert from the next one.
+private func alertBody(_ elements: [[String: Any]], above button: [String: Any]) -> Set<String> {
+    guard let x = elementCoordinate(button["x"]),
+          let top = (button["frame"] as? [String: Any]).flatMap({ elementCoordinate($0["y"]) })
+    else { return [] }
+    return Set(elements.compactMap { element -> String? in
+        guard let frame = element["frame"] as? [String: Any],
+              let minX = elementCoordinate(frame["x"]), let minY = elementCoordinate(frame["y"]),
+              let width = elementCoordinate(frame["width"]), let height = elementCoordinate(frame["height"]),
+              minY > statusBarBottom, minY + height <= top, minX <= x, x <= minX + width,
+              let label = element["label"] as? String, !label.isEmpty
+        else { return nil }
+        return label
+    })
 }

@@ -25,8 +25,9 @@ extension Screen {
         @OptionGroup var output: OutputOptions
         @Argument(help: pointHelp) var x: Double
         @Argument(help: pointHelp) var y: Double
+        @OptionGroup var then: ExpectOptions
         func run() {
-            emit(output) { try tap(x: x, y: y) }
+            emit(output) { try then.after { try tap(x: x, y: y) } }
         }
     }
 
@@ -315,8 +316,12 @@ extension Screen {
         @OptionGroup var output: OutputOptions
         @Option(help: "Recognition language; repeat for several.") var lang: [String] = ["zh-Hans", "en-US"]
         @Option(help: "Drop text recognized with less confidence, 0–1.") var minConfidence: Float = 0.3
+        @Option(help: "Only read this rectangle, in points: x,y,width,height; quicker than the whole screen.") var region: String?
+        @Flag(help: "Quicker, less accurate recognition, for short labels; reads fewer languages (not Chinese).") var fast = false
         func run() {
-            emit(output) { try recognizeScreen(languages: lang, minConfidence: minConfidence) }
+            emit(output) {
+                try recognizeScreen(languages: lang, minConfidence: minConfidence, region: ScreenRegion(text: region), fast: fast)
+            }
         }
     }
 
@@ -573,8 +578,12 @@ extension UI {
         @OptionGroup var output: OutputOptions
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
+        @OptionGroup var then: ExpectOptions
         func run() {
-            emit(output) { try tapElement(selection.selector(), source: from.parsed(), languages: from.lang) }
+            emit(output) {
+                let selector = try selection.selector(), source = try from.parsed()
+                return try then.after { try tapElement(selector, source: source, languages: from.lang) }
+            }
         }
     }
 
@@ -584,8 +593,9 @@ extension UI {
             discussion: "method says which. A swipe does nothing on a screen with nowhere to go back to, so check the result.",
         )
         @OptionGroup var output: OutputOptions
+        @OptionGroup var then: ExpectOptions
         func run() {
-            emit(output) { try goBack() }
+            emit(output) { try then.after { try goBack() } }
         }
     }
 
@@ -615,9 +625,13 @@ extension UI {
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "The field's new text; omit it to only empty the field.") var value: String?
         @Flag(help: "Press Return afterwards.") var submit = false
+        @OptionGroup var then: ExpectOptions
         func run() {
             emit(output) {
-                try fillField(selection.selector(), value: value, submit: submit, source: from.parsed(), languages: from.lang)
+                let selector = try selection.selector(), source = try from.parsed()
+                return try then.after {
+                    try fillField(selector, value: value, submit: submit, source: source, languages: from.lang)
+                }
             }
         }
     }
@@ -652,8 +666,9 @@ extension UI {
         @OptionGroup var output: OutputOptions
         @Argument(help: "accept or dismiss; omit it with --button.") var action: String?
         @Option(help: "The button's text, instead of an action.") var button: String?
+        @OptionGroup var then: ExpectOptions
         func run() {
-            emit(output) { try answerAlert(action: action, button: button) }
+            emit(output) { try then.after { try answerAlert(action: action, button: button) } }
         }
     }
 
@@ -662,7 +677,7 @@ extension UI {
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
-        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.3
+        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.1
         func run() {
             emit(output) {
                 try waitForElement(
@@ -679,7 +694,7 @@ extension UI {
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
-        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.3
+        @Option(help: "Seconds between checks, 0.1–5; an OCR check itself takes longer.") var interval: Double = 0.1
         func run() {
             emit(output) {
                 try waitForElement(
@@ -694,7 +709,7 @@ extension UI {
 private func writeShotToStdout() {
     do {
         // JSON on stdout would corrupt the image a caller is piping to a file.
-        guard !Envelope.capturing else { throw IcliError.failed("--stdout cannot run inside a batch") }
+        guard !Envelope.capturing else { throw IcliError.failed("--stdout cannot run inside a batch or session") }
         try Envelope.applyLockPolicy(allowWhenLocked: true)
         try FileHandle.standardOutput.write(contentsOf: screenshotJPEGData())
     } catch {

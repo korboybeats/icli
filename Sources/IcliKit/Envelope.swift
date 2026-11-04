@@ -17,9 +17,17 @@ public enum Envelope {
     public static var capturing = false
     public static var capturedResult: Any?
     public static var capturedStatus: Int32 = 0
+    /// The command being run, for failure artifacts; a batch or session step sets its own.
+    public static var argv = Array(CommandLine.arguments.dropFirst())
+    private static var savingArtifacts = false
 
     public static func applyLockPolicy(allowWhenLocked: Bool) throws {
         warning = nil
+        if Lease.exempt {
+            Lease.exempt = false
+        } else {
+            try Lease.check()
+        }
         icli_private_init()
         let status = icli_lock_status()
         guard status.locked || status.screen_off else { return }
@@ -71,7 +79,7 @@ public enum Envelope {
                 finish(exitCode(status))
             }
         } catch let error as IcliError {
-            printJSON(error.payload)
+            printJSON(withArtifacts(error))
             if case .locked = error {
                 finish(2)
             } else if case let .commandFailed(result) = error {
@@ -80,9 +88,27 @@ public enum Envelope {
                 finish(1)
             }
         } catch {
-            printJSON(IcliError.failed(error.localizedDescription).payload)
+            printJSON(withArtifacts(IcliError.failed(error.localizedDescription)))
             finish(1)
         }
+    }
+
+    /// The error's payload, with where its artifacts went when
+    /// ICLI_FAILURE_ARTIFACTS asks for them. A held lease is not the device's
+    /// failure, so it leaves none.
+    private static func withArtifacts(_ error: IcliError) -> [String: Any] {
+        var payload = error.payload
+        guard let directory = ProcessInfo.processInfo.environment["ICLI_FAILURE_ARTIFACTS"], !directory.isEmpty,
+              !savingArtifacts, payload["error"] as? String != "leased"
+        else { return payload }
+        savingArtifacts = true
+        defer { savingArtifacts = false }
+        do {
+            payload["artifacts"] = try saveFailureArtifacts(directory: directory, argv: argv, error: payload)
+        } catch {
+            payload["artifacts_error"] = error.localizedDescription
+        }
+        return payload
     }
 
     private static func finish(_ status: Int32) {

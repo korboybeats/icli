@@ -243,20 +243,37 @@ public func openURL(_ url: String) throws -> [String: Any] {
     return ["url": url]
 }
 
-public func recognizeScreen(languages: [String], minConfidence: Float, locating: String? = nil) throws -> [String: Any] {
+/// Reads the screen's text. `region` limits it to part of the screen, which is
+/// quicker; `fast` trades accuracy for speed and reads fewer languages.
+public func recognizeScreen(
+    languages: [String], minConfidence: Float, locating: String? = nil, region: ScreenRegion? = nil, fast: Bool = false,
+) throws -> [String: Any] {
     guard !languages.isEmpty, minConfidence.isFinite, (0 ... 1).contains(minConfidence) else {
         throw IcliError.failed("provide languages and confidence between 0 and 1")
     }
-    let path = JailbreakRoot.current.scratchDirectory() + "/icli-ocr-\(UUID().uuidString).jpg"
-    defer { try? FileManager.default.removeItem(atPath: path) }
-    guard icli_screenshot_jpeg(path, 0.9, 0, true) else { throw IcliError.failed("OCR screenshot failed") }
-    return try recognizeImage(path: path, languages: languages, minConfidence: minConfidence, locating: locating)
+    guard let image = icli_screen_cgimage(true) else { throw IcliError.failed("OCR screenshot failed") }
+    return try recognizeImage(
+        image, languages: languages, minConfidence: minConfidence, locating: locating, region: region, fast: fast,
+    )
 }
 
-private func recognizeImage(path: String, languages: [String], minConfidence: Float,
-                            locating: String? = nil) throws -> [String: Any] {
-    guard let image = UIImage(contentsOfFile: path), let cgImage = image.cgImage else {
-        throw IcliError.failed("OCR image missing")
+private func recognizeImage(
+    _ fullImage: CGImage, languages: [String], minConfidence: Float, locating: String? = nil,
+    region: ScreenRegion? = nil, fast: Bool = false,
+) throws -> [String: Any] {
+    let fullPoints = pointSizeMatching(image: fullImage)
+    var cgImage = fullImage
+    var origin = CGPoint.zero
+    if let region {
+        guard CGRect(origin: .zero, size: fullPoints).contains(region.rect) else {
+            throw IcliError.failed("region is outside the screen")
+        }
+        let scale = CGFloat(fullImage.width) / fullPoints.width
+        let crop = CGRect(x: region.rect.minX * scale, y: region.rect.minY * scale,
+                          width: region.rect.width * scale, height: region.rect.height * scale).integral
+        guard let cropped = fullImage.cropping(to: crop) else { throw IcliError.failed("region is outside the screen") }
+        cgImage = cropped
+        origin = region.rect.origin
     }
     // A process started over SSH or launchd has no GPU device: the kernel denies the GPU
     // user client to non-app processes, so MTLCreateSystemDefaultDevice() is nil, Vision's
@@ -264,20 +281,31 @@ private func recognizeImage(path: String, languages: [String], minConfidence: Fl
     // Vision runs the request on the CPU from a plain (non-IOSurface) pixel buffer we fill with
     // vImage, avoiding both. Older systems without a GPU device stay unavailable.
     let haveGPU = MTLCreateSystemDefaultDevice() != nil
-    let pointSize = pointSizeMatching(image: cgImage)
+    let pointSize = region?.rect.size ?? fullPoints
     let downsampled = downsampledCGImage(cgImage, maxEdge: 1600)
     do {
-        let blocks: [[String: Any]]
+        var blocks: [[String: Any]]
         if haveGPU {
-            blocks = try visionBlocks(in: downsampled, languages: languages,
-                                      minConfidence: minConfidence, pointSize: pointSize, locating: locating)
+            blocks = try visionBlocks(in: downsampled, languages: languages, minConfidence: minConfidence,
+                                      pointSize: pointSize, locating: locating, fast: fast)
         } else if #available(iOS 17.0, *) {
-            blocks = try visionBlocksCPU(in: downsampled, languages: languages,
-                                         minConfidence: minConfidence, pointSize: pointSize, locating: locating)
+            blocks = try visionBlocksCPU(in: downsampled, languages: languages, minConfidence: minConfidence,
+                                         pointSize: pointSize, locating: locating, fast: fast)
         } else {
             throw IcliError.unavailable("System text recognition is unavailable on this device.")
         }
-        return ["blocks": blocks, "count": blocks.count, "engine": "vision"]
+        if origin != .zero {
+            blocks = blocks.map { block in
+                var block = block
+                for (key, offset) in [("x", origin.x), ("match_x", origin.x), ("y", origin.y), ("match_y", origin.y)] {
+                    if let value = elementCoordinate(block[key]) { block[key] = value + Double(offset) }
+                }
+                return block
+            }
+        }
+        var result: [String: Any] = ["blocks": blocks, "count": blocks.count, "engine": "vision"]
+        if fast { result["level"] = "fast" }
+        return result
     } catch let error as IcliError {
         throw error
     } catch {
@@ -295,7 +323,7 @@ public enum ElementScope: String {
 
 /// Everything SpringBoard lists while an app is in front sits in the status bar,
 /// whose elements all centre above this line on the phones measured.
-private let statusBarBottom = 60.0
+let statusBarBottom = 60.0
 
 private func tagged(_ elements: [[String: Any]], scope: String) -> [[String: Any]] {
     elements.map { element in
@@ -305,7 +333,7 @@ private func tagged(_ elements: [[String: Any]], scope: String) -> [[String: Any
     }
 }
 
-private func axElements(pid: Int32, maxElements: Int) throws -> [String: Any] {
+func axElements(pid: Int32, maxElements: Int) throws -> [String: Any] {
     try decodeBridgeJSON(takeCString(icli_ax_elements_json(pid, Int32(maxElements))), "AX response")
 }
 
@@ -399,13 +427,8 @@ public func screenElements(
 
 public func describeScreen() throws -> [String: Any] {
     let frontmost = frontmostApp()
-    let path = JailbreakRoot.current.scratchDirectory() + "/icli-describe-\(UUID().uuidString).jpg"
-    defer { try? FileManager.default.removeItem(atPath: path) }
-    guard icli_screenshot_jpeg(path, 0.9, 0, true), let image = UIImage(contentsOfFile: path),
-          let original = image.cgImage
-    else {
-        throw IcliError.failed("screen capture failed")
-    }
+    guard let original = icli_screen_cgimage(true) else { throw IcliError.failed("screen capture failed") }
+    let image = UIImage(cgImage: original)
     let pointSize = pointSizeMatching(image: original)
     let format = UIGraphicsImageRendererFormat()
     format.scale = 1
@@ -431,7 +454,7 @@ public func describeScreen() throws -> [String: Any] {
     do { payload["elements"] = try uiElements() }
     catch let error as IcliError { payload["elements"] = error.payload }
     catch { payload["elements"] = ["error": "failed", "message": error.localizedDescription] }
-    do { payload["ocr"] = try recognizeImage(path: path, languages: ["zh-Hans", "en-US"], minConfidence: 0.3) }
+    do { payload["ocr"] = try recognizeImage(original, languages: ["zh-Hans", "en-US"], minConfidence: 0.3) }
     catch let error as IcliError { payload["ocr"] = error.payload }
     catch { payload["ocr"] = ["error": "failed", "message": error.localizedDescription] }
     let read = [payload["elements"], payload["ocr"]].compactMap { $0 as? [String: Any] }
@@ -646,7 +669,7 @@ public func waitForElement(
     _ selector: ElementSelector,
     appear: Bool,
     timeout: TimeInterval,
-    interval: TimeInterval = 0.3,
+    interval: TimeInterval = 0.1,
     source: ElementSource = .ax,
     languages: [String] = ["zh-Hans", "en-US"],
 ) throws -> [String: Any] {
@@ -680,9 +703,9 @@ func validatePoint(_ x: Double, _ y: Double) throws {
     }
 }
 
-private func textRecognitionRequest(languages: [String]) -> VNRecognizeTextRequest {
+private func textRecognitionRequest(languages: [String], fast: Bool) -> VNRecognizeTextRequest {
     let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
+    request.recognitionLevel = fast ? .fast : .accurate
     request.usesLanguageCorrection = false
     request.recognitionLanguages = languages
     return request
@@ -718,8 +741,9 @@ private func visionBlocks(
     minConfidence: Float,
     pointSize: CGSize,
     locating: String? = nil,
+    fast: Bool,
 ) throws -> [[String: Any]] {
-    let request = textRecognitionRequest(languages: languages)
+    let request = textRecognitionRequest(languages: languages, fast: fast)
     try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
     return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize, locating: locating)
 }
@@ -733,11 +757,12 @@ private func visionBlocksCPU(
     minConfidence: Float,
     pointSize: CGSize,
     locating: String? = nil,
+    fast: Bool,
 ) throws -> [[String: Any]] {
     guard let buffer = cpuPixelBuffer420f(from: image) else {
         throw IcliError.unavailable("System text recognition is unavailable on this device.")
     }
-    let request = textRecognitionRequest(languages: languages)
+    let request = textRecognitionRequest(languages: languages, fast: fast)
     for (stage, devices) in try request.supportedComputeStageDevices {
         if let cpu = devices.first(where: { if case .cpu = $0 { return true } else { return false } }) {
             request.setComputeDevice(cpu, for: stage)

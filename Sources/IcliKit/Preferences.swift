@@ -1,6 +1,7 @@
 import CoreFoundation
 import Darwin
 import Foundation
+import IcliPrivate
 import IcliSystem
 
 /// Whose preferences a prefs call reads or writes. `mobile` is the user the
@@ -202,9 +203,11 @@ private func postNotification(_ name: String?) {
     )
 }
 
-/// An app's own preferences file in its data container. cfprefsd serves a
-/// container domain to the app, not to icli, so these calls edit the file:
-/// the app must be stopped, and cfprefsd restarts to drop what it cached.
+/// An app's own preferences in its data container, read and changed through
+/// cfprefsd's container calls, so icli sees what the app reads and cfprefsd's
+/// cache never disagrees with the file. cfprefsd writes the file a few seconds
+/// later. Killing cfprefsd instead would drop every process's change
+/// observers: SpringBoard then ignores light and dark mode until a respring.
 private func appPreferenceFile(_ bundleID: String) throws -> (app: [String: Any], path: String, container: String) {
     let app = try appInfo(bundleID)
     guard let container = app["data_path"] as? String, !container.isEmpty else {
@@ -213,39 +216,23 @@ private func appPreferenceFile(_ bundleID: String) throws -> (app: [String: Any]
     return (app, "\(container)/Library/Preferences/\(bundleID).plist", container)
 }
 
-private func loadPreferenceFile(_ path: String) throws -> [String: Any] {
-    guard FileManager.default.fileExists(atPath: path) else { return [:] }
-    let data = try Data(contentsOf: URL(fileURLWithPath: path))
-    guard let values = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
-        throw IcliError.failed("\(path) is not a dictionary property list")
+/// Every key of one preference domain in a data container, as cfprefsd serves it.
+func containerPreferences(_ domain: String, container: String) -> [String: Any] {
+    let keys = icli_container_prefs_keys(domain as CFString, container as CFString) as? [String] ?? []
+    var values: [String: Any] = [:]
+    for key in keys {
+        if let value = icli_container_prefs_copy(key as CFString, domain as CFString, container as CFString) {
+            values[key] = value
+        }
     }
     return values
 }
 
-private func storePreferenceFile(_ values: [String: Any], path: String, container: String) throws {
-    let owner = try FileManager.default.attributesOfItem(atPath: container)
-    let attributes: [FileAttributeKey: Any] = [
-        .ownerAccountID: owner[.ownerAccountID] as Any, .groupOwnerAccountID: owner[.groupOwnerAccountID] as Any,
-    ]
-    let directory = (path as NSString).deletingLastPathComponent
-    for level in [(directory as NSString).deletingLastPathComponent, directory] {
-        if !FileManager.default.fileExists(atPath: level) {
-            try FileManager.default.createDirectory(atPath: level, withIntermediateDirectories: false)
-            try FileManager.default.setAttributes(attributes, ofItemAtPath: level)
-        }
+/// Sets a key, or removes it when the value is nil, and synchronizes.
+func setContainerPreference(_ key: String, _ value: CFPropertyList?, domain: String, container: String) throws {
+    guard icli_container_prefs_set(key as CFString, value, domain as CFString, container as CFString) else {
+        throw IcliError.unavailable("cfprefsd refused to synchronize \(domain) in \(container).")
     }
-    let data = try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0)
-    try data.write(to: URL(fileURLWithPath: path), options: .atomic)
-    try FileManager.default.setAttributes(
-        attributes.merging([.posixPermissions: 0o600]) { $1 }, ofItemAtPath: path,
-    )
-}
-
-/// SIGTERM to cfprefsd; launchd starts it again on the next request.
-private func restartPreferenceDaemons() throws -> Int {
-    let processes = try listProcesses(filter: "cfprefsd")["processes"] as? [[String: Any]] ?? []
-    let pids = processes.filter { $0["name"] as? String == "cfprefsd" }.compactMap { $0["pid"] as? Int }
-    return pids.filter { Darwin.kill(Int32($0), SIGTERM) == 0 }.count
 }
 
 private func stopForPreferenceEdit(_ bundleID: String, app: [String: Any], force: Bool, action: String) throws -> Bool {
@@ -257,7 +244,7 @@ private func stopForPreferenceEdit(_ bundleID: String, app: [String: Any], force
 
 public func readAppPreference(bundleID: String, key: String?) throws -> [String: Any] {
     let file = try appPreferenceFile(bundleID)
-    let values = try loadPreferenceFile(file.path)
+    let values = containerPreferences(bundleID, container: file.container)
     var result: [String: Any] = ["app": bundleID, "path": file.path]
     if let key {
         result["key"] = key
@@ -271,35 +258,28 @@ public func readAppPreference(bundleID: String, key: String?) throws -> [String:
     return result
 }
 
-/// Sets one key in a stopped app's preferences file and reads it back.
+/// Sets one key in a stopped app's preferences and reads it back.
 public func writeAppPreference(
     bundleID: String, key: String, value: PreferenceValue, force: Bool = false,
 ) throws -> [String: Any] {
     try checkedKey(key)
     let file = try appPreferenceFile(bundleID)
     let stopped = try stopForPreferenceEdit(bundleID, app: file.app, force: force, action: "write \(key)")
-    var values = try loadPreferenceFile(file.path)
-    values[key] = value.propertyList
-    try storePreferenceFile(values, path: file.path, container: file.container)
-    let restarted = try restartPreferenceDaemons()
+    try setContainerPreference(key, value.propertyList, domain: bundleID, container: file.container)
     var result = try readAppPreference(bundleID: bundleID, key: key)
     result["stopped_app"] = stopped
-    result["cfprefsd_restarted"] = restarted
     return result
 }
 
-/// Removes one key from a stopped app's preferences file.
+/// Removes one key from a stopped app's preferences.
 public func deleteAppPreference(bundleID: String, key: String, force: Bool = false) throws -> [String: Any] {
     try checkedKey(key)
     let file = try appPreferenceFile(bundleID)
     let stopped = try stopForPreferenceEdit(bundleID, app: file.app, force: force, action: "delete \(key)")
-    var values = try loadPreferenceFile(file.path)
-    let existed = values.removeValue(forKey: key) != nil
-    if existed { try storePreferenceFile(values, path: file.path, container: file.container) }
-    let restarted = existed ? try restartPreferenceDaemons() : 0
+    let existed = icli_container_prefs_copy(key as CFString, bundleID as CFString, file.container as CFString) != nil
+    if existed { try setContainerPreference(key, nil, domain: bundleID, container: file.container) }
     return [
-        "app": bundleID, "path": file.path, "key": key, "removed": existed, "exists": false,
-        "stopped_app": stopped, "cfprefsd_restarted": restarted,
+        "app": bundleID, "path": file.path, "key": key, "removed": existed, "exists": false, "stopped_app": stopped,
     ]
 }
 

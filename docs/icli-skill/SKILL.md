@@ -12,13 +12,14 @@ The tables below mark each command with two properties:
 - **Root**: `required` means icli refuses to run without root (use `sudo icli …`). `usually` means the command runs, but the files or launchd domain it changes normally need root. `no` means it works as the mobile user.
 - **Screen**: `unlocked` means the command exits with code 2 (`device_locked`) while the device is locked or its screen is off. `any` means it also runs while the device is locked.
 
-Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe).
+Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe, and session, status and lease for test runs).
 
 ## Quick index
 
 | I want to… | Command |
 | --- | --- |
 | Check whether the screen is on and unlocked | `icli screen info` (read `locked`, `screen_off`) |
+| Check lock, front app, keyboard, overlay and owner-only prompt in one call | `icli status` (`springboard_pid` and `boot_time` change after a respring or reboot) |
 | Wake the screen | `icli button wake` (does not remove a passcode) |
 | Find which app is in front | `icli app frontmost` |
 | Find an app's bundle ID | `icli app search <name>` or `icli app list` |
@@ -28,11 +29,14 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Restart an app and prove a new process is in front | `icli app relaunch <bundle-id>` (reports `old_pids`, `pid`, `launched_at`) |
 | Open a URL or deep link | `icli url open <url>` or `icli app open <url> --bundle <bundle-id>` |
 | Quit an app | `icli app kill <bundle-id> --force` |
+| Grant, deny or reset an app's permissions without the prompt | `icli app permission grant <app> camera location` / `deny` / `reset <app>` (iOS stops the app) |
+| Erase an app's data as a fresh install has it | `icli app reset <app> --force` (also resets its permissions unless `--keep-permissions`) |
 | List what is on screen, Home Screen and system overlays included | `icli ui tree` (add `--clickable-only`, `--limit N`, `--source any`) |
 | Check whether only the owner can answer what is on screen | `icli ui prompt` (`human_required`, `kind`) |
 | Go back a screen | `icli ui back` (`method` says button or edge swipe) |
 | Tap a button by its label | `icli ui tap 'Label' --match exact` |
 | Tap by accessibility identifier | `icli ui tap --identifier <id>` |
+| Tap and wait for what it should show, in one call | `icli ui tap 'Save' --expect 'Saved'` or `--expect-gone 'Loading'` (also `screen tap`, `ui fill`, `ui alert`, `ui back`) |
 | Replace a field's text in one call | `icli ui fill 'Label' --value 'text'` (add `--submit` for Return) |
 | Find an element further down a list | `icli ui scroll-to 'Text' --match exact` |
 | Answer a permission or app alert | `icli ui alert accept` / `icli ui alert dismiss` |
@@ -54,6 +58,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Save the clipboard image | `icli clipboard get --image-output /tmp/clip.png` |
 | Take a screenshot | `icli screen shot --output /tmp/s.jpg`, `--base64`, or `--stdout` (raw JPEG only) |
 | Read the text on screen | `icli screen ocr` |
+| Read the text in one area quickly | `icli screen ocr --region x,y,width,height --fast --lang en-US` |
 | Get a screenshot, OCR and elements together | `icli screen describe` |
 | Get the model, iOS version, battery and bootstrap layout | `icli device info` |
 | Get brightness, volume and orientation | `icli device brightness get` / `volume get` / `rotation get` |
@@ -71,6 +76,9 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Capture live logs | `icli log syslog --seconds 5 --process <name> --level error` |
 | Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m]` then `icli log crash <path> --summary` (add nothing for the whole report) |
 | Run several commands in one process with checks | `echo '[["app","frontmost"],{"argv":["ui","wait","Ready"],"expect":{"found":true}}]' \| icli batch` |
+| Keep one icli process open and send it commands as you go | `icli session`, then one line per command: `{"id":1,"argv":["ui","tap","OK"]}` (one JSON line back each) |
+| Keep other agents' icli commands off the device during a run | `export ICLI_LEASE=$(icli lease acquire --owner ci \| jq -r .token)`, then `icli lease release` |
+| Save the screen and element tree whenever a command fails | `export ICLI_FAILURE_ARTIFACTS=/var/tmp/icli-failures` (the error's `artifacts` names the folder) |
 | Install a .deb or .ipa | `sudo icli app install /tmp/x.deb` (or `.ipa`) |
 | Uninstall an app or package | `sudo icli app uninstall <bundle-id> --force` / `sudo icli pkg remove <pkg>` |
 | Inspect a .deb without installing it | `icli pkg info <file.deb>` |
@@ -90,7 +98,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 ## Conventions
 
 - **Output**: one JSON object on stdout, with keys sorted. On failure the object is `{"error": <code>, "message": <text>}`, where the code is `failed`, `device_locked`, `force_required`, `unavailable`, `missing_dependency`, `command_failed`, or a command's own code such as `timed_out` or `refresh_incomplete`. `icli probe` prints its own line instead, `{"ok": true, "result": <text>}` or `{"ok": false, "error": <message text>}`, both with `output`, and `icli probe repl` is interactive text. Argument errors come from the argument parser as plain text on stderr.
-- **Exit codes**: `0` is success. `2` is `device_locked`. `1` is any other runtime failure. A result or failure that carries a nonzero `status` exits with that status (1–255). Treat any nonzero exit as a failure and read the JSON.
+- **Exit codes**: `0` is success. `2` is `device_locked`. `75` is `leased`: another runner holds the device (see `icli lease`). `1` is any other runtime failure. A result or failure that carries a nonzero `status` exits with that status (1–255). Treat any nonzero exit as a failure and read the JSON.
 - **Locked device**: see the Screen column. Most interactive and many read commands need the device unlocked with the screen on. When you get exit 2, run `icli button wake`. If `screen info` still shows `locked: true`, a person has to unlock the device.
 - **Destructive commands need `--force`**: `app kill`, `app unregister`, `app unregister-dir`, `app uninstall --package`, `fs rm`, `sec keychain delete` and `device reboot` refuse to run without it and return `force_required`.
 - **Coordinates** are UI points in the orientation shown on screen. The origin is the top-left corner as the user sees it. `screen info` gives the current `width`, `height` and `orientation`; an iPad in landscape reports a landscape width. Frames from `ui tree` and boxes from `screen ocr` use the same space, so you can pass the centre of a frame straight to `screen tap`.
@@ -111,7 +119,7 @@ icli ui wait-gone 'Loading' --timeout 15
 icli ui tree --clickable-only --limit 50          # confirm the new screen
 ```
 
-To verify a visible change without sleeping, save `screen shot --output /tmp/before.jpg` before the tap and run `screen wait --baseline /tmp/before.jpg --changed --stable` after it. For text the tree does not expose (system sheets, games), add `--source ocr` to `ui tap`/`ui wait`.
+To tap and wait in one call, use `ui tap 'Sign In' --expect 'Welcome'`. To verify a visible change the tree does not show, save `screen shot --output /tmp/before.jpg` before the tap and run `screen wait --baseline /tmp/before.jpg --changed --stable` after it. For text the tree does not expose (system sheets, games), add `--source ocr` to `ui tap`/`ui wait`.
 
 If no element matches, look for the label in `ui tree` (text matching is `contains` by default and ignores case). Use `--index N` to pick the N-th match. As a last resort, tap the centre of the element's `frame` with `screen tap`.
 

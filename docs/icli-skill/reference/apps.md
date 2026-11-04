@@ -12,6 +12,10 @@
 | `app launch <bundle-id or name>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground` | no | unlocked |
 | `app open <url>` | Open a URL, optionally in a specific app | `--bundle <bundle-id>` | no | unlocked |
 | `app kill <bundle-id>` | SIGTERM the app's processes and wait for them to exit | `--force` required | no | unlocked |
+| `app permission get <app>` | Privacy permissions: `granted` or `denied` per name, and `location` as `while_using`, `always` or `denied`; one never asked is absent | | no | any |
+| `app permission grant\|deny <app> <names…>` | Set permissions without the system prompt | names: `camera`, `microphone`, `photos`, `photos-add`, `contacts`, `calendar`, `reminders`, `motion`, `bluetooth`, `speech`, `media-library`, `face-id`, `tracking`, `focus`, `nearby`, `siri`, `location` (While Using), `location-always` | no | any |
+| `app permission reset <app> [<names…>]` | Back to never asked, so the app's next request shows the prompt again; no names resets them all | | no | any |
+| `app reset <app>` | Stop the app, empty Documents, Library, tmp and SystemData in its data container, clear its preferences through cfprefsd, and reset its permissions; keychain items and group containers stay, as when an app is deleted | `--force` required, `--keep-permissions` | no | any |
 | `app install <path>` | `.deb` → native package install; `.ipa` → install into the bootstrap and register; `.app` → register | `--container` installs an `.ipa` into its own app container (see below); `--registration user\|system` (default user) | required for .deb and .ipa | unlocked |
 | `app uninstall <bundle-id>` | Remove an app that icli installed from an IPA, with its app and data containers for a `--container` install | `--force`; `--package` treats the argument as a Debian package name (needs `--force`) | required | unlocked |
 | `app register <path.app>` | `uicache -p`: register one bootstrap or icli-installed bundle with its entitlements, containers and plug-ins, and read the record back; refuses Apple's and other installers' apps | | usually | any |
@@ -24,6 +28,8 @@
 | `app schemes` | Every registered URL scheme | | no | unlocked |
 | `app binary <bundle-id>` | Main executable: path, SDK, minimum OS, encryption, signing error | | no | unlocked |
 | `app data <bundle-id>` | Data container path | | no | unlocked |
+
+`<app>` is a bundle ID or an installed app's display name. iOS stops a running app when any of its permissions change, as Settings does, so launch it again afterwards. Location goes through locationd, the others through TCC.
 
 ### Container installs
 

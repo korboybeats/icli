@@ -11,7 +11,7 @@ struct App: ParsableCommand {
             List.self, Search.self, Running.self, Frontmost.self, Info.self,
             Launch.self, Relaunch.self, Open.self, Kill.self, Install.self, Uninstall.self,
             Register.self, Unregister.self, Refresh.self, UnregisterDir.self, Network.self,
-            Handlers.self, Schemes.self, Binary.self, Data.self,
+            Handlers.self, Schemes.self, Binary.self, Data.self, Permission.self, Reset.self,
         ],
     )
 }
@@ -300,6 +300,62 @@ extension URLCommand {
         @Argument var url: String
         func run() {
             emit(output) { try openURL(url) }
+        }
+    }
+}
+
+extension App {
+    struct Permission: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Read, grant, deny or reset an app's privacy permissions without the system prompt.",
+            discussion: "Permissions: \(permissionNames.joined(separator: ", ")). location grants While Using, location-always Always. A reset returns a permission to never asked, so the app's next request shows the system prompt again. iOS stops a running app when any of its permissions change, as Settings does, so launch it afterwards.",
+            subcommands: [Get.self, Grant.self, Deny.self, ResetCommand.self],
+        )
+        struct Get: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
+            func run() {
+                emit(allowWhenLocked: true, output) { try appPermissions(resolveAppName(app)) }
+            }
+        }
+        struct Grant: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
+            @Argument(help: "One or more permissions.") var permissions: [String]
+            func run() {
+                emit(allowWhenLocked: true, output) { try setAppPermissions(resolveAppName(app), permissions, action: "grant") }
+            }
+        }
+        struct Deny: ParsableCommand {
+            @OptionGroup var output: OutputOptions
+            @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
+            @Argument(help: "One or more permissions.") var permissions: [String]
+            func run() {
+                emit(allowWhenLocked: true, output) { try setAppPermissions(resolveAppName(app), permissions, action: "deny") }
+            }
+        }
+        struct ResetCommand: ParsableCommand {
+            static var configuration = CommandConfiguration(commandName: "reset")
+            @OptionGroup var output: OutputOptions
+            @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
+            @Argument(help: "Permissions to reset; none resets all.") var permissions: [String] = []
+            func run() {
+                emit(allowWhenLocked: true, output) { try setAppPermissions(resolveAppName(app), permissions, action: "reset") }
+            }
+        }
+    }
+
+    struct Reset: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Erase an app's data as a fresh install has it, and reset its permissions.",
+            discussion: "Stops the app, empties Documents, Library, tmp and SystemData in its data container, and clears its preferences through cfprefsd so no cached value survives. Keychain items and app group containers stay, as they do when an app is deleted.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
+        @Flag(help: "Keep the app's permissions.") var keepPermissions = false
+        @Flag(help: "Confirm erasing the app's data; required.") var force = false
+        func run() {
+            emit(allowWhenLocked: true, output) { try resetApp(resolveAppName(app), force: force, keepPermissions: keepPermissions) }
         }
     }
 }

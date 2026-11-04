@@ -1,6 +1,7 @@
 #pragma once
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -36,6 +37,28 @@ void icli_screen_point_to_digitizer(double x, double y, double *nx, double *ny);
 
 /// The panel's size in pixels, the fixed space the render server draws in.
 void icli_panel_pixels(int *width, int *height);
+/// An app's TCC permissions as {"entries":[{"service","granted"}]}, or {"error"}.
+char *icli_permissions_json(const char *bundle_path);
+bool icli_tcc_set(const char *service, const char *bundle_path, bool granted);
+/// Back to never asked, so the app's next request shows the system prompt.
+bool icli_tcc_reset(const char *service, const char *bundle_id);
+/// CLAuthorizationStatus as locationd holds it for the app, or -1 when unavailable.
+int icli_location_authorization_get(const char *bundle_id);
+/// 0 never asked, 2 denied, 3 always, 4 while using.
+bool icli_location_authorization_set(const char *bundle_id, int status);
+/// An app's container preferences as cfprefsd serves them to the app, for the
+/// mobile user. The setter takes NULL to remove the key, and synchronizes.
+CFArrayRef icli_container_prefs_keys(CFStringRef domain, CFStringRef container) CF_RETURNS_RETAINED;
+CFPropertyListRef icli_container_prefs_copy(CFStringRef key, CFStringRef domain, CFStringRef container) CF_RETURNS_RETAINED;
+bool icli_container_prefs_set(CFStringRef key, CFPropertyListRef value, CFStringRef domain, CFStringRef container);
+/// The upright screen as an image, one pixel per point or at full resolution,
+/// without the JPEG round trip a screenshot file takes.
+CGImageRef icli_screen_cgimage(bool native_resolution) CF_RETURNS_RETAINED;
+/// A session ends on SIGINT, SIGTERM or SIGHUP through exit(), so its exit
+/// handlers run. Call again after a step that took the signals over.
+void icli_session_exit_on_signals(void);
+/// While deferred, a stop signal ends the session only once the step is over.
+void icli_session_defer_signals(bool defer);
 /// Takes over SIGINT, SIGTERM and SIGHUP: instead of ending the process they end
 /// icli_stop_signal_wait, until icli_stop_signals_release gives them back.
 void icli_stop_signals_catch(void);

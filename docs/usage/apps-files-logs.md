@@ -18,6 +18,17 @@ icli log crash /var/mobile/Library/Logs/CrashReporter/example.ips --summary
 
 `log syslog` filters by process name (`--process`, a case-insensitive substring), `--pid`, `--subsystem` (with its dotted children), `--category` (exact), `--message-contains` (case-sensitive) and minimum `--level` (`all`, `debug`, `info`, `default`, `error`, `fault`). Every filter runs before `--max-lines`, so unrelated lines on a busy device never use up the cap; `truncated` says more lines matched than were kept. `log crash --max-bytes` reads at most that many bytes of a report, cut back to a whole character, and reports `truncated` and the whole file's `size`.
 
+### Permissions and Fresh Data
+
+```sh
+icli app permission get example.bundle.id
+icli app permission grant example.bundle.id camera microphone location
+icli app permission reset example.bundle.id          # every permission back to never asked
+icli app reset example.bundle.id --force              # empty its data container, as a fresh install has it
+```
+
+`app permission` sets privacy permissions without the system prompt: TCC services by name, and location through locationd (`location` is While Using, `location-always` Always). A reset returns them to never asked, so the app's next request shows the real prompt. iOS stops a running app when any of its permissions change. `app reset` stops the app, empties Documents, Library, tmp and SystemData in its data container, clears its preferences through cfprefsd so no cached value survives, and resets its permissions unless `--keep-permissions` is given. Keychain items and group containers stay, as they do when an app is deleted.
+
 Upload a package before installing it:
 
 ```sh

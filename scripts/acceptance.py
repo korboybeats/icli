@@ -16,6 +16,7 @@ import shlex
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import zlib
@@ -53,6 +54,20 @@ class Device:
         self.binary = self.env.get('ICLI_BINARY') or BINARIES[layout]
         self.options = ['-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=accept-new',
                         '-o', 'UserKnownHostsFile=' + str(ROOT / '.build/acceptance-known-hosts')]
+        # One shared connection: a fresh SSH login costs about 0.4 s per
+        # command, a multiplexed one under 0.1 s. The socket lives in the
+        # temporary directory because a socket path is limited to 104 bytes.
+        # Logins that must authenticate for themselves skip the shared one.
+        self.direct_options = list(self.options)
+        if self.env.get('ICLI_SSH_MULTIPLEX', '1') != '0':
+            control = Path(tempfile.gettempdir()) / f'icli-acceptance-{os.getuid()}-%C'
+            # A reboot can kill sshd without closing the connection; keepalives
+            # end a dead shared connection in seconds instead of hanging every
+            # command multiplexed through it.
+            self.options += ['-o', 'ControlMaster=auto', '-o', 'ControlPath=' + str(control),
+                             '-o', 'ControlPersist=60', '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=3']
+        # An icli lease this run holds; every command passes its token.
+        self.lease = None
         self.trace = []
         self.observations = []
         self.layout = layout
@@ -100,6 +115,10 @@ class Device:
 
     def run(self, command, timeout=35, sudo=False, unprivileged=False, input=None):
         command = shlex.join(command) if isinstance(command, list) else command
+        # sudo and su clear the environment, so the token goes on icli's own
+        # command line. A command that starts some other way runs without it.
+        if self.lease and (command == self.binary or command.startswith(self.binary + ' ')):
+            command = shlex.join(['env', 'ICLI_LEASE=' + self.lease]) + ' ' + command
         # A root login is already privileged, for a device without sudo.
         sudo = sudo and self.user != 'root'
         if sudo:
@@ -136,6 +155,21 @@ class Device:
         except json.JSONDecodeError as error:
             raise AssertionError(f'not JSON: {result.stdout[:1000]}') from error
 
+    def cli_env(self, env, *arguments, expected=0, lease=True, input=None, timeout=35):
+        """Runs icli with extra environment variables. lease=False leaves out
+        the run's lease token, as another agent's command would."""
+        variables = dict(env)
+        if lease and self.lease and 'ICLI_LEASE' not in variables:
+            variables['ICLI_LEASE'] = self.lease
+        command = ['env'] + [f'{key}={value}' for key, value in variables.items()] + [self.binary] + list(arguments)
+        result = self.run(command, timeout=timeout, input=input)
+        result.icli_trace['cli_arguments'] = list(arguments)
+        assert expected is None or result.returncode == expected, f'exit {result.returncode}, expected {expected}: {result.stdout[:1000]} {result.stderr[:500]}'
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise AssertionError(f'not JSON: {result.stdout[:1000]}') from error
+
     def upload(self, local, remote):
         for attempt in range(4):
             copied = subprocess.run(self.prefix + ['scp', '-q', '-r', '-P', self.port] + self.options +
@@ -159,11 +193,36 @@ class Device:
                 return state
             time.sleep(0.1)
 
-    def fixture(self, action='reset'):
+    def last_url(self):
+        """The last URL TestHost handled, without the fixture's nonce."""
+        return self.state().get('last_url', '').split('?')[0]
+
+    def fixture(self, action='reset', timeout=5):
+        # TestHost records each URL after handling it, so a fresh nonce in the
+        # URL shows when this one is done, with no fixed sleep.
         self.cli('app', 'launch', BUNDLE)
-        time.sleep(0.3)
-        self.cli('url', 'open', 'icli-test://' + action)
-        time.sleep(0.3)
+        url = f'icli-test://{action}?nonce={uuid.uuid4().hex}'
+        self.cli('url', 'open', url)
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if self.state().get('last_url') == url:
+                    return
+            except (AssertionError, json.JSONDecodeError):
+                pass  # TestHost has not written its state yet
+            assert time.monotonic() < deadline, f'TestHost did not handle {action} within {timeout} s'
+            time.sleep(0.05)
+
+    def springboard_pid(self):
+        """SpringBoard's pid outside any case's trace, or None."""
+        trace, self.trace = self.trace, []
+        try:
+            result = self.run([self.binary, 'status'], timeout=20)
+            return json.loads(result.stdout).get('springboard_pid') if result.returncode == 0 else None
+        except (json.JSONDecodeError, subprocess.TimeoutExpired):
+            return None
+        finally:
+            self.trace = trace
 
     def passcode_enabled(self):
         return self.cli('device', 'info')['lock']['passcode_enabled']
@@ -333,20 +392,15 @@ def ax_tap_ambiguous(d):
 def ui_fill(d):
     d.fixture()
     d.cli('ui', 'fill', '--identifier', 'input.text', '--value', 'first')
-    time.sleep(0.3)
-    assert d.state()['text'] == 'first'
+    d.wait_state('text', 'first')
     d.cli('ui', 'fill', '--identifier', 'input.text', '--value', '中文 second')
-    time.sleep(0.3)
-    assert d.state()['text'] == '中文 second'
+    d.wait_state('text', '中文 second')
     d.cli('input', 'paste', 'third', '--clear')
-    time.sleep(0.3)
-    assert d.state()['text'] == 'third'
+    d.wait_state('text', 'third')
     d.cli('input', 'type', 'x', '--clear', '--submit')
-    time.sleep(0.3)
-    assert d.state()['text'] == 'x\n'
+    d.wait_state('text', 'x\n')
     d.cli('ui', 'fill', '--identifier', 'input.text')
-    time.sleep(0.3)
-    assert d.state()['text'] == ''
+    d.wait_state('text', '')
 
 
 @case('ui_scroll_to', 'ax', ['ui scroll-to'])
@@ -370,14 +424,12 @@ def ui_alert(d):
     d.cli('url', 'open', 'icli-test://alert')
     time.sleep(0.5)
     assert d.cli('ui', 'alert', 'accept')['tapped']
-    time.sleep(0.4)
-    assert d.state()['alert_result'] == 'Allow'
+    d.wait_state('alert_result', 'Allow')
     d.fixture()
     d.cli('url', 'open', 'icli-test://alert')
     time.sleep(0.5)
     d.cli('ui', 'alert', 'dismiss')
-    time.sleep(0.4)
-    assert d.state()['alert_result'] == 'Don\u2019t Allow'
+    d.wait_state('alert_result', 'Don\u2019t Allow')
     d.fixture()
     d.cli('url', 'open', 'icli-test://alert-passcode')
     time.sleep(0.5)
@@ -1013,7 +1065,7 @@ def app_lifecycle(d):
     d.cli('app', 'launch', BUNDLE)
     d.cli('app', 'launch', 'icli.nonexistent.app', expected=1)
     d.cli('url', 'open', 'icli-test://reset')
-    assert d.state()['last_url'] == 'icli-test://reset'
+    assert d.last_url() == 'icli-test://reset'
 
 
 @case('brightness_and_volume', 'controls', ['device brightness get', 'device brightness set', 'device volume get', 'device volume set'])
@@ -1366,7 +1418,7 @@ def extended_apps(d):
     assert any(a['bundle_id'] == BUNDLE for a in d.cli('app', 'search', 'TestHost')['apps'])
     d.cli('app', 'open', 'icli-test://reset', '--bundle', BUNDLE)
     time.sleep(0.3)
-    assert d.state()['last_url'] == 'icli-test://reset'
+    assert d.last_url() == 'icli-test://reset'
     handlers = d.cli('app', 'handlers', 'icli-test://reset')
     assert BUNDLE in json.dumps(handlers), handlers
     assert 'icli-test' in d.cli('app', 'schemes')['schemes'][BUNDLE]
@@ -2006,7 +2058,7 @@ def account_password(d):
     def login(secret, command='id -u', input=None):
         # Password only: a key would log in whatever the password is.
         return subprocess.run(['sshpass', '-e', 'ssh', '-p', d.port, '-o', 'NumberOfPasswordPrompts=1', '-o', 'PubkeyAuthentication=no'] +
-                              d.options + ['mobile@' + d.host, command], env=dict(d.env, SSHPASS=secret), input=input or '',
+                              d.direct_options + ['mobile@' + d.host, command], env=dict(d.env, SSHPASS=secret), input=input or '',
                               capture_output=True, text=True, timeout=60)
 
     # Prove the password the case will restore is mobile's before changing anything.
@@ -2031,7 +2083,7 @@ def account_password(d):
         if d.user != 'root':
             command = 'sudo -S -k -p "" ' + command
         # A mobile login authenticates with mobile's password as it is now.
-        result = subprocess.run(d.prefix + ['ssh', '-p', d.port] + d.options + [d.user + '@' + d.host, command],
+        result = subprocess.run(d.prefix + ['ssh', '-p', d.port] + d.direct_options + [d.user + '@' + d.host, command],
                                 env=dict(d.env, SSHPASS=current) if d.user == 'mobile' else d.env,
                                 input=(current + '\n' if asks else '') + new + '\n', capture_output=True, text=True, timeout=60)
         d.trace.append({'command': 'account set-password mobile (stdin)', 'cli_arguments': ['account', 'set-password', 'mobile'], 'exit': result.returncode, 'seconds': 0, 'stdout': result.stdout[:2000], 'stderr': result.stderr[:500]})
@@ -2430,7 +2482,7 @@ def springboard_restart(d):
 
 def run_binary(d, arguments, timeout=35):
     """Runs icli with stdout kept as bytes, for commands that write raw data."""
-    command = shlex.join([d.binary] + list(arguments))
+    command = shlex.join((['env', 'ICLI_LEASE=' + d.lease] if d.lease else []) + [d.binary] + list(arguments))
     start = time.monotonic()
     result = subprocess.run(d.prefix + ['ssh', '-p', d.port] + d.options + [d.user + '@' + d.host, command],
                             env=d.env, capture_output=True, timeout=timeout)
@@ -2486,7 +2538,7 @@ def batch_steps(d):
     assert passed['ok'] and passed['status'] == 0 and passed['completed'] == passed['count'] == 3, passed
     assert 'failed_step' not in passed and all(step['ok'] and step['exit_code'] == 0 for step in passed['steps']), passed
     assert [step['index'] for step in passed['steps']] == [0, 1, 2], passed
-    assert d.state()['last_url'] == 'icli-test://blur'
+    assert d.last_url() == 'icli-test://blur'
 
     # An unmet expect stops the batch: the URL step after it never runs.
     d.fixture()
@@ -2494,13 +2546,13 @@ def batch_steps(d):
                         ['url', 'open', 'icli-test://blur']], expected=1)
     assert not stopped['ok'] and stopped['failed_step'] == 0 and stopped['completed'] == 1 and stopped['count'] == 2, stopped
     assert stopped['steps'][0]['expect_failed'] == ['bundle_id'] and stopped['steps'][0]['result']['bundle_id'] == BUNDLE, stopped
-    assert d.state()['last_url'] == 'icli-test://reset', 'a step after the failure ran'
+    assert d.last_url() == 'icli-test://reset', 'a step after the failure ran'
 
     # A failing command also stops it, with that command's own result.
     d.fixture()
     failed = batch(d, [['ui', 'tap', 'no-such-element'], ['url', 'open', 'icli-test://blur']], expected=1)
     assert failed['completed'] == 1 and failed['steps'][0]['result']['message'] == 'element not found', failed
-    assert d.state()['last_url'] == 'icli-test://reset', 'a step after the failure ran'
+    assert d.last_url() == 'icli-test://reset', 'a step after the failure ran'
 
     # continue_on_error runs the rest, and the batch still fails on the first failure.
     d.fixture()
@@ -2508,7 +2560,7 @@ def batch_steps(d):
                           ['url', 'open', 'icli-test://blur']], expected=1)
     assert not continued['ok'] and continued['failed_step'] == 0 and continued['completed'] == 2, continued
     assert not continued['steps'][0]['ok'] and continued['steps'][1]['ok'], continued
-    assert d.state()['last_url'] == 'icli-test://blur', 'continue_on_error did not run the next step'
+    assert d.last_url() == 'icli-test://blur', 'continue_on_error did not run the next step'
 
     # The exit status is the first failed step's: 64 for a usage error, not a later step's 1.
     usage = batch(d, [{'argv': ['screen', 'no-such-command'], 'continue_on_error': True},
@@ -2522,7 +2574,7 @@ def batch_steps(d):
         d.fixture()
         refused = batch(d, [['url', 'open', 'icli-test://blur'], command], expected=1)
         assert refused['error'] == 'failed' and f'{command[0]} cannot run inside a batch' in refused['message'], refused
-        assert d.state()['last_url'] == 'icli-test://reset', f'a step ran before {command[0]} was refused'
+        assert d.last_url() == 'icli-test://reset', f'a step ran before {command[0]} was refused'
     for steps, message in [('', 'JSON array'), ('{"argv": ["app", "frontmost"]}', 'JSON array'), ([], 'JSON array'),
                            ([['app', 'frontmost']] * 1001, 'JSON array'),
                            ([{'argv': []}], 'non-empty list'), ([{'argv': ['app', 1]}], 'non-empty list'),
@@ -2542,7 +2594,7 @@ def batch_refuses_stdout_screenshot(d):
     result = d.run([d.binary, 'batch'], input=json.dumps([['url', 'open', 'icli-test://blur'], ['screen', 'shot', '--stdout']]))
     assert result.returncode == 1, result.returncode
     assert not result.stdout.startswith('\xff\xd8'), 'a JPEG reached the batch output'
-    assert d.state()['last_url'] == 'icli-test://reset', 'the step before screen shot --stdout ran before the refusal'
+    assert d.last_url() == 'icli-test://reset', 'the step before screen shot --stdout ran before the refusal'
     answer = json.loads(result.stdout)
     assert 'cannot run inside a batch' in answer['message'], answer
 
@@ -2722,6 +2774,10 @@ def crash_cutoff(d):
         assert rejected['message'].startswith('since must be'), (since, rejected)
 
 
+def cfprefsd_pids(d):
+    return sorted(p['pid'] for p in d.cli('proc', 'list', '--filter', 'cfprefsd')['processes'] if p['name'] == 'cfprefsd')
+
+
 @case('app_container_preferences', 'system', ['prefs read', 'prefs write', 'prefs delete'])
 def app_container_preferences(d):
     # An App Store-shaped app with a data container. The ad-hoc container
@@ -2758,9 +2814,18 @@ def app_container_preferences(d):
             assert time.monotonic() < deadline, f'{app} did not report its preferences; it is not the current container fixture'
             time.sleep(0.2)
 
+    def settled(check, what):
+        # cfprefsd writes the file a few seconds after it takes the change.
+        deadline = time.monotonic() + 20
+        while not check(values := on_disk()):
+            assert time.monotonic() < deadline, f'cfprefsd did not write {what} to the file: {values}'
+            time.sleep(0.5)
+        return values
+
     container_owner = owner(info['data_path'])
     assert container_owner, 'cannot stat the data container'
     original = on_disk()
+    daemons = cfprefsd_pids(d)
     try:
         pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
         refused = d.cli('prefs', 'write', '--app', app, key, 'value', expected=1)
@@ -2772,8 +2837,7 @@ def app_container_preferences(d):
         assert written['stopped_app'] and written['value'] == 'text 中文' and written['type'] == 'string', written
         assert written['path'] == plist and written['exists'], written
         assert running() == [], 'the app is still running after a forced write'
-        stored = on_disk()
-        assert stored.get(key) == 'text 中文', stored
+        stored = settled(lambda values: values.get(key) == 'text 中文', key)
         assert {k: v for k, v in stored.items() if k != key} == original, 'other keys changed'
         assert owner(plist) == container_owner, (owner(plist), container_owner)
         assert d.run(['stat', '-c', '%a', d.sh(plist)], sudo=True).stdout.strip() == '600'
@@ -2796,12 +2860,12 @@ def app_container_preferences(d):
             d.observations.append(f'{app} does not report its preferences, so only the file was checked.')
             pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
         assert d.cli('prefs', 'delete', '--app', app, key, expected=1)['error'] == 'force_required'
-        assert running() == [pid] and key in on_disk()
+        assert running() == [pid] and key in settled(lambda values: key in values, key)
         removed = d.cli('prefs', 'delete', '--app', app, key, '--force')
         assert removed['removed'] and removed['stopped_app'] and not removed['exists'], removed
         assert d.cli('prefs', 'delete', '--app', app, number)['removed']
         assert not d.cli('prefs', 'delete', '--app', app, number)['removed']
-        assert on_disk() == original, 'the file did not return to its original keys'
+        settled(lambda values: values == original, 'the original keys')
         assert owner(plist) == container_owner, (owner(plist), container_owner)
         if reports_preferences:
             _, seen = launch_and_read_seen()
@@ -2812,6 +2876,8 @@ def app_container_preferences(d):
                           ['write', '--app', app, key, '12x', '--type', 'int']]:
             d.cli('prefs', *arguments, expected=1)
         assert key not in on_disk()
+        # Restarting cfprefsd would drop SpringBoard's preference observers.
+        assert cfprefsd_pids(d) == daemons, 'cfprefsd was restarted'
     finally:
         d.cli('prefs', 'delete', '--app', app, key, '--force', expected=None)
         d.cli('prefs', 'delete', '--app', app, number, '--force', expected=None)
@@ -2835,6 +2901,367 @@ def unsigned_code(binary):
             end = struct.unpack('<I', binary[offset + 8:offset + 12])[0]
         offset += size
     return bytes(data[:end])
+
+
+@case('session', 'runtime', ['session'])
+def session(d):
+    d.fixture()
+    lines = [json.dumps({'id': 'front', 'argv': ['app', 'frontmost'], 'expect': {'bundle_id': BUNDLE}}),
+             json.dumps(['url', 'open', 'icli-test://blur']),
+             'not json',
+             json.dumps({'id': 7, 'argv': ['ui', 'tap', 'no-such-element']}),
+             json.dumps(['batch']),
+             '',
+             json.dumps({'id': 'tap', 'argv': ['ui', 'tap', '--identifier', 'counter.increment', '--expect', 'Count: 1']}),
+             json.dumps({'argv': ['app', 'frontmost'], 'expect': {'bundle_id': 'icli.wrong'}})]
+    result = d.run([d.binary, 'session'], input='\n'.join(lines) + '\n')
+    result.icli_trace['cli_arguments'] = ['session']
+    assert result.returncode == 0, result.stdout + result.stderr
+    ready, *replies = [json.loads(line) for line in result.stdout.splitlines()]
+    assert ready['ready'] and ready['pid'] > 0 and ready['version'], ready
+    # One line back per non-empty line in, numbered in order; an empty line is skipped.
+    assert [r['index'] for r in replies] == list(range(7)), replies
+    front, blur, garbage, missing, nested, tap, wrong = replies
+    assert front['id'] == 'front' and front['ok'] and front['exit_code'] == 0 and front['result']['bundle_id'] == BUNDLE, front
+    assert isinstance(front['elapsed_ms'], int) and front['elapsed_ms'] >= 0, front
+    assert blur['ok'] and 'id' not in blur, blur
+    assert not garbage['ok'] and garbage['exit_code'] == 64 and 'must be JSON' in garbage['message'], garbage
+    # A failed step does not end the session; the next line still runs.
+    assert missing['id'] == 7 and not missing['ok'] and missing['exit_code'] == 1, missing
+    assert missing['result']['message'] == 'element not found', missing
+    assert not nested['ok'] and 'cannot run inside a batch or session' in nested['message'], nested
+    assert tap['id'] == 'tap' and tap['ok'] and tap['result']['expect']['found'], tap
+    assert not wrong['ok'] and wrong['expect_failed'] == ['bundle_id'], wrong
+    # TestHost saves its state before its label reads Count: 1, so no wait is needed.
+    assert d.state()['counter'] == 1
+    assert d.last_url() == 'icli-test://blur'
+    # A stop signal ends a session that is waiting for input, with status 0.
+    token = shlex.join(['env', 'ICLI_LEASE=' + d.lease]) + ' ' if d.lease else ''
+    stopped = d.run(f"{{ echo '[\"app\",\"frontmost\"]'; sleep 3; }} | {token}{d.binary} session & p=$!; "
+                    "sleep 1.5; kill -TERM $p; wait $p; echo status $?")
+    lines = stopped.stdout.splitlines()
+    assert lines[-1] == 'status 0', stopped.stdout + stopped.stderr
+    replies = [json.loads(line) for line in lines[:-1]]
+    assert replies[0]['ready'] and replies[1]['ok'] and replies[1]['result']['bundle_id'] == BUNDLE and len(replies) == 2, replies
+    steps = [r['elapsed_ms'] for r in (front, blur, missing, tap)]
+    d.observations.append(f'Session step times: {steps} ms, with no process start or SSH login per step.')
+
+
+@case('device_status', 'runtime', ['status'])
+def device_status(d):
+    d.fixture()
+    status = d.cli('status')
+    assert status['locked'] is False and status['screen_off'] is False, status
+    assert status['frontmost']['bundle_id'] == BUNDLE, status
+    springboard = [p['pid'] for p in d.cli('proc', 'list', '--filter', 'SpringBoard')['processes'] if p['name'] == 'SpringBoard']
+    assert springboard == [status['springboard_pid']], (springboard, status)
+    info = d.cli('device', 'info')
+    assert abs(status['boot_time'] - info['boot_time']) < 5, (status['boot_time'], info['boot_time'])
+    assert status['appearance'] == d.cli('device', 'appearance', 'get')['appearance'], status
+    assert status['orientation'] == d.cli('screen', 'info')['orientation'], status
+    assert status['keyboard_shown'] is False and status['system_overlay'] is False and status['prompt'] is None, status
+    # The keyboard, then an owner-only prompt, as TestHost shows them.
+    d.cli('url', 'open', 'icli-test://focus')
+    d.wait_state('keyboard_visible', True)
+    deadline = time.monotonic() + 4
+    while not (status := d.cli('status'))['keyboard_shown']:
+        assert time.monotonic() < deadline, status
+        time.sleep(0.2)
+    d.fixture('alert-passcode')
+    deadline = time.monotonic() + 4
+    while (status := d.cli('status'))['prompt'] != 'passcode':
+        assert time.monotonic() < deadline, status
+        time.sleep(0.2)
+    d.fixture()
+    assert d.cli('status')['prompt'] is None
+
+
+@case('lease', 'runtime', ['lease acquire', 'lease release', 'lease status'])
+def lease(d):
+    def plain(*arguments, expected=0):
+        """A command from another agent: no lease token."""
+        return d.cli_env({}, *arguments, expected=expected, lease=False)
+
+    def holding(token, *arguments, expected=0):
+        return d.cli_env({'ICLI_LEASE': token}, *arguments, expected=expected)
+
+    if d.lease:
+        mine = d.cli('lease', 'status')
+        assert mine['held'] and mine['mine'], mine
+        refused = plain('app', 'frontmost', expected=75)
+        assert refused['error'] == 'leased' and refused['owner'] == mine['owner'], refused
+        d.observations.append('The run holds its own lease, so only its token and a refusal without it were checked.')
+        return
+    current = plain('lease', 'status')
+    assert not current['held'], f'another runner holds the device: {current}'
+    try:
+        held = plain('lease', 'acquire', '--owner', 'acceptance-case', '--ttl', '60')
+        token = held['token']
+        assert held['held'] and held['owner'] == 'acceptance-case' and 55 <= held['seconds_left'] <= 60, held
+        # Without the token, commands are refused with 75 and the holder's name, and leave no failure artifacts.
+        refused = d.cli_env({'ICLI_FAILURE_ARTIFACTS': '/var/tmp/icli-acceptance/lease-artifacts'}, 'app', 'frontmost',
+                            expected=75, lease=False)
+        assert refused['error'] == 'leased' and refused['owner'] == 'acceptance-case' and 'ICLI_LEASE' in refused['message'], refused
+        assert 'artifacts' not in refused and d.run(['test', '-e', d.sh('/var/tmp/icli-acceptance/lease-artifacts')]).returncode == 1
+        if d.can_drop_privileges:
+            assert d.run(['env', d.binary, 'app', 'frontmost'], unprivileged=True).returncode == 75, 'mobile ran a command under the lease'
+        assert holding(token, 'app', 'frontmost')['bundle_id']
+        # status and lease commands run for anyone.
+        assert plain('status')['springboard_pid']
+        assert plain('lease', 'status')['mine'] is False and holding(token, 'lease', 'status')['mine'] is True
+        assert plain('lease', 'acquire', '--owner', 'other', expected=75)['error'] == 'leased'
+        assert plain('lease', 'release', expected=75)['error'] == 'leased'
+        # Acquiring again with the token renews it and keeps the token.
+        renewed = holding(token, 'lease', 'acquire', '--owner', 'acceptance-case', '--ttl', '120')
+        assert renewed['token'] == token and renewed['seconds_left'] > 60, renewed
+        # --force takes it over, and the old token stops working.
+        taken = plain('lease', 'acquire', '--owner', 'taker', '--ttl', '60', '--force')
+        assert taken['token'] != token and taken['owner'] == 'taker', taken
+        assert holding(token, 'app', 'frontmost', expected=75)['owner'] == 'taker'
+        released = holding(taken['token'], 'lease', 'release')
+        assert released['released'] and released['owner'] == 'taker', released
+        assert not plain('lease', 'status')['held'] and plain('app', 'frontmost')['bundle_id']
+        assert plain('lease', 'release') == {'released': False, 'held': False}
+        # An expired lease refuses nothing.
+        plain('lease', 'acquire', '--owner', 'short', '--ttl', '1')
+        time.sleep(1.5)
+        assert not plain('lease', 'status')['held'] and plain('app', 'frontmost')['bundle_id']
+        for ttl in ['0', '86401', 'nan']:
+            plain('lease', 'acquire', '--owner', 'x', '--ttl', ttl, expected=None)
+            assert d.trace[-1]['exit'] in (1, 64), d.trace[-1]
+        assert not plain('lease', 'status')['held']
+    finally:
+        d.cli_env({}, 'lease', 'release', '--force', expected=None, lease=False)
+        d.run(['rm', '-rf', d.sh('/var/tmp/icli-acceptance/lease-artifacts')])
+
+
+@case('failure_artifacts', 'runtime', ['ui tap', 'batch'])
+def failure_artifacts(d):
+    root = '/var/tmp/icli-acceptance/artifacts'
+    d.run(['rm', '-rf', d.sh(root)], sudo=True)
+    d.fixture()
+    try:
+        failed = d.cli_env({'ICLI_FAILURE_ARTIFACTS': root}, 'ui', 'tap', 'no-such-element', expected=1)
+        folder = failed['artifacts']
+        assert failed['message'] == 'element not found' and folder.startswith(root + '/') and folder.endswith('-ui-tap-no-such-element'), failed
+        error = json.loads(d.run(['cat', d.sh(folder + '/error.json')]).stdout)
+        assert error['argv'] == ['ui', 'tap', 'no-such-element'] and error['error']['message'] == 'element not found', error
+        assert error['frontmost']['bundle_id'] == BUNDLE and error['locked'] is False, error
+        picture = base64.b64decode(d.run(['base64', d.sh(folder + '/screen.jpg')]).stdout)
+        screen = d.cli('screen', 'info')
+        assert jpeg_size(picture) == (screen['width'], screen['height']), (jpeg_size(picture), screen)
+        tree = json.loads(d.run(['cat', d.sh(folder + '/tree.json')]).stdout)
+        assert any(e.get('identifier') == 'counter.increment' for e in tree['elements']), tree.get('count')
+        # A command that succeeds leaves nothing; a batch step's artifacts carry the step's own words.
+        d.cli_env({'ICLI_FAILURE_ARTIFACTS': root}, 'ui', 'tap', '--identifier', 'counter.increment')
+        steps = json.dumps([['app', 'frontmost'], ['ui', 'tap', 'missing-two']])
+        batch = d.cli_env({'ICLI_FAILURE_ARTIFACTS': root}, 'batch', input=steps, expected=1)
+        step = batch['steps'][1]['result']
+        assert step['artifacts'].endswith('-ui-tap-missing-two'), step
+        assert 'artifacts' not in batch['steps'][0]['result'], batch
+        listed = sorted(d.run(['ls', d.sh(root)]).stdout.split())
+        assert [f'{root}/{name}' for name in listed] == sorted([folder, step['artifacts']]), listed
+        # Without the variable, nothing is written.
+        assert 'artifacts' not in d.cli('ui', 'tap', 'no-such-element', expected=1)
+        assert len(d.run(['ls', d.sh(root)]).stdout.split()) == 2
+    finally:
+        d.run(['rm', '-rf', d.sh(root)], sudo=True)
+
+
+@case('ui_tap_expect', 'ax', ['ui tap', 'screen tap', 'ui fill'])
+def ui_tap_expect(d):
+    d.fixture()
+    tapped = d.cli('ui', 'tap', '--identifier', 'counter.increment', '--expect', 'Count: 1')
+    assert tapped['expect']['found'] and 'Count: 1' in tapped['expect']['element']['label'], tapped
+    # TestHost saves its state before it shows the new count, so this needs no sleep.
+    assert d.state()['counter'] == 1
+    # A wait that fails still says the action ran.
+    late = d.cli('ui', 'tap', '--identifier', 'counter.increment', '--expect', 'Count: 99', '--expect-timeout', '0.5', expected=1)
+    assert late['error'] == 'expect_failed' and late['action']['element']['identifier'] == 'counter.increment', late
+    assert 'did not appear within 0.5 s' in late['message'], late
+    d.wait_state('counter', 2)
+    gone = d.cli('screen', 'tap', '100', '245', '--expect-gone', 'Count: 2')
+    assert gone['expect']['disappeared'], gone
+    assert d.state()['counter'] == 3
+    # TestHost's title label: a tap there changes nothing.
+    stays = d.cli('screen', 'tap', '300', '85', '--expect-gone', 'Increment', '--expect-timeout', '0.3', expected=1)
+    assert stays['error'] == 'expect_failed' and 'was still on screen after 0.3 s' in stays['message'], stays
+    filled = d.cli('ui', 'fill', '--identifier', 'input.text', '--value', 'expect me', '--expect', 'expect me')
+    assert filled['expect']['found'], filled
+    d.wait_state('text', 'expect me')
+    # Usage errors: both waits at once, and a timeout out of range.
+    for extra in [['--expect', 'a', '--expect-gone', 'b'], ['--expect', 'a', '--expect-timeout', '61']]:
+        refused = d.run([d.binary, 'ui', 'tap', 'Increment'] + extra)
+        refused.icli_trace['cli_arguments'] = ['ui', 'tap', 'Increment'] + extra
+        assert refused.returncode == 64 and '--expect' in refused.stderr, (refused.returncode, refused.stderr)
+    assert d.state()['counter'] == 3, 'a refused tap ran'
+
+
+@case('screen_ocr_region_fast', 'screen', ['screen ocr'])
+def screen_ocr_region_fast(d):
+    d.fixture()
+    screen = d.cli('screen', 'info')
+    if screen['height'] < 750:
+        d.observations.append("The screen is shorter than TestHost's OCR sample (y 670-750); region and fast OCR were not checked.")
+        return
+    full = d.cli('screen', 'ocr')
+    if 'error' in full:
+        d.observations.append('Vision OCR is unavailable here; region and fast OCR were not checked.')
+        return
+    times = {'full': d.trace[-1]['seconds']}
+    hello = next(b for b in full['blocks'] if b['text'] == 'HELLO 123')
+    # Only the HELLO 123 line of the sample, in screen coordinates.
+    region = d.cli('screen', 'ocr', '--region', f"0,670,{screen['width']},38")
+    times['region'] = d.trace[-1]['seconds']
+    assert [b['text'] for b in region['blocks']] == ['HELLO 123'], region
+    near = region['blocks'][0]
+    assert abs(near['x'] - hello['x']) < 4 and abs(near['y'] - hello['y']) < 4, (near, hello)
+    fast = d.cli('screen', 'ocr', '--fast', '--lang', 'en-US')
+    times['fast'] = d.trace[-1]['seconds']
+    assert fast['level'] == 'fast' and any(b['text'] == 'HELLO 123' and abs(b['y'] - hello['y']) < 8 for b in fast['blocks']), fast
+    both = d.cli('screen', 'ocr', '--fast', '--lang', 'en-US', '--region', f"0,670,{screen['width']},38")
+    times['fast_region'] = d.trace[-1]['seconds']
+    assert [b['text'] for b in both['blocks']] == ['HELLO 123'], both
+    for bad in ['0,0,0,10', '1,2,3', 'a,b,c,d', f"0,{screen['height'] + 10},50,50"]:
+        assert d.cli('screen', 'ocr', '--region', bad, expected=1)['error'], bad
+    d.observations.append(f'OCR round trips in seconds, SSH included: {times}.')
+
+
+AV_STATUS = {'not_determined': 0, 'denied': 2, 'granted': 3}
+LOCATION_STATUS = {'not_determined': 0, 'denied': 2, 'always': 3, 'while_using': 4}
+
+
+@case('app_permissions', 'apps', ['app permission get', 'app permission grant', 'app permission deny', 'app permission reset', 'ui alert'])
+def app_permissions(d):
+    def seen(**expected):
+        # TestHost reads its own authorization status when it saves.
+        deadline = time.monotonic() + 4
+        while True:
+            d.fixture('refresh')
+            state = d.state()
+            if all(state.get(key) == value for key, value in expected.items()):
+                return
+            assert time.monotonic() < deadline, {key: state.get(key) for key in expected}
+            time.sleep(0.2)
+
+    d.fixture()
+    original = d.cli('app', 'permission', 'get', BUNDLE)['permissions']
+    try:
+        granted = d.cli('app', 'permission', 'grant', BUNDLE, 'camera', 'microphone')
+        assert granted['permissions']['camera'] == granted['permissions']['microphone'] == 'granted', granted
+        assert granted['changed'] == ['camera', 'microphone'] and granted['action'] == 'grant', granted
+        # iOS stops an app whose permissions change, as Settings does.
+        deadline = time.monotonic() + 3
+        while any(a['bundle_id'] == BUNDLE for a in d.cli('app', 'running')['apps']):
+            assert time.monotonic() < deadline, 'TestHost still runs after a permission change'
+            time.sleep(0.2)
+        seen(camera_status=3, microphone_status=3)
+        # A display name works as well as a bundle ID.
+        named = d.cli('app', 'permission', 'get', 'icli TestHost')
+        assert named['app'] == BUNDLE and named['permissions']['camera'] == 'granted', named
+        assert d.cli('app', 'permission', 'deny', BUNDLE, 'camera')['permissions']['camera'] == 'denied'
+        seen(camera_status=2, microphone_status=3)
+        for name, value in [('location', 'while_using'), ('location-always', 'always')]:
+            assert d.cli('app', 'permission', 'grant', BUNDLE, name)['permissions']['location'] == value
+            seen(location_status=LOCATION_STATUS[value])
+        assert d.cli('app', 'permission', 'deny', BUNDLE, 'location')['permissions']['location'] == 'denied'
+        seen(location_status=2)
+        one = d.cli('app', 'permission', 'reset', BUNDLE, 'camera')['permissions']
+        assert 'camera' not in one and one['microphone'] == 'granted', one
+        seen(camera_status=0, microphone_status=3)
+        everything = d.cli('app', 'permission', 'reset', BUNDLE)
+        assert not {'camera', 'microphone', 'location'} & set(everything['permissions']) and everything['changed'] == ['all'], everything
+        seen(camera_status=0, microphone_status=0, location_status=0)
+        # After a reset the app asks again: the real system prompt comes back.
+        d.fixture('permission-camera')
+        deadline = time.monotonic() + 6
+        while 'tapped' not in (answered := d.cli('ui', 'alert', 'dismiss', expected=None)):
+            assert answered.get('error') == 'no_alert' and time.monotonic() < deadline, answered
+            time.sleep(0.3)
+        d.wait_state('permission_granted', False)
+        assert d.cli('app', 'permission', 'get', BUNDLE)['permissions']['camera'] == 'denied'
+        # Refusals: unknown names and apps, and grant or deny without a name.
+        assert 'unknown permission' in d.cli('app', 'permission', 'grant', BUNDLE, 'teleport', expected=1)['message']
+        assert 'name the permissions' in d.cli('app', 'permission', 'deny', BUNDLE, 'all', expected=1)['message']
+        assert d.run([d.binary, 'app', 'permission', 'grant', BUNDLE]).returncode == 64
+        d.cli('app', 'permission', 'get', 'icli.no.such.app', expected=1)
+    finally:
+        d.cli('app', 'permission', 'reset', BUNDLE, 'camera', 'microphone', 'location', expected=None)
+        for name, value in original.items():
+            if name == 'location':
+                d.cli('app', 'permission', 'grant' if value != 'denied' else 'deny', BUNDLE,
+                      'location-always' if value == 'always' else 'location', expected=None)
+            elif value in ('granted', 'denied'):
+                d.cli('app', 'permission', 'grant' if value == 'granted' else 'deny', BUNDLE, name, expected=None)
+        d.fixture()
+
+
+@case('app_reset', 'apps', ['app reset', 'app permission get'])
+def app_reset(d):
+    # The TrollStore-installed container fixture, as app_container_preferences uses it.
+    app = 'dev.owngoal.icli.ContainerFixture'
+    info = d.cli('app', 'info', app, expected=None)
+    assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with TrollStore'
+    data = info['data_path']
+    key = 'icli-acceptance-reset-' + uuid.uuid4().hex[:8]
+
+    def exists(path):
+        return d.run(['test', '-e', d.sh(data + '/' + path)], sudo=True).returncode == 0
+
+    def owner(path):
+        return d.run(['stat', '-c', '%u:%g', d.sh(data + '/' + path)], sudo=True).stdout.strip()
+
+    def running():
+        return [a['pid'] for a in d.cli('app', 'running')['apps'] if a['bundle_id'] == app]
+
+    container_owner = owner('')
+    daemons = cfprefsd_pids(d)
+    metadata = '.com.apple.mobile_container_manager.metadata.plist'
+    assert exists(metadata), 'the container has no metadata file'
+    assert d.cli('app', 'reset', app, expected=1)['error'] == 'force_required'
+    planted = ['Documents/icli-reset-marker', 'Library/Caches/icli-reset-marker', 'tmp/icli-reset-marker']
+    d.run(['sh', '-c', ' && '.join(f'echo x > {shlex.quote(d.sh(data + "/" + path))}' for path in planted)], sudo=True)
+    assert d.cli('prefs', 'write', '--app', app, key, 'stale', '--force')['value'] == 'stale'
+    d.cli('app', 'permission', 'grant', app, 'camera')
+    pid = d.cli('app', 'launch', app, '--wait-foreground')['pid']
+    assert running() == [pid]
+    try:
+        reset = d.cli('app', 'reset', app, '--force')
+        assert reset['reset'] == app and reset['container'] == data and reset['stopped_app'], reset
+        assert reset['removed'] >= len(planted) and reset['permissions_reset'] and 'camera' not in reset['permissions'], reset
+        assert reset['preferences_cleared'] >= 1, reset
+        assert running() == [], 'the app still runs after the reset'
+        assert not any(exists(path) for path in planted), 'a planted file survived'
+        assert exists(metadata), 'the reset removed the container metadata'
+        assert owner('Library/Caches') == owner('Library/Preferences') == container_owner, 'recreated folders have the wrong owner'
+        assert not d.cli('prefs', 'read', '--app', app, key)['exists']
+        assert 'camera' not in d.cli('app', 'permission', 'get', app)['permissions']
+        # The app starts again as freshly installed: it reads no stale preference.
+        seen_path = d.sh(data + '/Library/Caches/icli-prefs-seen.json')
+        d.cli('app', 'launch', app, '--wait-foreground')
+        deadline = time.monotonic() + 10
+        while (result := d.run(['cat', seen_path], sudo=True)).returncode != 0 or not result.stdout.strip():
+            assert time.monotonic() < deadline, f'{app} did not report its preferences after the reset'
+            time.sleep(0.2)
+        assert key not in json.loads(result.stdout), result.stdout
+        # --keep-permissions leaves them alone. A permission change stops the
+        # app, so it is granted before the launch.
+        d.cli('app', 'permission', 'grant', app, 'camera')
+        d.cli('app', 'launch', app, '--wait-foreground')
+        kept = d.cli('app', 'reset', app, '--force', '--keep-permissions')
+        assert kept['permissions_reset'] is False and 'permissions' not in kept and kept['stopped_app'], kept
+        assert d.cli('app', 'permission', 'get', app)['permissions']['camera'] == 'granted'
+        assert not exists('Library/Caches/icli-prefs-seen.json')
+        assert d.cli('app', 'reset', 'icli.no.such.app', '--force', expected=1)['error']
+        # Restarting cfprefsd would drop SpringBoard's preference observers.
+        assert cfprefsd_pids(d) == daemons, 'cfprefsd was restarted'
+        if d.can_drop_privileges:
+            d.cli('app', 'launch', app, '--wait-foreground')
+            as_mobile = d.cli('app', 'reset', app, '--force', '--keep-permissions', unprivileged=True)
+            assert as_mobile['stopped_app'] and running() == [], as_mobile
+    finally:
+        d.cli('app', 'permission', 'reset', app, expected=None)
+        d.cli('app', 'kill', app, '--force', expected=None)
 
 
 def command_inventory(command, prefix=()):
@@ -2864,6 +3291,8 @@ def main():
     parser.add_argument('--report', default='.build/acceptance.json')
     parser.add_argument('--layout', choices=['rootless', 'roothide', 'rootful'], default='rootless',
                         help='Bootstrap layout the device is expected to use.')
+    parser.add_argument('--lease', action='store_true',
+                        help='Hold an icli lease for the run, so other agents\' icli commands are refused until it ends.')
     args = parser.parse_args()
     (ROOT / '.build').mkdir(exist_ok=True)
     device = Device(args.layout)
@@ -2911,8 +3340,16 @@ def main():
                 and (not args.cases or c[0] in args.cases)
                 and not (args.skip_reboot and c[1] == 'reboot')]
     report['planned_cases'] = [c[0] for c in selected]
+    owner = f'acceptance {os.uname().nodename}:{os.getpid()}'
+    if args.lease:
+        held = json.loads(device.run([device.binary, 'lease', 'acquire', '--owner', owner, '--ttl', '1800']).stdout)
+        assert held.get('token'), f'could not take the lease: {held}'
+        device.lease = held['token']
     try:
+        springboard = device.springboard_pid()
         for name, group, tools, test in selected:
+            if device.lease:
+                device.run([device.binary, 'lease', 'acquire', '--owner', owner, '--ttl', '1800'])
             device.trace = []
             device.observations = []
             start = time.monotonic()
@@ -2924,14 +3361,28 @@ def main():
             result['seconds'] = round(time.monotonic()-start, 3)
             result['trace'] = device.trace
             result['observations'] = device.observations
+            # Another agent sharing the device can respring it mid-case; such
+            # a result says nothing about icli, so the report flags it.
+            restarted = springboard
+            springboard = device.springboard_pid()
+            if restarted and springboard and restarted != springboard and 'sb respring' not in tools and group != 'reboot':
+                result['springboard_restarted'] = True
+                result['observations'].append(f'SpringBoard restarted during this case (pid {restarted} -> {springboard}).')
+                device.trace = []
+                if device.user == 'root' and device.cli('status', expected=None).get('locked'):
+                    device.run([device.binary, 'unlock'], timeout=30)
             report['cases'].append(result)
             report['completed_run'] = len(report['cases']) == len(report['planned_cases'])
-            print(('PASS' if result['passed'] else 'FAIL') + ' ' + name + ' ' + result.get('error', ''), flush=True)
+            flag = ' (SpringBoard restarted)' if result.get('springboard_restarted') else ''
+            print(('PASS' if result['passed'] else 'FAIL') + ' ' + name + flag + ' ' + result.get('error', ''), flush=True)
             report['untested_commands'] = sorted(set(inventory) - observed_commands(report['cases'], inventory))
             Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2))
     finally:
         # file_roundtrip and extended_files write here; it would outlive the run.
         device.trace = []
+        if device.lease:
+            device.run([device.binary, 'lease', 'release'])
+            device.lease = None
         try:
             device.run(['rm', '-rf', device.sh('/var/tmp/icli-acceptance')]
                        + [device.sh('/tmp/' + name) for name in fixtures], sudo=True)

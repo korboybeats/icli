@@ -15,6 +15,7 @@ OBJC_EXTERN UIImage *_UICreateScreenUIImage(void) NS_RETURNS_RETAINED;
 #import <notify.h>
 #import <objc/message.h>
 #import <signal.h>
+#import <stdatomic.h>
 #import <mach/mach.h>
 #import <mach/mach_time.h>
 #import <unistd.h>
@@ -606,6 +607,32 @@ void icli_stop_signals_catch(void) {
     }
 }
 
+static dispatch_source_t sSessionSources[3];
+static atomic_bool sSessionDefer;
+static atomic_bool sSessionPending;
+
+void icli_session_exit_on_signals(void) {
+    for (int i = 0; i < 3; i++) {
+        signal(kStopSignals[i], SIG_IGN);
+        if (sSessionSources[i]) continue;
+        sSessionSources[i] = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_SIGNAL, kStopSignals[i], 0, dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0));
+        dispatch_source_set_event_handler(sSessionSources[i], ^{
+            if (atomic_load(&sSessionDefer)) {
+                atomic_store(&sSessionPending, true);
+            } else {
+                exit(0);
+            }
+        });
+        dispatch_resume(sSessionSources[i]);
+    }
+}
+
+void icli_session_defer_signals(bool defer) {
+    atomic_store(&sSessionDefer, defer);
+    if (!defer && atomic_load(&sSessionPending)) exit(0);
+}
+
 bool icli_stop_signal_wait(double seconds) {
     return dispatch_semaphore_wait(sStopSignal, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC))) == 0;
 }
@@ -823,6 +850,24 @@ static UIImage *orientedScreenImage(void) {
     UIImage *baked = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     return baked ?: raw;
+}
+
+CGImageRef icli_screen_cgimage(bool native_resolution) {
+    icli_private_init();
+    UIImage *image = orientedScreenImage();
+    if (!image) {
+        return NULL;
+    }
+    CGSize size = CGSizeMake(image.size.width * image.scale, image.size.height * image.scale);
+    if (!native_resolution) {
+        IcliScreenMetrics metrics = icli_screen_metrics();
+        size = CGSizeMake(metrics.width, metrics.height);
+    }
+    UIGraphicsBeginImageContextWithOptions(size, YES, 1);
+    [image drawInRect:CGRectMake(0, 0, size.width, size.height)];
+    UIImage *drawn = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return drawn.CGImage ? CGImageRetain(drawn.CGImage) : NULL;
 }
 
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution) {

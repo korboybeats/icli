@@ -148,7 +148,7 @@ and is not used by this command.
 
 ### App Container Preferences
 
-`prefs read|write|delete --app <bundle-id>` edits the app's own preferences file, `Library/Preferences/<bundle-id>.plist` in its data container, keeping the container's owner, then restarts cfprefsd so the app reads the new value. The app must not be running; `--force` stops it first. `--user` and `--notify` do not apply.
+`prefs read|write|delete --app <bundle-id>` reads and changes the app's own preferences in its data container through cfprefsd, so the result is what the app reads; cfprefsd writes `Library/Preferences/<bundle-id>.plist` a few seconds later. cfprefsd is never restarted: that would drop every process's preference observers, and SpringBoard would then ignore light and dark mode changes until a respring. The app must not be running; `--force` stops it first. `--user` and `--notify` do not apply.
 
 ```sh
 icli prefs write --app example.bundle.id --force DebugEnabled true --type bool

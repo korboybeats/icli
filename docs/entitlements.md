@@ -1,6 +1,6 @@
 # Entitlements and execution requirements
 
-[Resources/icli.entitlements](../Resources/icli.entitlements) is the authoritative signing profile for the shipped CLI. This inventory covers all 75 keys and their exact configured values. The complete profile has been tested on vphones; individual keys have **not** all been tested by removing them one at a time. Descriptions below explain each capability's intended role, not a claim that every key is necessary on every iOS release. Private capabilities depend on the OS and bootstrap.
+[Resources/icli.entitlements](../Resources/icli.entitlements) is the authoritative signing profile for the shipped CLI. This inventory covers all 80 keys and their exact configured values. The complete profile has been tested on vphones; individual keys have **not** all been tested by removing them one at a time. Descriptions below explain each capability's intended role, not a claim that every key is necessary on every iOS release. Private capabilities depend on the OS and bootstrap.
 
 When linking **IcliKit**, **IcliSystem** or **IcliLaunch**, entitlements must be granted to the final calling executable or app. [The Swift Package guide](swift-package.md#entitlements-the-host-needs) maps the read-only `IcliSystem` calls onto the keys below and says which of those are verified, and [its IcliLaunch section](swift-package.md#the-iclilaunch-product) does the same for launching. SwiftPM does not apply this file to consumers or sign them. Use your own `application-identifier` and `com.apple.application-identifier`; the `com.icli.icli` values identify the CLI. Integrate only the feature groups your host needs using its existing signing process. Ordinary provisioning cannot grant this private platform profile.
 
@@ -107,12 +107,19 @@ the same binary, signing tool and executable path, removing only that key
 passed the full-unlock preflight, restoring it reproduced the denial, and
 removing it again passed. No passcode was submitted in these comparisons.
 
+## Privacy permissions
+
+| Key | CLI value | Intended role |
+| --- | --- | --- |
+| `com.apple.private.tcc.manager` | `true` | Required for `app permission` and `app reset` to read, grant, deny and reset an app's TCC permissions; without it tccd returns no entries and refuses changes (verified on iOS 17.1.1). |
+
 ## Location
 
 | Key | CLI value | Intended role |
 | --- | --- | --- |
 | `com.apple.locationd.simulation` | `true` | Required for `location set` and `location clear`: without it locationd silently ignores `CLSimulationManager` requests, even from root (verified on iOS 18.5). |
 | `com.apple.locationd.effective_bundle` | `true` | Required for `location get`: it lets the CLI read as a System Services location bundle, because locationd never authorizes a bare executable (verified on iOS 18.5). |
+| `com.apple.locationd.authorizeapplications` | `true` | Required for `app permission` and `app reset` to read and set an app's location authorization through `CLLocationManager`; without it locationd ignores the change (verified on iOS 17.1.1). |
 
 `com.apple.locationd.preauthorized` is not in the profile: on iOS 18.5 it neither authorizes a bare executable nor is needed once the client names a location bundle.
 

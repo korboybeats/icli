@@ -7,7 +7,7 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
 | `screen info` | Width, height, scale, orientation (degrees), `locked`, `screen_off` | | no | any |
-| `screen tap <x> <y>` | Tap one point | | no | unlocked |
+| `screen tap <x> <y>` | Tap one point | `--expect`, `--expect-gone` (see below) | no | unlocked |
 | `screen double-tap <x> <y>` | Two taps | `--interval 0.1` | no | unlocked |
 | `screen long-press <x> <y>` | Press and hold | `--seconds 0.6` | no | unlocked |
 | `screen swipe` | Straight swipe | `--from-x --from-y --to-x --to-y` (all required), `--seconds 0.25`, `--steps 20`, `--no-momentum` | no | unlocked |
@@ -19,12 +19,12 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `screen gesture <name>` | System gesture: `home`, `app-switcher`, `control-center`, `notification-center`, `spotlight` | | no | unlocked (`home`: any) |
 | `screen shot` | JPEG screenshot, upright | `--output <path>` (default: temporary file), `--base64`, `--native-resolution`, `--check-prompt` | no | any |
 | `screen record` | Record a .mov at the panel's full resolution | `--seconds N` (omit to record until SIGINT, SIGTERM or SIGHUP; up to 3600), `--output <path>`, `--fps 30` (1–60), `--codec hevc\|h264` | no | any |
-| `screen ocr` | Vision text recognition of the current screen | `--lang <code>` (repeatable; default zh-Hans and en-US), `--min-confidence 0.3` | no | unlocked |
+| `screen ocr` | Vision text recognition of the current screen | `--lang <code>` (repeatable; default zh-Hans and en-US), `--min-confidence 0.3`, `--region x,y,width,height` (points; only that rectangle), `--fast` (quicker, less accurate) | no | unlocked |
 | `screen describe` | Screenshot (base64), OCR and accessibility elements from one call | | no | unlocked |
 
 - `screen touch` and `touch-sequence` take UI points like `screen tap`. With `--normalized`, x and y are 0–1 in the fixed portrait digitizer space, which differs from the UI in landscape; `screen touch` reports the converted point as `digitizer_x`/`digitizer_y`. The touch state is kept by the system, so `touch down` in one call and `touch up` in a later call make one tap, drag or long press. Always finish with `up`. In `touch-sequence`, `delay_ms` (0–60000, default 0) is the pause after that event; `finger_down` in the result is true when the sequence did not end with `up`.
 - `screen shot` has one image pixel per point by default. With `--native-resolution` the result includes `coordinate_scale`, which converts pixels to points.
-- In `screen ocr`, `blocks` holds each recognized text with its confidence and point frame. On a device without text recognition the command fails with `unavailable`, as it does on iOS 15 over SSH, where icli has no Metal device for Vision.
+- In `screen ocr`, `blocks` holds each recognized text with its confidence and point frame, in screen coordinates also with `--region`. On an iPhone 15 Pro Max the whole screen took about 0.5 s, `--fast --lang en-US` about 0.2 s, and a 40-point strip about 0.35 s, or 0.2 s with `--fast`. On a device without text recognition the command fails with `unavailable`, as it does on iOS 15 over SSH, where icli has no Metal device for Vision.
 - `screen describe` returns `frontmost`, `screen`, `screenshot`, `ocr` and `elements`. Each component can carry its own `error`. If `context_changed` is true, the foreground app changed during the call, so do not combine its parts.
 
 - `screen record` writes `<path>.partial` and renames it when the movie is complete, so a movie at the path is always whole. A stop signal finishes the movie and the command exits 0 with `stopped_by: signal`. `dropped` counts frames the encoder had no room for. Protected content records black.
@@ -36,13 +36,13 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | --- | --- | --- | --- | --- |
 | `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only` | no | unlocked |
 | `ui at <x> <y>` | Element at a point | | no | unlocked |
-| `ui back` | Tap the screen's back button, or else swipe in from the left edge; `method` says which, and a swipe may do nothing | | no | unlocked |
+| `ui back` | Tap the screen's back button, or else swipe in from the left edge; `method` says which, and a swipe may do nothing | `--expect`, `--expect-gone` | no | unlocked |
 | `ui prompt` | Whether a prompt only the owner may answer is on screen (`human_required`, `kind`, `source`) | `--source ax\|ocr\|any` (default `any`) | no | any |
-| `ui tap [<text>]` | Find an element and tap its centre; refuses ambiguous matches (`error: ambiguous`, with `matches`) | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index N` | no | unlocked |
-| `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit` | no | unlocked |
+| `ui tap [<text>]` | Find an element and tap its centre; refuses ambiguous matches (`error: ambiguous`, with `matches`) | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index N`, `--expect`, `--expect-gone` | no | unlocked |
+| `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit`, `--expect`, `--expect-gone` | no | unlocked |
 | `ui scroll-to [<text>]` | Scroll until an element is on screen and report where; stops at the end of the content | same selectors, `--direction down`, `--max-scrolls 10`, `--x`, `--y` | no | unlocked |
-| `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action | no | unlocked |
-| `ui wait [<text>]` | Poll until the element appears | same selectors, `--timeout 10`, `--interval 0.3` | no | unlocked |
+| `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts, and wait until it has closed; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action, `--expect`, `--expect-gone` | no | unlocked |
+| `ui wait [<text>]` | Poll until the element appears | same selectors, `--timeout 10`, `--interval 0.1` | no | unlocked |
 | `ui wait-gone [<text>]` | Poll until the element disappears | same as `ui wait` | no | unlocked |
 
 `ui tree` reads what can be reached now (`--scope auto`): the app in front, or the Home Screen or Spotlight, with anything SpringBoard shows over it listed first and marked `scope: system`, and `system_overlay` true. That covers alerts, banners, Control Center and the app switcher. `ui tap` and `ui wait` search the same list, and between equal matches prefer the overlay. `--scope app` and `--scope system` read one side, `system` with the status bar and on the Lock Screen too; `all` reads both. `--source ocr` lists on-screen text instead of the tree, and `--source any` does so when the tree is empty; text has no tap state, so neither takes `--clickable-only`.
@@ -50,6 +50,10 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 Reading the AX tree needs the system's accessibility and automation switches, which are system-wide and stored in the `com.apple.Accessibility` preference domain as `ApplicationAccessibilityEnabled` and `AutomationEnabled`. icli turns on whichever of the two is off before each query and puts both back when the process exits, so the device is left as it was found. A long-running IcliKit host calls `restoreAccessibilitySwitches()` when it stops reading the UI, since a process that is killed never reaches its exit handler. The query that turns them on waits once for the app to load its accessibility bundles, so it is slower than the ones after it. A device whose last icli run was 0.7.1 or earlier may still have them on: `prefs read com.apple.Accessibility ApplicationAccessibilityEnabled` reads the stored value, and `prefs delete` clears it.
 
 Selectors: `<text>` matches an element's label, identifier or value. Matching ignores case and defaults to `contains`. `--identifier` matches an exact identifier or label and takes precedence over `<text>`. One of the two is required. `ui tap` fails with exit 1 when nothing matches.
+
+`--expect <text>` waits after the action until an element whose label, identifier or value contains the text is on screen, and adds that wait to the result as `expect`; `--expect-gone <text>` waits until none does. Give one of them. `--expect-timeout` is 0–60 seconds (default 10). A wait that runs out exits 1 with `error: expect_failed`, and its `action` shows that the action itself ran. Waits check every 0.1 s.
+
+A tap that lands while an alert is still animating in is dropped, so `ui alert` checks that the alert closed. If the same alert, with the same button and title, is still there a second later, it taps once more, and `attempts` reports 2. An alert still open after that fails with `error: alert_open`. When the alert was found by text recognition, there is no second tap.
 
 ## input (to the focused text field)
 

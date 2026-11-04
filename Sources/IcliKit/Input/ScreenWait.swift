@@ -70,9 +70,8 @@ private struct ScreenSample {
     }
 }
 
-private func captureScreenSample(path: String, region: ScreenRegion?) throws -> ScreenSample {
-    guard icli_screenshot_jpeg(path, 0.8, 800_000, false) else { throw IcliError.failed("screenshot failed") }
-    guard let image = UIImage(contentsOfFile: path)?.cgImage else { throw IcliError.failed("screenshot is not a valid image") }
+private func captureScreenSample(region: ScreenRegion?) throws -> ScreenSample {
+    guard let image = icli_screen_cgimage(false) else { throw IcliError.failed("screenshot failed") }
     return try ScreenSample(image: image, region: region)
 }
 
@@ -96,8 +95,6 @@ public func waitForScreen(
         throw IcliError.failed("timeout must be 0–60, interval 0–5, stable-for 0–30 seconds and threshold 0–1")
     }
     icli_private_init()
-    let path = JailbreakRoot.current.scratchDirectory() + "/icli-wait-\(UUID().uuidString).jpg"
-    defer { try? FileManager.default.removeItem(atPath: path) }
     let start = ProcessInfo.processInfo.systemUptime
     let reference: ScreenSample
     if let baseline {
@@ -106,7 +103,7 @@ public func waitForScreen(
         }
         reference = try ScreenSample(image: image, region: region)
     } else {
-        reference = try captureScreenSample(path: path, region: region)
+        reference = try captureScreenSample(region: region)
     }
 
     var previous = reference
@@ -116,7 +113,7 @@ public func waitForScreen(
     var settledSince = ProcessInfo.processInfo.systemUptime
     var lastDifference = 0.0
     while true {
-        let frame = try captureScreenSample(path: path, region: region)
+        let frame = try captureScreenSample(region: region)
         let now = ProcessInfo.processInfo.systemUptime
         frames += 1
         lastDifference = frame.difference(from: reference)
