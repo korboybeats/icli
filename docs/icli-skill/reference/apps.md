@@ -9,7 +9,8 @@
 | `app running` | Live app processes with PIDs, from RunningBoard when available (`source` reports a process-list fallback) | | no | unlocked |
 | `app frontmost` | Foreground app bundle ID with `verified` and `source`; the home screen may report `com.apple.springboard` with `verified: false` | | no | unlocked |
 | `app info <bundle-id>` | LaunchServices record: bundle path, executable, version, entitlements | | no | unlocked |
-| `app launch <bundle-id or name>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground` | no | unlocked |
+| `app launch <bundle-id or name>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground`, `--timeout 15` (0–60, how long `--wait-foreground` waits) | no | unlocked |
+| `app relaunch <bundle-id or name>` | Stop the app, start it, and verify a new process is in front; reports `old_pids`, `pid` and `launched_at` (pass it to `log crashes --since`) | `--timeout 15` | no | unlocked |
 | `app open <url>` | Open a URL, optionally in a specific app | `--bundle <bundle-id>` | no | unlocked |
 | `app kill <bundle-id>` | SIGTERM the app's processes and wait for them to exit | `--force` required | no | unlocked |
 | `app permission get <app>` | Privacy permissions: `granted` or `denied` per name, and `location` as `while_using`, `always` or `denied`; one never asked is absent | | no | any |

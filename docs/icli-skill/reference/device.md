@@ -14,6 +14,9 @@
 | `device rotation lock set <on\|off>` | Turn orientation lock on or off | | no | unlocked |
 | `device devmode get` | Developer Mode: `enabled`, `armed` (turns on after the next restart), `writable` (the device allows changing it) | | no | any |
 | `device devmode enable` | Arm Developer Mode when it is off; returns `already_enabled` and `restart_required`. Does not restart the device | | see notes | any |
+| `device passcode status` | Keybag lock state, failed-attempt counter and back-off, and the ledger of rejected passcodes | | no | any |
+| `device passcode unlock` | Unlock the keybag with a supplied passcode, read from stdin, a file or the terminal, never from an argument; never retries a passcode rejected before | `--passcode-stdin`, `--passcode-file <path>` (mode 0600), `--dismiss` (root; also dismiss the lock screen), `--check`, `--max-failures 3` | for `--dismiss` | any |
+| `device passcode forget --force` | Clear the ledger of rejected passcodes, after the device passcode changes | `--force` required | no | any |
 | `device appearance get` | `light` or `dark` | | no | any |
 | `device appearance set <light\|dark>` | Switch appearance; waits until the setting reads the new value | | no | any |
 | `device accessibility get` | `text_size`, `reduce_motion`, `increase_contrast`, `reduce_transparency` | | no | any |
@@ -39,6 +42,13 @@ Developer Mode notes:
 
 - `devmode get` asks amfid and works as mobile. It matches `sysctl security.mac.amfi.developer_mode_status`. iOS 15 has no Developer Mode: it reports enabled, not armed and not writable without asking amfid, and `devmode enable` answers already enabled.
 - `devmode enable` does nothing when Developer Mode is already on or armed. Otherwise it asks amfid to arm it: after the next restart the device asks the user to confirm, and only then is it on. amfid may refuse to arm it without root; the command then fails with `unavailable`. There is no command to turn Developer Mode off.
+
+## lock and unlock
+
+| Command | Purpose | Key flags | Root | Screen |
+| --- | --- | --- | --- | --- |
+| `lock` | Lock the phone and turn its screen off; a no-op when already locked. Exit 3: input sent, state not confirmed | | no | any |
+| `unlock` | Unlock with the passcode saved in this phone's Keychain, with no prompt. After a restart, unlock by hand once first | `--check` (no attempt), `--max-failures 3`, `--store-from-stdin` (provision), `--forget-stored` | required | any |
 
 ## location
 

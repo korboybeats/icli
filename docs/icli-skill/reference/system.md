@@ -1,10 +1,11 @@
 # System: svc, prefs, account, env, proc, sec, net, probe, tests, session, status, lease
 
-## Test runs: session, status, lease
+## Test runs: session, batch, status, lease
 
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
 | `session` | Keep one icli process open: each JSON line on stdin runs one command and gets one JSON line back | | no | each command's own |
+| `batch` | Run a JSON array of commands from stdin in one process, stopping at the first failure; one report with `ok`, `completed`, `failed_step` and each step's `result`, `exit_code`, `elapsed_ms`. A step is an argument list or `{argv, expect, delay_ms, continue_on_error}`; `expect` keys may be dotted (`element.label`) | | no | each command's own |
 | `status` | `locked`, `screen_off`, `orientation`, `frontmost`, `keyboard_shown`, `system_overlay` with `overlay` labels, `prompt` (an owner-only prompt's kind or null), `appearance`, `springboard_pid`, `boot_time` | | no | any |
 | `lease acquire` | Claim the device; prints `token` | `--owner <name>` (required), `--ttl 900` (1–86400 s), `--force` (take it over) | no | any |
 | `lease release` / `lease status` | End the lease, or show `held`, `owner`, `seconds_left`, `mine` | `--force` (release another's) | no | any |
@@ -47,9 +48,9 @@ On RootHide, `bootstrap` and `load` rewrite each plist in place before handing i
 
 | Command | Purpose | Key flags | Root |
 | --- | --- | --- | --- |
-| `prefs read <domain> [<key>]` | One key as `value`, `type`, `exists`, or the whole domain as `values: {key: {value, type}}` and `count` | `--user` | no |
-| `prefs write <domain> <key> <value>` | Write through cfprefsd, synchronize, return the value read back | `--type string\|int\|float\|bool\|date\|data\|json`, `--user`, `--notify <darwin-notification>` | no |
-| `prefs delete <domain> <key>` | Remove the key and confirm it is gone; `removed` is false if it was not set | `--user`, `--notify` | no |
+| `prefs read <domain> [<key>]` | One key as `value`, `type`, `exists`, or the whole domain as `values: {key: {value, type}}` and `count` | `--user`, `--app <bundle-id>` (read the app's own preferences file in its data container; the arguments are then only `[<key>]`) | no |
+| `prefs write <domain> <key> <value>` | Write through cfprefsd, synchronize, return the value read back | `--type string\|int\|float\|bool\|date\|data\|json`, `--user`, `--notify <darwin-notification>`, `--app <bundle-id>` (the arguments are then `<key> <value>`; `--user` does not apply), `--force` (with `--app`, stop the app if it is running) | no |
+| `prefs delete <domain> <key>` | Remove the key and confirm it is gone; `removed` is false if it was not set | `--user`, `--notify`, `--app <bundle-id>`, `--force` (as for `prefs write`) | no |
 
 Types on read are `string`, `int`, `float`, `bool`, `date` (ISO-8601), `data` (Base64), `array` and `dictionary`. On write, `date` takes ISO-8601 or epoch seconds, `data` takes Base64, `json` takes an array or object (no nulls). Put `--` before a negative number: `icli prefs write --type int <domain> <key> -- -7`. cfprefsd writes the plist to disk a few seconds after the command returns. On RootHide, the non-Apple domains of a process running inside the bootstrap are kept in the jbroot (the shell's `/var/mobile/Library/Preferences`), while `com.apple.*` domains use the system's own file.
 

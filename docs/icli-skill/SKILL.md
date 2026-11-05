@@ -12,7 +12,7 @@ The tables below mark each command with two properties:
 - **Root**: `required` means icli refuses to run without root (use `sudo icli …`). `usually` means the command runs, but the files or launchd domain it changes normally need root. `no` means it works as the mobile user.
 - **Screen**: `unlocked` means the command exits with code 2 (`device_locked`) while the device is locked or its screen is off. `any` means it also runs while the device is locked.
 
-Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe, and session, status and lease for test runs).
+Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, lock and unlock, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe, and session, batch, status and lease for test runs).
 
 ## Quick index
 
@@ -21,6 +21,8 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Check whether the screen is on and unlocked | `icli screen info` (read `locked`, `screen_off`) |
 | Check lock, front app, keyboard, overlay and owner-only prompt in one call | `icli status` (`springboard_pid` and `boot_time` change after a respring or reboot) |
 | Wake the screen | `icli button wake` (does not remove a passcode) |
+| Lock the phone | `icli lock` |
+| Unlock with the saved passcode | `sudo icli unlock` (`--check` tests without unlocking) |
 | Find which app is in front | `icli app frontmost` |
 | Find an app's bundle ID | `icli app search <name>` or `icli app list` |
 | Launch an app by its name | `icli app launch Settings` (a bundle ID also works; two visible apps with the name are refused) |
@@ -94,6 +96,16 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Run the self-tests | `icli tests --expect-layout roothide` |
 | Run a JavaScript probe in the icli process | `icli probe -e '<source>'` |
 | Restart userspace | `sudo icli device reboot --userspace --force` |
+
+## Speed
+
+- **Batch or keep a session open.** Each separate `icli` process costs about 190 ms on an iPhone 15 Pro Max, plus the SSH round trip. Inside `icli session` the same command costs about 75 ms. For more than a couple of steps, run `icli batch` (a list of commands, each with an optional `expect`) or keep one `ssh … icli session` open.
+- **Wait on events, never sleep.** Use `ui tap --expect`/`--expect-gone`, `ui wait`/`wait-gone`, `screen wait --changed --stable` and `app launch --wait-foreground`. Each returns as soon as the condition holds.
+- **Check state in one call.** `icli status` replaces separate `screen info`, `app frontmost` and keyboard checks.
+- **Find things below the fold with one command.** Use `ui scroll-to` rather than swipe loops. It pages with accessibility when the view supports that (`method: accessibility`), falls back to touch strokes, and returns a point you can tap.
+- **Prefer the accessibility tree to OCR.** `--source ax` (the default) is much faster than `ocr`. Use `any` only when the text may be missing from the tree. Trim `ui tree` with `--clickable-only` and `--limit`.
+- **Use `ui perform` for one exact, verified tap** in an automated test. It needs a known identifier and app, and checks the change you expect.
+- **Share the device safely.** When other agents may use the same device, hold `icli lease` and export `ICLI_LEASE` in every shell that runs icli.
 
 ## Conventions
 
