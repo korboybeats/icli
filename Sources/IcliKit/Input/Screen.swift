@@ -216,7 +216,15 @@ public func pressKey(_ name: String) throws -> [String: Any] {
     }
     let key = parts.last ?? ""
     let letter = key.utf8.count == 1 ? key.utf8.first : nil
-    let usage = keys[key] ?? letter.flatMap { (97 ... 122).contains($0) ? UInt16($0 - 97 + 4) : nil }
+    // Keyboard page: a–z are 0x04–0x1D, 1–9 are 0x1E–0x26 and 0 is 0x27.
+    let usage = keys[key] ?? letter.flatMap { byte -> UInt16? in
+        switch byte {
+        case 97 ... 122: UInt16(byte - 97 + 0x04)
+        case 49 ... 57: UInt16(byte - 49 + 0x1E)
+        case 48: 0x27
+        default: nil
+        }
+    }
     guard let usage else { throw IcliError.failed("unknown key: \(name)") }
     defer { for modifier in modifiers.reversed() {
         _ = icli_hid_key(0x07, modifier, false)

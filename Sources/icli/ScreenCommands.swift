@@ -448,7 +448,7 @@ extension Input {
 
     struct Key: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument(help: "return, enter, delete, backspace, forward-delete, tab, escape, space, up, down, left, right, home, end, pageup, pagedown or a letter, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
+        @Argument(help: "return, enter, delete, backspace, forward-delete, tab, escape, space, up, down, left, right, home, end, pageup, pagedown, a letter or a digit, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
         func run() {
             emit(output) { try pressKey(name) }
         }

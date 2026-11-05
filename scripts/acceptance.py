@@ -935,6 +935,10 @@ def unicode_input(d):
     d.cli('input', 'key', 'forward-delete')
     time.sleep(0.3)
     assert d.state()['text'] == 'ac', d.state()
+    for key in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'shift+1']:
+        d.cli('input', 'key', key)
+    time.sleep(0.3)
+    assert d.state()['text'] == 'a1234567890!c', d.state()
     d.cli('url', 'open', 'icli-test://blur')
 
 
