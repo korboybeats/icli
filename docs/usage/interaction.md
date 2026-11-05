@@ -228,7 +228,7 @@ Recording draws each frame straight into the hardware encoder's buffers at the p
 
 ### Compact Output
 
-`ui tree`, `ui at`, `ui wait`, `ui wait-gone` and `screen ocr` take `--compact`: text with one line per element or OCR block instead of JSON, for an agent that reads the screen to decide what to tap. The first line holds the result's own fields as `key=value` (`count`, `truncated`, `system_overlay`, `source`, then the rest); each following line is `[role] ["label"] x,y WxH [id="…"] [value=…] [conf=…] [match=x,y] [scope=system] [clickable] [disabled] [offscreen]`. `x,y` is the tap point and `WxH` the frame's size, in whole points; strings are JSON string literals; empty fields, `traits` and the defaults (enabled, visible) are left out. JSON stays the default and is unchanged.
+`ui tree`, `ui at`, `ui wait`, `ui wait-gone` and `screen ocr` take `--compact`: text with one line per element or OCR block instead of JSON, for an agent that reads the screen to decide what to tap. The first line holds the result's own fields as `key=value` (`count`, `truncated`, `system_overlay`, `source`, then the rest); each following line is `[role] ["label"] x,y WxH [id="…"] [value=…] [conf=…] [match=x,y] [scope=system] [clickable] [disabled] [offscreen]`. `x,y` is the tap point, ready for `screen tap`, and `WxH` the frame's size, in whole points; strings are JSON string literals; empty fields, `traits` and the defaults (enabled, visible) are left out. JSON stays the default and is unchanged; use it when a script parses the output, or for the frame's origin, sub-point coordinates and traits. In `batch` and `session`, a `--compact` step answers with its lines in `text` instead of `result`, and `expect` still checks the full result.
 
 ```sh
 icli ui tree --compact
@@ -261,7 +261,7 @@ icli screen wait --baseline /tmp/before.jpg --changed --stable
 
 ### Batches
 
-`icli batch` reads a JSON array of steps from stdin and runs them in one process, stopping at the first failure. A step is an argument list or an object with `argv`, and optionally `expect` (result fields that must match; dotted keys read nested fields), `delay_ms` and `continue_on_error`. The result lists each step's `result`, `exit_code` and `elapsed_ms`; the exit status is the first failed step's. `batch`, `session`, `probe`, `tests` and `screen shot --stdout` cannot be steps.
+`icli batch` reads a JSON array of steps from stdin and runs them in one process, stopping at the first failure. A step is an argument list or an object with `argv`, and optionally `expect` (result fields that must match; dotted keys read nested fields), `delay_ms` and `continue_on_error`. The result lists each step's `result` (`text` for a `--compact` step), `exit_code` and `elapsed_ms`; the exit status is the first failed step's. `batch`, `session`, `probe`, `tests` and `screen shot --stdout` cannot be steps.
 
 ```sh
 echo '[["app","relaunch","com.example"],

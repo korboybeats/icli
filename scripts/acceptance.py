@@ -554,6 +554,22 @@ def compact_output(d):
         assert header['count'] == ocr['count'] and header['engine'] == ocr['engine'], (header, ocr['count'])
         assert [r.get('label') for r in rows] == [b['text'] for b in ocr['blocks']], (rows, ocr['blocks'])
         assert [r['center'] for r in rows] == [(round_half_up(b['x']), round_half_up(b['y'])) for b in ocr['blocks']]
+    # In a batch or session a --compact step answers with its lines in text; expect still reads the result.
+    steps = [{'argv': ['ui', 'tree', '--compact'], 'expect': {'source': 'ax'}}]
+    batch = d.cli('batch', input=json.dumps(steps))
+    step = batch['steps'][0]
+    assert batch['ok'] and 'result' not in step, batch
+    header, rows = parse_compact(step['text'])
+    assert header['count'] == tree['count'] and len(rows) == tree['count'], step['text']
+    steps[0]['expect'] = {'source': 'ocr'}
+    assert d.cli('batch', input=json.dumps(steps), expected=1)['steps'][0]['expect_failed'] == ['source']
+    session = d.run([d.binary, 'session'], input='{"id":7,"argv":["ui","tree","--compact"]}\n["ui","tree"]\n')
+    replies = [json.loads(line) for line in session.stdout.splitlines()]
+    assert replies[0]['ready'] and replies[1]['id'] == 7 and 'result' not in replies[1], replies[:2]
+    assert parse_compact(replies[1]['text'])[0]['count'] == tree['count'], replies[1]
+    assert 'text' not in replies[2] and replies[2]['result']['count'] == tree['count'], replies[2]
+    d.observations.append(f'ui tree in a session: {len(json.dumps(replies[2]))} bytes as JSON, '
+                          f'{len(json.dumps(replies[1]))} with --compact.')
     d.observations.append(f'ui tree on TestHost: {len(pretty)} bytes of JSON, {len(compact.stdout)} with --compact '
                           f'({tree["count"]} elements).')
 

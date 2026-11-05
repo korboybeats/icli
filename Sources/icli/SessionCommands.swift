@@ -11,7 +11,8 @@ struct Session: ParsableCommand {
         Each command skips process start-up and a new SSH connection, about 120 ms on an iPhone 15 Pro Max.
         A line is an argument list, or an object with argv and the batch step fields expect, delay_ms,
         plus id, which the reply repeats. Each line gets one line back, as in a batch report:
-        ok, exit_code, elapsed_ms, result, and message or expect_failed.
+        ok, exit_code, elapsed_ms, result, and message or expect_failed. A step run with --compact
+        answers with its lines in text instead of result; expect still checks the result.
 
           {"id":1,"argv":["ui","tap","Continue"]}
           {"id":1,"ok":true,"exit_code":0,"elapsed_ms":182,"result":{...}}

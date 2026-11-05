@@ -18,7 +18,7 @@ struct Batch: ParsableCommand {
                ["ui","wait","Ready"]]' | icli batch
 
         Prints one JSON report: ok, completed, failed_step, and for each step its \
-        result, exit_code and elapsed_ms. The exit status is the failed step's, 0 when every step passed. A step that crashes \
+        result (text instead with --compact), exit_code and elapsed_ms. The exit status is the failed step's, 0 when every step passed. A step that crashes \
         ends the whole batch without a report. batch, session, probe, tests and 'screen shot --stdout' \
         cannot be steps.
         """,
@@ -113,12 +113,16 @@ struct BatchStep {
         }
         Envelope.capturing = false
         Envelope.human = false
+        // A --compact step answers with its lines in text; expect still reads the result.
+        let compact = Envelope.compact
         Envelope.compact = false
         var report: [String: Any] = ["argv": argv, "elapsed_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000)]
         let result = Envelope.capturedResult as? [String: Any]
         var status = Envelope.capturedStatus
         if let parseError { report["message"] = parseError }
-        if let result { report["result"] = result }
+        if let result {
+            if compact { report["text"] = compactText(result) } else { report["result"] = result }
+        }
         if status == 0 {
             let mismatched = expect.keys.sorted().filter { key in
                 !valuesEqual(field(key, in: result ?? [:]), expect[key])

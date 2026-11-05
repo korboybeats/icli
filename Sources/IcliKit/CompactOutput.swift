@@ -14,7 +14,7 @@ import Foundation
 /// Labels, identifiers, string values and any other string that is not one
 /// plain word are JSON string literals, so spaces, quotes and newlines stay
 /// unambiguous. Empty fields and the defaults (enabled, visible) are left out.
-func compactText(_ dict: [String: Any]) -> String {
+public func compactText(_ dict: [String: Any]) -> String {
     let leading = ["count", "truncated", "system_overlay", "source"]
     let listed: Set = ["elements", "blocks", "element"]
     let keys = leading.filter { dict[$0] != nil }
