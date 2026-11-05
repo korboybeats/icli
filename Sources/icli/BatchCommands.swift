@@ -113,6 +113,7 @@ struct BatchStep {
         }
         Envelope.capturing = false
         Envelope.human = false
+        Envelope.compact = false
         var report: [String: Any] = ["argv": argv, "elapsed_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000)]
         let result = Envelope.capturedResult as? [String: Any]
         var status = Envelope.capturedStatus

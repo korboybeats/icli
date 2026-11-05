@@ -319,8 +319,9 @@ extension Screen {
         @Option(help: "Drop text recognized with less confidence, 0–1.") var minConfidence: Float = 0.3
         @Option(help: "Only read this rectangle, in points: x,y,width,height; quicker than the whole screen.") var region: String?
         @Flag(help: "Quicker, less accurate recognition, for short labels; reads fewer languages (not Chinese).") var fast = false
+        @Flag(help: compactHelp) var compact = false
         func run() {
-            emit(output) {
+            emit(output, compact: compact) {
                 try recognizeScreen(languages: lang, minConfidence: minConfidence, region: ScreenRegion(text: region), fast: fast)
             }
         }
@@ -556,8 +557,9 @@ extension UI {
         @Option(help: "auto (the app or Home Screen, after anything over it, such as an alert or Control Center), app, system (SpringBoard, status bar included; also reads the Lock Screen) or all.")
         var scope: String = "auto"
         @OptionGroup var from: ElementSourceOptions
+        @Flag(help: compactHelp) var compact = false
         func run() {
-            emit(allowWhenLocked: scope == "system", output) {
+            emit(allowWhenLocked: scope == "system", output, compact: compact) {
                 guard let scope = ElementScope(rawValue: scope) else {
                     throw IcliError.failed("scope must be auto, app, system or all")
                 }
@@ -578,8 +580,9 @@ extension UI {
         @OptionGroup var output: OutputOptions
         @Argument(help: pointHelp) var x: Double
         @Argument(help: pointHelp) var y: Double
+        @Flag(help: compactHelp) var compact = false
         func run() {
-            emit(output) { try elementAt(x: x, y: y) }
+            emit(output, compact: compact) { try elementAt(x: x, y: y) }
         }
     }
 
@@ -689,8 +692,9 @@ extension UI {
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
         @Option(help: "Least seconds between checks while the screen keeps changing, 0.1–5; a still screen is not checked again. An OCR check itself takes longer.") var interval: Double = 0.1
+        @Flag(help: compactHelp) var compact = false
         func run() {
-            emit(output) {
+            emit(output, compact: compact) {
                 try waitForElement(
                     selection.selector(), appear: true, timeout: timeout, interval: interval,
                     source: from.parsed(), languages: from.lang,
@@ -706,8 +710,9 @@ extension UI {
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "Seconds to wait, 0–60; a timeout exits 1.") var timeout: Double = 10
         @Option(help: "Least seconds between checks while the screen keeps changing, 0.1–5; a still screen is not checked again. An OCR check itself takes longer.") var interval: Double = 0.1
+        @Flag(help: compactHelp) var compact = false
         func run() {
-            emit(output) {
+            emit(output, compact: compact) {
                 try waitForElement(
                     selection.selector(), appear: false, timeout: timeout, interval: interval,
                     source: from.parsed(), languages: from.lang,

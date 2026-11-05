@@ -10,6 +10,8 @@ import IcliPrivate
 
 public enum Envelope {
     public static var human = false
+    /// One line per element instead of JSON; see compactText. Wins over human.
+    public static var compact = false
     public static var warning: String?
 
     /// While true, the next result and exit status are kept for a batch
@@ -53,6 +55,10 @@ public enum Envelope {
             payload = dict
         } else {
             payload = value
+        }
+        if compact, let dict = payload as? [String: Any] {
+            fputs(compactText(dict), stdout)
+            return
         }
         if human, let dict = payload as? [String: Any] {
             fputs(humanText(dict), stdout)

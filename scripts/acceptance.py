@@ -7,6 +7,7 @@ Results describe observed behavior; a command returning success is not an oracle
 import argparse
 import base64
 import json
+import math
 import os
 import plistlib
 import hashlib
@@ -480,6 +481,81 @@ def ui_tree_sources(d):
     assert len(d.cli('ui', 'tree', '--source', 'ocr', '--limit', '2')['elements']) == 2
     d.cli('ui', 'tree', '--source', 'ocr', '--clickable-only', expected=1)
     d.cli('ui', 'tree', '--scope', 'elsewhere', expected=1)
+
+
+COMPACT_TOKEN = re.compile(r'[^\s"]*"(?:[^"\\]|\\.)*"|\S+')
+
+
+def parse_compact(text):
+    """Reads --compact output back: the header's key=value fields, then each
+    line's role, label, centre, size, key=value fields and flags."""
+    def value(raw):
+        return json.loads(raw) if raw[:1] == '"' or raw in ('true', 'false', 'null') or \
+            re.fullmatch(r'-?\d+(\.\d+)?', raw) else raw
+    lines = text.rstrip('\n').split('\n')
+    header = {k: value(v) for k, v in (t.split('=', 1) for t in COMPACT_TOKEN.findall(lines[0]))}
+    rows = []
+    for line in lines[1:]:
+        row, tokens = {'flags': set()}, COMPACT_TOKEN.findall(line)
+        while not re.fullmatch(r'-?\d+,-?\d+', tokens[0]):
+            token = tokens.pop(0)
+            row['label' if token[0] == '"' else 'role'] = value(token)
+        row['center'] = tuple(int(n) for n in tokens.pop(0).split(','))
+        row['size'] = tuple(int(n) for n in tokens.pop(0).split('x'))
+        for token in tokens:
+            if '=' in token:
+                key, raw = token.split('=', 1)
+                row[key] = value(raw)
+            else:
+                row['flags'].add(token)
+        rows.append(row)
+    return header, rows
+
+
+def round_half_up(number):
+    # Swift's rounded() rounds halves away from zero; Python's round() to even.
+    return int(math.floor(abs(number) + 0.5)) * (1 if number >= 0 else -1)
+
+
+@case('compact_output', 'ax', ['ui tree', 'ui at', 'screen ocr'])
+def compact_output(d):
+    d.fixture()
+    tree = d.cli('ui', 'tree')
+    assert any(e['identifier'] == 'counter.increment' for e in tree['elements']), tree
+    compact = d.run([d.binary, 'ui', 'tree', '--compact'])
+    assert compact.returncode == 0, compact.stderr
+    header, rows = parse_compact(compact.stdout)
+    for key in ('count', 'truncated', 'system_overlay', 'source'):
+        assert header[key] == tree[key], (key, header, tree[key])
+    assert len(rows) == tree['count'] == len(tree['elements']), (len(rows), tree['count'])
+    for element, row in zip(tree['elements'], rows):
+        assert row['role'] == element['role'], (row, element)
+        assert row.get('label', '') == element['label'], (row, element)
+        assert row.get('id', '') == element['identifier'], (row, element)
+        assert row.get('value', '') == element['value'], (row, element)
+        assert row['center'] == (round_half_up(element['x']), round_half_up(element['y'])), (row, element)
+        assert row['size'] == (round_half_up(element['frame']['width']), round_half_up(element['frame']['height'])), (row, element)
+        assert ('clickable' in row['flags']) == element['clickable'], (row, element)
+        assert ('disabled' in row['flags']) == (not element['enabled']), (row, element)
+    # --compact wins over --human, and is a fraction of the JSON's size.
+    assert d.run([d.binary, 'ui', 'tree', '--compact', '--human']).stdout == compact.stdout
+    pretty = d.run([d.binary, 'ui', 'tree']).stdout
+    assert len(compact.stdout) * 3 < len(pretty), (len(compact.stdout), len(pretty))
+
+    increment = next(e for e in tree['elements'] if e['identifier'] == 'counter.increment')
+    point = [str(round_half_up(increment['x'])), str(round_half_up(increment['y']))]
+    hit = d.cli('ui', 'at', *point)['element']
+    header, rows = parse_compact(d.run([d.binary, 'ui', 'at', *point, '--compact']).stdout)
+    assert header['source'] == 'ax' and len(rows) == 1 and rows[0]['id'] == hit['identifier'], (header, rows, hit)
+
+    ocr = d.cli('screen', 'ocr', '--fast', '--lang', 'en-US', expected=None)
+    if 'error' not in ocr:
+        header, rows = parse_compact(d.run([d.binary, 'screen', 'ocr', '--fast', '--lang', 'en-US', '--compact']).stdout)
+        assert header['count'] == ocr['count'] and header['engine'] == ocr['engine'], (header, ocr['count'])
+        assert [r.get('label') for r in rows] == [b['text'] for b in ocr['blocks']], (rows, ocr['blocks'])
+        assert [r['center'] for r in rows] == [(round_half_up(b['x']), round_half_up(b['y'])) for b in ocr['blocks']]
+    d.observations.append(f'ui tree on TestHost: {len(pretty)} bytes of JSON, {len(compact.stdout)} with --compact '
+                          f'({tree["count"]} elements).')
 
 
 @case('ui_system_scope', 'ax', ['ui tree', 'screen gesture', 'button home'])

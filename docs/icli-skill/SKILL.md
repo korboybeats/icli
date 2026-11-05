@@ -5,7 +5,7 @@ description: Command map for icli, the on-device CLI that controls and inspects 
 
 # icli command map
 
-icli runs **on the device**. Run every command in an SSH session on the device, for example `ssh mobile@<device> 'icli device info'`. It prints JSON on stdout. Add `--human` for readable text. `icli <group> --help` and `icli <group> <command> --help` list every option.
+icli runs **on the device**. Run every command in an SSH session on the device, for example `ssh mobile@<device> 'icli device info'`. It prints JSON on stdout. Add `--human` for readable text. To read the screen and decide what to tap, add `--compact` to `ui tree` or `screen ocr`: one line per element, about a sixth of the JSON's size. `icli <group> --help` and `icli <group> <command> --help` list every option.
 
 The tables below mark each command with two properties:
 
@@ -33,7 +33,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Quit an app | `icli app kill <bundle-id> --force` |
 | Grant, deny or reset an app's permissions without the prompt | `icli app permission grant <app> camera location` / `deny` / `reset <app>` (iOS stops the app) |
 | Erase an app's data as a fresh install has it | `icli app reset <app> --force` (also resets its permissions unless `--keep-permissions`) |
-| List what is on screen, Home Screen and system overlays included | `icli ui tree` (add `--clickable-only`, `--limit N`, `--source any`) |
+| List what is on screen, Home Screen and system overlays included | `icli ui tree --compact` (add `--clickable-only`, `--limit N`, `--source any`) |
 | Check whether only the owner can answer what is on screen | `icli ui prompt` (`human_required`, `kind`) |
 | Go back a screen | `icli ui back` (`method` says button or edge swipe) |
 | Tap a button by its label | `icli ui tap 'Label' --match exact` |
@@ -59,7 +59,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Read or set the clipboard | `icli clipboard get` / `icli clipboard set 'text'` / `clipboard set --image <file>` |
 | Save the clipboard image | `icli clipboard get --image-output /tmp/clip.png` |
 | Take a screenshot | `icli screen shot --output /tmp/s.jpg`, `--base64`, or `--stdout` (raw JPEG only) |
-| Read the text on screen | `icli screen ocr` |
+| Read the text on screen | `icli screen ocr --compact` |
 | Read the text in one area quickly | `icli screen ocr --region x,y,width,height --fast --lang en-US` |
 | Get a screenshot, OCR and elements together | `icli screen describe` |
 | Get the model, iOS version, battery and bootstrap layout | `icli device info` |
@@ -99,17 +99,18 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 
 ## Speed
 
-- **Batch or keep a session open.** Each separate `icli` process costs about 190 ms on an iPhone 15 Pro Max, plus the SSH round trip. Inside `icli session` the same command costs about 75 ms. For more than a couple of steps, run `icli batch` (a list of commands, each with an optional `expect`) or keep one `ssh … icli session` open.
+- **Batch or keep a session open.** Each separate `icli` process costs about 100 ms just to start on an iPhone 15 Pro Max (`icli --version`), and typical commands take 120–180 ms in all (`screen info` 120 ms, `ui tree` 170 ms, `status` 180 ms), plus the SSH round trip. Inside `icli session` the same command costs about 75 ms. For more than a couple of steps, run `icli batch` (a list of commands, each with an optional `expect`) or keep one `ssh … icli session` open.
 - **Wait on events, never sleep.** Use `ui tap --expect`/`--expect-gone`, `ui wait`/`wait-gone`, `screen wait --changed --stable` and `app launch --wait-foreground`. Each returns as soon as the condition holds.
 - **Check state in one call.** `icli status` replaces separate `screen info`, `app frontmost` and keyboard checks.
 - **Find things below the fold with one command.** Use `ui scroll-to` rather than swipe loops. It pages with accessibility when the view supports that (`method: accessibility`), falls back to touch strokes, and returns a point you can tap.
 - **Prefer the accessibility tree to OCR.** `--source ax` (the default) is much faster than `ocr`. Use `any` only when the text may be missing from the tree. Trim `ui tree` with `--clickable-only` and `--limit`.
+- **Read the screen with `--compact`.** When you read `ui tree` or `screen ocr` to decide what to tap, add `--compact`. It prints one line per element instead of pretty JSON: on the Home Screen `ui tree` drops from 11.6 KB to 1.8 KB, and `screen ocr --fast` from 5.2 KB to 0.8 KB. Keep the JSON for scripts. The line format is in [reference/interaction.md](reference/interaction.md).
 - **Use `ui perform` for one exact, verified tap** in an automated test. It needs a known identifier and app, and checks the change you expect.
 - **Share the device safely.** When other agents may use the same device, hold `icli lease` and export `ICLI_LEASE` in every shell that runs icli.
 
 ## Conventions
 
-- **Output**: one JSON object on stdout, with keys sorted. On failure the object is `{"error": <code>, "message": <text>}`, where the code is `failed`, `device_locked`, `force_required`, `unavailable`, `missing_dependency`, `command_failed`, or a command's own code such as `timed_out` or `refresh_incomplete`. `icli probe` prints its own line instead, `{"ok": true, "result": <text>}` or `{"ok": false, "error": <message text>}`, both with `output`, and `icli probe repl` is interactive text. Argument errors come from the argument parser as plain text on stderr.
+- **Output**: one JSON object on stdout, with keys sorted, unless `--compact` (`ui tree`, `ui at`, `ui wait`, `ui wait-gone`, `screen ocr`) or `--human` asks for text. On failure the object is `{"error": <code>, "message": <text>}`, where the code is `failed`, `device_locked`, `force_required`, `unavailable`, `missing_dependency`, `command_failed`, or a command's own code such as `timed_out` or `refresh_incomplete`. `icli probe` prints its own line instead, `{"ok": true, "result": <text>}` or `{"ok": false, "error": <message text>}`, both with `output`, and `icli probe repl` is interactive text. Argument errors come from the argument parser as plain text on stderr.
 - **Exit codes**: `0` is success. `2` is `device_locked`. `75` is `leased`: another runner holds the device (see `icli lease`). `1` is any other runtime failure. A result or failure that carries a nonzero `status` exits with that status (1–255). Treat any nonzero exit as a failure and read the JSON.
 - **Locked device**: see the Screen column. Most interactive and many read commands need the device unlocked with the screen on. When you get exit 2, run `icli button wake`. If `screen info` still shows `locked: true`, a person has to unlock the device.
 - **Destructive commands need `--force`**: `app kill`, `app unregister`, `app unregister-dir`, `app uninstall --package`, `fs rm`, `sec keychain delete` and `device reboot` refuse to run without it and return `force_required`.
@@ -128,7 +129,7 @@ icli app launch com.example.app                   # returns once the app is in f
 icli ui wait 'Sign In' --timeout 10
 icli ui tap 'Sign In' --match exact
 icli ui wait-gone 'Loading' --timeout 15
-icli ui tree --clickable-only --limit 50          # confirm the new screen
+icli ui tree --compact --clickable-only          # confirm the new screen
 ```
 
 To tap and wait in one call, use `ui tap 'Sign In' --expect 'Welcome'`. To verify a visible change the tree does not show, save `screen shot --output /tmp/before.jpg` before the tap and run `screen wait --baseline /tmp/before.jpg --changed --stable` after it. For text the tree does not expose (system sheets, games), add `--source ocr` to `ui tap`/`ui wait`.

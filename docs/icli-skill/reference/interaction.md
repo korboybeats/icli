@@ -21,7 +21,7 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `screen gesture <name>` | System gesture: `home`, `app-switcher`, `control-center`, `notification-center`, `spotlight` | | no | unlocked (`home`: any) |
 | `screen shot` | JPEG screenshot, upright | `--output <path>` (default: temporary file), `--stdout` (raw JPEG on stdout only; errors still JSON on stderr), `--base64`, `--native-resolution`, `--check-prompt` | no | any |
 | `screen record` | Record a .mov at the panel's full resolution | `--seconds N` (omit to record until SIGINT, SIGTERM or SIGHUP; up to 3600), `--output <path>`, `--fps 30` (1–60), `--codec hevc\|h264` | no | any |
-| `screen ocr` | Vision text recognition of the current screen | `--lang <code>` (repeatable; default zh-Hans and en-US), `--min-confidence 0.3`, `--region x,y,width,height` (points; only that rectangle), `--fast` (quicker, less accurate) | no | unlocked |
+| `screen ocr` | Vision text recognition of the current screen | `--lang <code>` (repeatable; default zh-Hans and en-US), `--min-confidence 0.3`, `--region x,y,width,height` (points; only that rectangle), `--fast` (quicker, less accurate), `--compact` (one line per block) | no | unlocked |
 | `screen describe` | Screenshot (base64), OCR and accessibility elements from one call | | no | unlocked |
 | `screen wait` | Wait until the pixels change from a baseline, settle, or both; sees what the tree does not. Save the baseline with `screen shot --output` before the action | `--changed`, `--stable` (give one or both), `--baseline <jpeg>` (default: the screen when it starts), `--stable-for 0.5`, `--region x,y,w,h`, `--threshold 0.001`, `--timeout 10` (0–60; exits 1 with `timed_out`), `--interval 0.05` | no | unlocked |
 
@@ -37,8 +37,8 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
-| `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--scope auto\|app\|system\|all` (auto: the front app or Home Screen, or whatever covers it, such as an alert or Control Center; system: SpringBoard with the status bar, also reads the Lock Screen and runs while locked), `--source ax\|ocr\|any`, `--lang` (OCR, default zh-Hans and en-US), `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only` | no | unlocked (`--scope system`: any) |
-| `ui at <x> <y>` | Element at a point | | no | unlocked |
+| `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--scope auto\|app\|system\|all` (auto: the front app or Home Screen, or whatever covers it, such as an alert or Control Center; system: SpringBoard with the status bar, also reads the Lock Screen and runs while locked), `--source ax\|ocr\|any`, `--lang` (OCR, default zh-Hans and en-US), `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only`, `--compact` (one line per element) | no | unlocked (`--scope system`: any) |
+| `ui at <x> <y>` | Element at a point | `--compact` | no | unlocked |
 | `ui back` | Tap the screen's back button, or else swipe in from the left edge; `method` says which, and a swipe may do nothing | `--expect`, `--expect-gone` | no | unlocked |
 | `ui prompt` | Whether a prompt only the owner may answer is on screen (`human_required`, `kind`, `source`) | `--source ax\|ocr\|any` (default `any`) | no | any |
 | `ui tap [<text>]` | Find an element and tap its centre; refuses ambiguous matches (`error: ambiguous`, with `matches`) | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index N`, `--source ax\|ocr\|any`, `--lang`, `--expect`, `--expect-gone` | no | unlocked |
@@ -46,10 +46,29 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit`, `--expect`, `--expect-gone` | no | unlocked |
 | `ui scroll-to [<text>]` | Scroll until an element is on screen and report where, with accessibility paging (`method: accessibility`) where the view supports it, or else touch strokes; the point reported is tappable; stops at the end of the content | same selectors, `--direction down`, `--max-scrolls 10`, `--x`, `--y` | no | unlocked |
 | `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts, and wait until it has closed; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action, `--expect`, `--expect-gone` | no | unlocked |
-| `ui wait [<text>]` | Wait until the element appears | same selectors, `--timeout 10`, `--interval 0.1` | no | unlocked |
+| `ui wait [<text>]` | Wait until the element appears | same selectors, `--timeout 10`, `--interval 0.1`, `--compact` | no | unlocked |
 | `ui wait-gone [<text>]` | Wait until the element disappears | same as `ui wait` | no | unlocked |
 
 `ui tree` reads what can be reached now (`--scope auto`): the app in front, or the Home Screen or Spotlight, with anything SpringBoard shows over it listed first and marked `scope: system`, and `system_overlay` true. That covers alerts, banners, Control Center and the app switcher. `ui tap` and `ui wait` search the same list, and between equal matches prefer the overlay. `--scope app` and `--scope system` read one side, `system` with the status bar and on the Lock Screen too; `all` reads both. `--source ocr` lists on-screen text instead of the tree, and `--source any` does so when the tree is empty; text has no tap state, so neither takes `--clickable-only`.
+
+**`--compact`** (`ui tree`, `ui at`, `ui wait`, `ui wait-gone`, `screen ocr`) prints text instead of JSON, for reading the screen in few tokens. The first line holds the result's own fields as `key=value`: `count`, `truncated`, `system_overlay` and `source` first, then the rest (`pid`, `engine`, `found`, `waited_ms`, …). Then one line per element or OCR block:
+
+```
+count=15 truncated=false system_overlay=false source=ax pid=59121
+text "icli TestHost" 209,85 370x40 id="screen.title"
+button "Increment" 109,247 170x44 id="counter.increment" clickable
+text "Count: 0" 204,289 360x28 id="counter.status" value="0"
+```
+
+`screen ocr --compact` on the same screen:
+
+```
+count=16 engine=vision
+"HELLO 123" 104,691 144x26 conf=0.50
+"中文测试" 81,725 100x31 conf=1.00
+```
+
+The fields are `[role] ["label"] x,y WxH [id="…"] [value=…] [conf=…] [match=x,y] [scope=system] [clickable] [disabled] [offscreen]`. `x,y` is where a tap goes (the element's activation point, which can sit off its frame's centre, as on Home Screen icons) and `WxH` the frame's size, both in whole points. Labels, identifiers and string values are JSON string literals, so spaces, quotes and newlines stay unambiguous; a numeric value is bare. Empty fields, `traits`, and the defaults (enabled, visible) are left out; OCR blocks have no role and carry `conf`. Failures print their `error` and `message` the same way, on the first line. `--compact` wins over `--human`. The JSON (the default) has the full frame and the raw traits.
 
 Reading the AX tree needs the system's accessibility and automation switches, which are system-wide and stored in the `com.apple.Accessibility` preference domain as `ApplicationAccessibilityEnabled` and `AutomationEnabled`. icli turns on whichever of the two is off before each query and puts both back when the process exits, so the device is left as it was found. A long-running IcliKit host calls `restoreAccessibilitySwitches()` when it stops reading the UI, since a process that is killed never reaches its exit handler. The query that turns them on waits once for the app to load its accessibility bundles, so it is slower than the ones after it. A device whose last icli run was 0.7.1 or earlier may still have them on: `prefs read com.apple.Accessibility ApplicationAccessibilityEnabled` reads the stored value, and `prefs delete` clears it.
 

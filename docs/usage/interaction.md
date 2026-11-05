@@ -10,6 +10,7 @@ Read the foreground app's accessibility tree, then use its text or identifiers i
 icli app frontmost
 icli app running
 icli ui tree
+icli ui tree --compact                         # one line per element
 icli ui tap --identifier counter.increment
 icli ui wait 'Ready element' --timeout 5
 icli ui wait-gone 'Loading' --timeout 10
@@ -224,6 +225,22 @@ Recording draws each frame straight into the hardware encoder's buffers at the p
 ### Text Recognition Selectors
 
 `ui tree`, `ui tap`, `ui wait` and `ui wait-gone` take `--source ax|ocr|any` (default `ax`). `ocr` matches on-screen text found by text recognition, for UI missing from the accessibility tree such as system share sheets; it accepts text only, not `--identifier` or `--role`, and taps the centre of the matched text within its line. `any` tries the tree first and falls back to text recognition when the tree has no match. Results from `ocr` and `any` include `source`. Add `--lang` to change the recognition languages.
+
+### Compact Output
+
+`ui tree`, `ui at`, `ui wait`, `ui wait-gone` and `screen ocr` take `--compact`: text with one line per element or OCR block instead of JSON, for an agent that reads the screen to decide what to tap. The first line holds the result's own fields as `key=value` (`count`, `truncated`, `system_overlay`, `source`, then the rest); each following line is `[role] ["label"] x,y WxH [id="…"] [value=…] [conf=…] [match=x,y] [scope=system] [clickable] [disabled] [offscreen]`. `x,y` is the tap point and `WxH` the frame's size, in whole points; strings are JSON string literals; empty fields, `traits` and the defaults (enabled, visible) are left out. JSON stays the default and is unchanged.
+
+```sh
+icli ui tree --compact
+# count=15 truncated=false system_overlay=false source=ax pid=59121
+# text "icli TestHost" 209,85 370x40 id="screen.title"
+# button "Increment" 109,247 170x44 id="counter.increment" clickable
+icli screen ocr --fast --compact
+# count=29 engine=vision level=fast
+# "Photos" 67,170 41x11 conf=1.00
+```
+
+Measured on an iPhone 15 Pro Max (0.11.0+korboy15): the Home Screen's `ui tree` is 11,574 bytes of JSON and 1,759 compact, and `screen ocr --fast` 5,200 and 844; TestHost's `ui tree` is 5,534 and 725.
 
 ```sh
 icli ui wait --source ocr Copy --timeout 5
