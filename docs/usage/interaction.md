@@ -125,6 +125,7 @@ Focus a text field before entering text:
 ```sh
 icli input paste '中文 and emoji 🌱'
 icli input key cmd+a
+icli input key forward-delete                  # deletes the character after the cursor
 icli input type 'Hello!' --delay-ms 30
 ```
 
@@ -139,6 +140,8 @@ icli input hid 7 0xE1 --down
 icli input hid 7 4
 icli input hid 7 0xE1 --up
 ```
+
+`icli button siri` holds the Siri button (consumer usage `0xCF`) for 1.2 s; a short press does nothing on iOS 17. Siri opens and listens; `icli ui tree` then lists one system element identified `Listening`, and `button home` closes Siri. When Siri is turned off, the press brings up the "Turn On Siri" sheet instead, which `button home` does not close; swiping it down does.
 
 On an iPad, `screen click` and `screen scroll` use a virtual pointer, as a trackpad does. A click is a pointer click rather than a touch, and a scroll moves the view under the pointer by exactly the deltas given, with no momentum. `--button secondary` opens the context menu under the pointer, and `--hover 0.5` rests the pointer on the point before it clicks, so hover effects show first. `--normalized` takes 0…1 of the interface as it is shown. The pointer exists only while the command runs. iOS on an iPhone uses it only through AssistiveTouch's pointer devices.
 

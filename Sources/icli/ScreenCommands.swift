@@ -337,7 +337,7 @@ extension Screen {
 struct Button: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Hardware buttons",
-        subcommands: [Home.self, Power.self, VolumeUp.self, VolumeDown.self, Mute.self, Wake.self],
+        subcommands: [Home.self, Power.self, VolumeUp.self, VolumeDown.self, Mute.self, Siri.self, Wake.self],
     )
 }
 
@@ -376,6 +376,14 @@ extension Button {
         @OptionGroup var output: OutputOptions
         func run() {
             emit(output) { try pressButton("mute") }
+        }
+    }
+
+    struct Siri: ParsableCommand {
+        static var configuration = CommandConfiguration(abstract: "Hold the Siri button for 1.2 s to bring up Siri.")
+        @OptionGroup var output: OutputOptions
+        func run() {
+            emit(output) { try pressButton("siri") }
         }
     }
 
@@ -440,7 +448,7 @@ extension Input {
 
     struct Key: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument(help: "return, enter, delete, backspace, tab, escape, space, up, down, left, right, home, end, pageup, pagedown or a letter, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
+        @Argument(help: "return, enter, delete, backspace, forward-delete, tab, escape, space, up, down, left, right, home, end, pageup, pagedown or a letter, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
         func run() {
             emit(output) { try pressKey(name) }
         }

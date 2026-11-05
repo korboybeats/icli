@@ -927,6 +927,14 @@ def unicode_input(d):
     d.cli('input', 'key', 'enter')
     time.sleep(0.2)
     assert d.state()['text'].endswith('\n')
+    d.cli('input', 'key', 'cmd+a')
+    d.cli('input', 'key', 'backspace')
+    d.cli('input', 'paste', 'abc')
+    d.cli('input', 'key', 'left')
+    d.cli('input', 'key', 'left')
+    d.cli('input', 'key', 'forward-delete')
+    time.sleep(0.3)
+    assert d.state()['text'] == 'ac', d.state()
     d.cli('url', 'open', 'icli-test://blur')
 
 
@@ -1336,6 +1344,45 @@ def audio_buttons(d):
     finally:
         d.cli('device', 'volume', 'set', str(original['volume']))
         d.cli('url', 'open', 'icli-test://audio-stop')
+
+
+@case('siri_button', 'controls', ['button siri'])
+def siri_button(d):
+    """Works with Siri on or off and leaves the setting alone. On: Siri shows a
+    system accessibility element identified "Listening", and Home closes it.
+    Off: the press brings up the "Turn On Siri" sheet, which Home does not
+    close; a downward swipe does."""
+    def ocr_text():
+        return ' '.join(block['text'] for block in d.cli('screen', 'ocr', '--fast')['blocks'])
+
+    def listening():
+        return any(e.get('identifier') == 'Listening' for e in d.cli('ui', 'tree')['elements'])
+
+    d.cli('button', 'home')
+    time.sleep(1)
+    assert not listening() and 'Turn On Siri' not in ocr_text()
+    assert d.cli('button', 'siri')['button'] == 'siri'
+    shown = None
+    try:
+        deadline = time.time() + 5
+        while shown is None:
+            if listening():
+                shown = 'siri'
+            elif 'Turn On Siri' in ocr_text():
+                shown = 'sheet'
+            else:
+                assert time.time() < deadline, 'neither Siri nor the Turn On Siri sheet appeared'
+                time.sleep(0.3)
+    finally:
+        if shown == 'sheet':
+            screen = d.cli('screen', 'info')
+            x = str(screen['width'] / 2)
+            d.cli('screen', 'swipe', '--from-x', x, '--from-y', str(screen['height'] * 0.13),
+                  '--to-x', x, '--to-y', str(screen['height'] * 0.86))
+        else:
+            d.cli('button', 'home')
+        time.sleep(1.5)
+    assert not listening() and 'Turn On Siri' not in ocr_text()
 
 
 @case('screenshot_coordinates', 'screen', ['screen shot', 'screen info'])

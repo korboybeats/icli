@@ -203,8 +203,8 @@ public func typeText(_ text: String, delayMS: Double = 30) throws -> [String: An
 
 public func pressKey(_ name: String) throws -> [String: Any] {
     let keys: [String: UInt16] = ["return": 0x28, "enter": 0x28, "delete": 0x2A, "backspace": 0x2A,
-                                  "tab": 0x2B, "escape": 0x29, "space": 0x2C, "up": 0x52, "down": 0x51, "left": 0x50,
-                                  "right": 0x4F, "home": 0x4A, "end": 0x4D, "pageup": 0x4B, "pagedown": 0x4E]
+                                  "forward-delete": 0x4C, "tab": 0x2B, "escape": 0x29, "space": 0x2C, "up": 0x52,
+                                  "down": 0x51, "left": 0x50, "right": 0x4F, "home": 0x4A, "end": 0x4D, "pageup": 0x4B, "pagedown": 0x4E]
     let parts = name.lowercased().split(separator: "+").map(String.init)
     let modifierKeys: [String: UInt16] = [
         "cmd": 0xE3, "command": 0xE3, "ctrl": 0xE0, "control": 0xE0, "shift": 0xE1, "alt": 0xE2, "option": 0xE2,

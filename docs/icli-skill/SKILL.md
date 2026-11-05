@@ -54,8 +54,8 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Put the keyboard away | `icli input hide-keyboard` |
 | Drag along a path | `icli screen drag --points '[{"x":10,"y":10},{"x":90,"y":40}]'` |
 | Type text into the focused field | `icli input paste 'text'` (fast, Unicode) or `icli input type 'text'` |
-| Press Return, Tab, arrows or a shortcut | `icli input key return` / `icli input key cmd+a` |
-| Press Home, lock the screen or change volume | `icli button home` / `button power` / `button volume-up` |
+| Press Return, Tab, arrows, forward delete or a shortcut | `icli input key return` / `icli input key forward-delete` / `icli input key cmd+a` |
+| Press Home, lock the screen, change volume or bring up Siri | `icli button home` / `button power` / `button volume-up` / `button siri` |
 | Read or set the clipboard | `icli clipboard get` / `icli clipboard set 'text'` / `clipboard set --image <file>` |
 | Save the clipboard image | `icli clipboard get --image-output /tmp/clip.png` |
 | Take a screenshot | `icli screen shot --output /tmp/s.jpg`, `--base64`, or `--stdout` (raw JPEG only) |

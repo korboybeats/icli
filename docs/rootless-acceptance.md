@@ -100,6 +100,7 @@ PASS 只表示所列用例在下述设备上通过，不代表其他 iOS 版本�
 | `button volume-up` | PASS | `audio_buttons` |
 | `button volume-down` | PASS | `audio_buttons` |
 | `button mute` | PASS | `audio_buttons` |
+| `button siri` | PASS | `siri_button` |
 | `button wake` | PASS | `device_reboot`, `home_power_wake`, `springboard_restart`, `userspace_reboot` |
 | `input paste` | PASS | `unicode_input` |
 | `input type` | PASS | `unicode_input` |

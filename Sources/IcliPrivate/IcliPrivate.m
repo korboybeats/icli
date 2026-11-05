@@ -1182,6 +1182,9 @@ bool icli_hid_button(const char *name) {
     }
     uint16_t page = kHIDPage_Consumer;
     uint16_t usage = 0;
+    // A held press: iOS 17.1.1 ignores a 100 ms Voice Command press and opens
+    // Siri on a 1.2 s hold.
+    useconds_t hold = 100000;
     if (strcmp(name, "home") == 0) {
         usage = kHIDUsage_Csmr_Menu;
     } else if (strcmp(name, "power") == 0) {
@@ -1192,13 +1195,16 @@ bool icli_hid_button(const char *name) {
         usage = kHIDUsage_Csmr_VolumeDecrement;
     } else if (strcmp(name, "mute") == 0) {
         usage = kHIDUsage_Csmr_Mute;
+    } else if (strcmp(name, "siri") == 0) {
+        usage = 0xCF; // Voice Command
+        hold = 1200000;
     } else {
         return false;
     }
     if (!icli_hid_key(page, usage, true)) {
         return false;
     }
-    usleep(100000);
+    usleep(hold);
     return icli_hid_key(page, usage, false);
 }
 

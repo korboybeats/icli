@@ -69,9 +69,9 @@ A tap that lands while an alert is still animating in is dropped, so `ui alert` 
 | `input key <name>` | One key or chord | | no | unlocked |
 | `input hid <page> <usage>` | Raw HID usage: press (down, 100 ms, up), or only one edge | `--down`, `--up` | no | unlocked |
 
-`input hid` takes decimal or `0x` hex, both 1–0xFFFF. Page 7 is the keyboard (`7 4` is `a`, `7 0xE1` is left shift) and page 12 (`0x0C`) is consumer controls (`0x0C 0xE9` volume up, `0x0C 0xEA` volume down). A key sent with `--down` stays down across calls until the matching `--up`, so `input hid 7 0xE1 --down`, `input hid 7 5`, `input hid 7 0xE1 --up` types `B`.
+`input hid` takes decimal or `0x` hex, both 1–0xFFFF. Page 7 is the keyboard (`7 4` is `a`, `7 0xE1` is left shift) and page 12 (`0x0C`) is consumer controls (`0x0C 0xE9` volume up, `0x0C 0xEA` volume down, `0x0C 0xCF` Siri, which needs a 1.2 s hold). A key sent with `--down` stays down across calls until the matching `--up`, so `input hid 7 0xE1 --down`, `input hid 7 5`, `input hid 7 0xE1 --up` types `B`.
 
-Key names: `return`/`enter`, `delete`/`backspace`, `tab`, `escape`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, and the letters `a`–`z`. Modifiers are joined with `+`: `cmd`/`command`, `ctrl`/`control`, `shift`, `alt`/`option`. Examples: `cmd+a`, `cmd+v`, `shift+tab`.
+Key names: `return`/`enter`, `delete`/`backspace`, `forward-delete` (deletes the character after the cursor), `tab`, `escape`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, and the letters `a`–`z`. Modifiers are joined with `+`: `cmd`/`command`, `ctrl`/`control`, `shift`, `alt`/`option`. Examples: `cmd+a`, `cmd+v`, `shift+tab`.
 
 ## button
 
@@ -82,6 +82,7 @@ Key names: `return`/`enter`, `delete`/`backspace`, `tab`, `escape`, `space`, `up
 | `button wake` | Turn the screen on and, without a passcode, dismiss the lock screen; does not enter a passcode; does nothing when already awake and unlocked | no | any |
 | `button volume-up` / `button volume-down` | Hardware volume event, with a fallback to the audio controller | no | unlocked |
 | `button mute` | Toggle mute of the active audio category | no | unlocked |
+| `button siri` | Hold the Siri button for 1.2 s. Siri opens and listens (`ui tree` lists a system element identified `Listening`); `button home` closes it. When Siri is turned off, it brings up the "Turn On Siri" sheet instead. `button home` does not close that sheet; swiping it down does (`screen swipe --from-x 215 --from-y 120 --to-x 215 --to-y 800`) | no | unlocked |
 
 After `button power`, only lock-exempt commands work until `button wake`. If the device has a passcode, `button wake` stops at the lit lock screen and a person has to unlock it. The result reports `locked` and `screen_off` as observed after the wake.
 
