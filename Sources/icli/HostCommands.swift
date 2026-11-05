@@ -44,21 +44,39 @@ extension Log {
         @Option(help: "Only reports whose file name contains this bundle ID or the app's executable name.") var bundleID: String?
         @Option(help: "Only reports written since: ISO-8601, epoch seconds, or an age such as 30s, 5m or 2h.")
         var since: String?
+        @Option(help: "Only reports of one kind, by file name: crash, spin (spins and hangs), diagnostic (jetsam, resource, panic, watchdog…) or log (anything else). Default: every .ips and .crash report.")
+        var kind: String?
         func run() {
-            emit(output) { try crashLogs(bundleID: bundleID, since: since.map(parseCrashCutoff)) }
+            emit(output) {
+                let kind = try kind.map { name -> CrashReportKind in
+                    guard let kind = CrashReportKind(rawValue: name) else {
+                        throw IcliError.failed("kind must be crash, spin, diagnostic or log")
+                    }
+                    return kind
+                }
+                return try crashLogs(bundleID: bundleID, since: since.map(parseCrashCutoff), kind: kind)
+            }
         }
     }
 
     struct Crash: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Argument var path: String
+        @Argument(help: "The report's path from log crashes; omit it with --bundle-id.") var path: String?
+        @Option(help: "Instead of a path: this app's newest crash report (bundle ID or executable name).") var bundleID: String?
         @Option(help: "Read at most this many bytes; truncated says the report goes on") var maxBytes: Int?
         @Flag(help: "The process, exception, termination and crashed thread's stack instead of the whole report.")
         var summary = false
         func run() {
             emit(output) {
                 guard !summary || maxBytes == nil else { throw IcliError.failed("--summary reads the whole report; omit --max-bytes") }
-                return summary ? try summarizeCrashLog(path) : try readCrashLog(path, maxBytes: maxBytes)
+                guard (path == nil) != (bundleID == nil) else { throw IcliError.failed("give a path or --bundle-id, not both") }
+                var report = path
+                if let bundleID {
+                    let newest = (try crashLogs(bundleID: bundleID, kind: .crash)["crashes"] as? [String])?.first
+                    guard let newest else { throw IcliError.failed("no crash reports for \(bundleID)") }
+                    report = newest
+                }
+                return summary ? try summarizeCrashLog(report!) : try readCrashLog(report!, maxBytes: maxBytes)
             }
         }
     }

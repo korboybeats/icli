@@ -11,7 +11,7 @@ struct App: ParsableCommand {
             List.self, Search.self, Running.self, Frontmost.self, Info.self,
             Launch.self, Relaunch.self, Open.self, Kill.self, Install.self, Uninstall.self,
             Register.self, Unregister.self, Refresh.self, UnregisterDir.self, Network.self,
-            Handlers.self, Schemes.self, Binary.self, Data.self, Permission.self, Reset.self,
+            Handlers.self, Schemes.self, Binary.self, Data.self, Permission.self, Reset.self, SettingsPage.self,
         ],
     )
 }
@@ -68,8 +68,18 @@ extension App {
 
     struct List: ParsableCommand {
         @OptionGroup var output: OutputOptions
+        @Flag(help: "Only apps whose LaunchServices type is User (installed by the user), not System or the bootstrap's.")
+        var user = false
         func run() {
-            emit(output) { try listApps() }
+            emit(output) {
+                var result = try listApps()
+                if user {
+                    let apps = (result["apps"] as? [[String: Any]] ?? []).filter { $0["type"] as? String == "User" }
+                    result["apps"] = apps
+                    result["count"] = apps.count
+                }
+                return result
+            }
         }
     }
 
@@ -91,7 +101,11 @@ extension App {
     struct Frontmost: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(output) { frontmostApp() }
+            emit(output) {
+                var app = frontmostApp()
+                if let id = app["bundle_id"] as? String, let name = appDisplayName(id) { app["name"] = name }
+                return app
+            }
         }
     }
 
@@ -294,12 +308,31 @@ struct URLCommand: ParsableCommand {
     )
 }
 
+extension App {
+    struct SettingsPage: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            commandName: "settings",
+            abstract: "Open Settings at an app's own page (permissions, notifications, its settings) and confirm it is shown.",
+            discussion: "Fails with no_settings_page when Settings has none for the app: iOS lists only apps with something to set there. System pages open with url open 'prefs:root=<page>'.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
+        @Option(help: "Seconds to wait for the page, 0–60.") var timeout: Double = 5
+        func run() {
+            emit(output) { try openAppSettings(resolveAppName(app), timeout: timeout) }
+        }
+    }
+}
+
 extension URLCommand {
     struct Open: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument var url: String
+        @Flag(help: "Afterwards, wait until the screen changes; screen_changed says whether it did (false is not a failure).")
+        var checkChanged = false
+        @Option(help: "Seconds --check-changed waits, 0–60.") var timeout: Double = 5
         func run() {
-            emit(output) { try openURL(url) }
+            emit(output) { checkChanged ? try openURL(url, checkingChangeFor: timeout) : try openURL(url) }
         }
     }
 }

@@ -4,10 +4,10 @@
 
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
-| `app list` | Installed apps with bundle ID, name, version, path | | no | unlocked |
+| `app list` | Installed apps with bundle ID, name, version, path and `type` | `--user` (only `type: User`, the user's apps) | no | unlocked |
 | `app search <query>` | Apps whose name or bundle ID matches | | no | unlocked |
 | `app running` | Live app processes with PIDs, from RunningBoard when available (`source` reports a process-list fallback) | | no | unlocked |
-| `app frontmost` | Foreground app bundle ID with `verified` and `source`; the home screen may report `com.apple.springboard` with `verified: false` | | no | unlocked |
+| `app frontmost` | Foreground app bundle ID, `name`, `pid`, with `verified` and `source`; the home screen may report `com.apple.springboard` with `verified: false` | | no | unlocked |
 | `app info <bundle-id>` | LaunchServices record: bundle path, executable, version, entitlements | | no | unlocked |
 | `app launch <bundle-id or name>` | Launch and wait up to 5 s for the app to be frontmost. Any option here lasts one launch and stops a running app first | `--arg <value>` and `--env NAME=VALUE` (repeatable; write a dash value as `--arg=-Flag`), `--language fr`, `--locale fr_FR`, `--wait-foreground`, `--timeout 15` (0–60, how long `--wait-foreground` waits) | no | unlocked |
 | `app relaunch <bundle-id or name>` | Stop the app, start it, and verify a new process is in front; reports `old_pids`, `pid` and `launched_at` (pass it to `log crashes --since`) | `--timeout 15` | no | unlocked |
@@ -45,7 +45,8 @@
 
 | Command | Purpose | Root | Screen |
 | --- | --- | --- | --- |
-| `url open <url>` | Open a URL in its registered app | no | unlocked |
+| `url open <url>` | Open a URL in its registered app; `--check-changed` then waits (frame by frame, `--timeout 5`) and reports `screen_changed` and `changed_ms`, with `screen_changed: false` (not a failure) when nothing changed | no | unlocked |
+| `app settings <bundle-id or name>` | Open Settings at the app's own page (permissions, notifications, its settings) and confirm Settings shows it; `error: no_settings_page` when it has none (iOS lists only apps with something to set there). `--timeout 5` | no | unlocked |
 
 ### Settings pages
 

@@ -308,6 +308,16 @@ public func fillField(
     source: ElementSource = .ax, languages: [String] = ["zh-Hans", "en-US"],
 ) throws -> [String: Any] {
     let tapped = try tapElement(selector, source: source, languages: languages)
+    return try fillTappedField(element: tapped["element"] ?? [:], value: value, submit: submit)
+}
+
+/// The same, for a field at a point: taps there, empties the field and enters the text.
+public func fillField(x: Double, y: Double, value: String?, submit: Bool) throws -> [String: Any] {
+    _ = try tap(x: x, y: y)
+    return try fillTappedField(element: ["x": x, "y": y], value: value, submit: submit)
+}
+
+private func fillTappedField(element: Any, value: String?, submit: Bool) throws -> [String: Any] {
     // Keys sent before the field takes focus are lost; a hardware keyboard shows no keys.
     let deadline = ProcessInfo.processInfo.systemUptime + 2
     var keyboard = keyboardIsShown()
@@ -318,7 +328,7 @@ public func fillField(
     try clearFocusedField()
     if let value, !value.isEmpty { _ = try pasteText(value) }
     if submit { _ = try pressKey("return") }
-    return ["filled": true, "element": tapped["element"] ?? [:], "keyboard_seen": keyboard, "sent": value?.count ?? 0]
+    return ["filled": true, "element": element, "keyboard_seen": keyboard, "sent": value?.count ?? 0]
 }
 
 /// Runs after an action: waits until an element with `appear` is on screen, or
@@ -575,3 +585,43 @@ private func alertBody(_ elements: [[String: Any]], above button: [String: Any])
         return label
     })
 }
+
+/// Opens Settings at an app's own page (its permissions, notifications and
+/// settings) and confirms Settings shows it: the app's name as the page's
+/// navigation title. iOS 17 lists only apps with something to set there, and
+/// opens Settings' main page for any other app, which is a failure here.
+public func openAppSettings(_ bundleID: String, timeout: TimeInterval = 5) throws -> [String: Any] {
+    guard timeout.isFinite, (0 ... 60).contains(timeout) else { throw IcliError.failed("timeout must be 0–60 seconds") }
+    let name = appDisplayName(bundleID) ?? bundleID
+    // prefs:root=<bundle id> opens a third-party app's page (measured on iOS 17.1.1).
+    let url = "prefs:root=" + bundleID
+    _ = try openURL(url)
+    let start = ProcessInfo.processInfo.systemUptime
+    var frames = FrameGate()
+    defer { frames.close() }
+    repeat {
+        frames.mark()
+        let checked = ProcessInfo.processInfo.systemUptime
+        if frontmostApp()["bundle_id"] as? String == settingsBundleID,
+           let elements = (try? uiElements(scope: .app))?["elements"] as? [[String: Any]],
+           elements.contains(where: { element in
+               (element["label"] as? String)?.compare(name, options: .caseInsensitive) == .orderedSame
+                   && (elementCoordinate(element["y"]) ?? .infinity) < navigationTitleBottom
+           })
+        {
+            return ["opened": true, "app": bundleID, "name": name, "url": url,
+                    "waited_ms": Int((ProcessInfo.processInfo.systemUptime - start) * 1000), "trigger": frames.trigger]
+        }
+        let remaining = timeout - (ProcessInfo.processInfo.systemUptime - start)
+        guard frames.wait(limit: remaining, interval: 0.1, since: checked) else { break }
+    } while ProcessInfo.processInfo.systemUptime - start <= timeout
+    throw IcliError.commandFailed([
+        "error": "no_settings_page", "status": 1, "app": bundleID, "name": name, "url": url,
+        "message": "Settings shows no page for \(name); iOS lists only apps with settings, permissions or notifications",
+    ])
+}
+
+private let settingsBundleID = "com.apple.Preferences"
+/// A Settings page's navigation title centres at y 76 on an iPhone 15 Pro Max;
+/// its first row starts below 110 (measured on iOS 17.1.1).
+private let navigationTitleBottom = 110.0

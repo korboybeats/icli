@@ -79,7 +79,12 @@ bool icli_accessibility_set_flag(const char *name, bool on);
 bool icli_accessibility_set_text_size(const char *category);
 
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution);
+/// A screenshot as JPEG or PNG. width > 0 scales it to that many pixels wide
+/// (keeping the aspect ratio) instead of one pixel per point or native pixels.
+bool icli_screenshot_write(const char *path, float quality, int max_bytes, bool native_resolution, double width, bool png);
 char *icli_ax_elements_json(int pid, int max_elements);
+/// The same; with hierarchy, each element also has its depth below the application (1 and deeper).
+char *icli_ax_elements_hierarchy_json(int pid, int max_elements, bool hierarchy);
 /// Scrolls the scroll view at or nearest a point by one page with accessibility's
 /// own action: direction is down, up, left or right. moved is false at the end of
 /// the content or where accessibility cannot scroll that view. With sameView, only

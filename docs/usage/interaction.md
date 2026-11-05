@@ -16,7 +16,7 @@ icli ui wait 'Ready element' --timeout 5
 icli ui wait-gone 'Loading' --timeout 10
 ```
 
-`app frontmost` marks a bundle ID `verified: true` only when RunningBoard has one non-widget focal app. A SpringBoard-query fallback is marked `verified: false`; UI commands stop if they cannot verify the target. `app running` reports its `source` as `runningboard` or `processes`.
+`app frontmost` reports the app's `bundle_id`, display `name` and `pid`, and marks a bundle ID `verified: true` only when RunningBoard has one non-widget focal app. A SpringBoard-query fallback is marked `verified: false`; UI commands stop if they cannot verify the target. `app running` reports its `source` as `runningboard` or `processes`.
 
 ### Verified UI Actions
 
@@ -127,6 +127,7 @@ Focus a text field before entering text:
 icli input paste '中文 and emoji 🌱'
 icli input key cmd+a
 icli input key forward-delete                  # deletes the character after the cursor
+icli input key delete --count 5                # five backspaces; modifiers stay held across the presses
 icli input type 'Hello!' --delay-ms 30
 ```
 
@@ -159,6 +160,7 @@ icli screen scroll 400 500 --dy 300
 ```sh
 icli screen shot --output /tmp/screen.jpg
 icli screen shot --base64
+icli screen shot --output /tmp/screen.png --width 300   # lossless PNG, 300 pixels wide
 icli screen ocr
 icli screen ocr --region 0,100,430,60 --fast --lang en-US
 icli screen describe
@@ -182,6 +184,7 @@ A quick swipe flings: a scroll view keeps moving after the finger lifts, so a 20
 
 ```sh
 icli ui fill 'Email' --value 'me@example.com' --submit
+icli ui fill --x 200 --y 140 --value 'text'    # a field at a point
 icli input paste 'replacement' --clear
 icli ui scroll-to 'Developer' --match exact
 icli ui alert accept
@@ -200,7 +203,7 @@ icli screen tap 200 640 --expect-gone 'Loading' --expect-timeout 20
 
 ### What Is on Screen
 
-`ui tree` lists what can be reached now: the app in front, or the Home Screen, or Spotlight, with whatever SpringBoard shows over it first. Those elements carry `scope: system`, and `system_overlay` is true; `ui tap` and `ui wait` search the same list and, between equal matches, prefer the overlay. `--scope system` reads SpringBoard alone, including the status bar and the Lock Screen; `--scope app` ignores it.
+`ui tree` lists what can be reached now: the app in front, or the Home Screen, or Spotlight, with whatever SpringBoard shows over it first. Those elements carry `scope: system`, and `system_overlay` is true; `ui tap` and `ui wait` search the same list and, between equal matches, prefer the overlay. `ui tree --hierarchy` gives each element its `depth` below the app, read from its parent chain (about 20–30 ms more on an iPhone 15 Pro Max), and `--compact` then indents each line by its depth. `--scope system` reads SpringBoard alone, including the status bar and the Lock Screen; `--scope app` ignores it.
 
 `ui back` taps the screen's back button, or swipes in from the left edge when it has none. `method` says which, and a swipe does nothing on a screen with nowhere to go back to. `input hide-keyboard` sends the key that toggles the on-screen keyboard only while it is up, and returns once it has gone.
 

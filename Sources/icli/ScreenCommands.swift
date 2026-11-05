@@ -222,8 +222,10 @@ extension Screen {
 
     struct Shot: ParsableCommand {
         @OptionGroup var output: OutputOptions
-        @Option(name: .customLong("output"), help: "Destination JPEG path; defaults to a temporary file.")
+        @Option(name: .customLong("output"), help: "Destination path; defaults to a temporary file. A path ending in .png writes PNG.")
         var path: String?
+        @Option(help: "jpeg or png (lossless); default: png for an --output ending in .png, else jpeg.") var format: String?
+        @Option(help: "Scale the image to this many pixels wide, keeping its shape (coordinate_scale relates it to points).") var width: Double?
         @Flag(help: "Include the JPEG as Base64 in the result; keep a file only when --output is supplied.")
         var base64 = false
         @Flag(help: "Full device pixels instead of one pixel per UI point.") var nativeResolution = false
@@ -237,7 +239,13 @@ extension Screen {
                 return
             }
             emit(allowWhenLocked: true, output) {
-                var shot = try takeScreenshot(path: path, base64: base64, nativeResolution: nativeResolution)
+                guard format == nil || ["jpeg", "jpg", "png"].contains(format!.lowercased()) else {
+                    throw IcliError.failed("format must be jpeg or png")
+                }
+                let png = format.map { $0.lowercased() == "png" } ?? (path?.lowercased().hasSuffix(".png") ?? false)
+                var shot = try takeScreenshot(
+                    path: path, base64: base64, nativeResolution: nativeResolution, width: width, png: png,
+                )
                 if checkPrompt { shot["prompt"] = try currentPrompt() }
                 return shot
             }
@@ -450,8 +458,9 @@ extension Input {
     struct Key: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument(help: "return, enter, delete, backspace, forward-delete, tab, escape, space, up, down, left, right, home, end, pageup, pagedown, a letter or a digit, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
+        @Option(help: "Press it this many times, 1–100, with the modifiers held throughout (delete --count 5 erases 5 characters).") var count: Int = 1
         func run() {
-            emit(output) { try pressKey(name) }
+            emit(output) { try pressKey(name, count: count) }
         }
     }
 
@@ -557,6 +566,8 @@ extension UI {
         @Option(help: "auto (the app or Home Screen, after anything over it, such as an alert or Control Center), app, system (SpringBoard, status bar included; also reads the Lock Screen) or all.")
         var scope: String = "auto"
         @OptionGroup var from: ElementSourceOptions
+        @Flag(help: "Also give each element its depth in the accessibility hierarchy (1 is just below the app); --compact indents by it. Slower: it reads every element's parents.")
+        var hierarchy = false
         @Flag(help: compactHelp) var compact = false
         func run() {
             emit(allowWhenLocked: scope == "system", output, compact: compact) {
@@ -571,6 +582,7 @@ extension UI {
                     clickableOnly: clickableOnly,
                     limit: limit,
                     scope: scope,
+                    hierarchy: hierarchy,
                 )
             }
         }
@@ -637,9 +649,18 @@ extension UI {
         @OptionGroup var from: ElementSourceOptions
         @Option(help: "The field's new text; omit it to only empty the field.") var value: String?
         @Flag(help: "Press Return afterwards.") var submit = false
+        @Option(help: "Instead of text: the field's x, in UI points (with --y).") var x: Double?
+        @Option(help: "Instead of text: the field's y, in UI points (with --x).") var y: Double?
         @OptionGroup var then: ExpectOptions
         func run() {
             emit(output) {
+                if x != nil || y != nil {
+                    guard let x, let y else { throw IcliError.failed("give both --x and --y") }
+                    guard selection.text == nil, selection.identifier == nil else {
+                        throw IcliError.failed("give the field's text or --identifier, or --x and --y, not both")
+                    }
+                    return try then.after { try fillField(x: x, y: y, value: value, submit: submit) }
+                }
                 let selector = try selection.selector(), source = try from.parsed()
                 return try then.after {
                     try fillField(selector, value: value, submit: submit, source: source, languages: from.lang)

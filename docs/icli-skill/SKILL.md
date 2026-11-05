@@ -23,23 +23,23 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Wake the screen | `icli button wake` (does not remove a passcode) |
 | Lock the phone | `icli lock` |
 | Unlock with the saved passcode | `sudo icli unlock` (`--check` tests without unlocking) |
-| Find which app is in front | `icli app frontmost` |
-| Find an app's bundle ID | `icli app search <name>` or `icli app list` |
+| Find which app is in front | `icli app frontmost` (bundle ID, name, pid) |
+| Find an app's bundle ID | `icli app search <name>` or `icli app list` (`--user` for the user's apps only) |
 | Launch an app by its name | `icli app launch Settings` (a bundle ID also works; two visible apps with the name are refused) |
 | Launch an app once with arguments, environment or a language | `icli app launch <bundle-id> --arg=-Flag --env NAME=VALUE --language fr --locale fr_FR` (stops it first) |
 | Launch an app and wait until it is in front | `icli app launch <bundle-id> --wait-foreground` (verified, with `pid`) |
 | Restart an app and prove a new process is in front | `icli app relaunch <bundle-id>` (reports `old_pids`, `pid`, `launched_at`) |
-| Open a URL or deep link | `icli url open <url>` or `icli app open <url> --bundle <bundle-id>` |
+| Open a URL or deep link | `icli url open <url>` (add `--check-changed` to learn whether the screen changed) or `icli app open <url> --bundle <bundle-id>` |
 | Quit an app | `icli app kill <bundle-id> --force` |
 | Grant, deny or reset an app's permissions without the prompt | `icli app permission grant <app> camera location` / `deny` / `reset <app>` (iOS stops the app) |
 | Erase an app's data as a fresh install has it | `icli app reset <app> --force` (also resets its permissions unless `--keep-permissions`) |
-| List what is on screen, Home Screen and system overlays included | `icli ui tree --compact` (add `--clickable-only`, `--limit N`, `--source any`) |
+| List what is on screen, Home Screen and system overlays included | `icli ui tree --compact` (add `--clickable-only`, `--limit N`, `--source any`, `--hierarchy` to indent by nesting) |
 | Check whether only the owner can answer what is on screen | `icli ui prompt` (`human_required`, `kind`) |
 | Go back a screen | `icli ui back` (`method` says button or edge swipe) |
 | Tap a button by its label | `icli ui tap 'Label' --match exact` |
 | Tap by accessibility identifier | `icli ui tap --identifier <id>` |
 | Tap and wait for what it should show, in one call | `icli ui tap 'Save' --expect 'Saved'` or `--expect-gone 'Loading'` (also `screen tap`, `ui fill`, `ui alert`, `ui back`) |
-| Replace a field's text in one call | `icli ui fill 'Label' --value 'text'` (add `--submit` for Return) |
+| Replace a field's text in one call | `icli ui fill 'Label' --value 'text'` (add `--submit` for Return; `--x X --y Y` for a field at a point) |
 | Find an element further down a list | `icli ui scroll-to 'Text' --match exact` |
 | Answer a permission or app alert | `icli ui alert accept` / `icli ui alert dismiss` |
 | Wait for an element to appear or disappear | `icli ui wait 'Text' --timeout 5` / `icli ui wait-gone 'Loading'` |
@@ -54,11 +54,11 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Put the keyboard away | `icli input hide-keyboard` |
 | Drag along a path | `icli screen drag --points '[{"x":10,"y":10},{"x":90,"y":40}]'` |
 | Type text into the focused field | `icli input paste 'text'` (fast, Unicode) or `icli input type 'text'` |
-| Press Return, Tab, arrows, forward delete or a shortcut | `icli input key return` / `icli input key forward-delete` / `icli input key cmd+a` |
+| Press Return, Tab, arrows, forward delete or a shortcut | `icli input key return` / `icli input key forward-delete` / `icli input key cmd+a` / `icli input key delete --count 5` |
 | Press Home, lock the screen, change volume or bring up Siri | `icli button home` / `button power` / `button volume-up` / `button siri` |
 | Read or set the clipboard | `icli clipboard get` / `icli clipboard set 'text'` / `clipboard set --image <file>` |
 | Save the clipboard image | `icli clipboard get --image-output /tmp/clip.png` |
-| Take a screenshot | `icli screen shot --output /tmp/s.jpg`, `--base64`, or `--stdout` (raw JPEG only) |
+| Take a screenshot | `icli screen shot --output /tmp/s.jpg`, `--base64`, or `--stdout` (raw JPEG only); `--output /tmp/s.png` or `--format png` for lossless PNG, `--width 300` for a smaller image |
 | Read the text on screen | `icli screen ocr --compact` |
 | Read the text in one area quickly | `icli screen ocr --region x,y,width,height --fast --lang en-US` |
 | Get a screenshot, OCR and elements together | `icli screen describe` |
@@ -70,13 +70,14 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Switch to light or dark mode | `icli device appearance set dark` |
 | Change the text size, Reduce Motion, Increase Contrast or Reduce Transparency | `icli device accessibility set --text-size xxl --reduce-motion on` |
 | Open a Settings page | `icli url open 'prefs:root=General&path=About'` (table in [apps](reference/apps.md)) |
+| Open an app's page in Settings (its permissions, notifications) | `icli app settings <bundle-id or name>` |
 | Rotate the screen or lock rotation | `icli device rotation set landscape-left` / `rotation lock set on` |
 | Read, write or list files | `icli fs read <p>` / `fs write <p> <text>` / `fs ls <dir>` |
 | Read or edit a plist | `icli fs plist <p>` / `icli fs plist-set <p> <key> '<json>'` |
 | Read or change preferences (like `defaults`) | `icli prefs read <domain> [<key>]` / `prefs write <domain> <key> <value> --type int` / `prefs delete <domain> <key>` |
 | Change an app's own container preferences | `icli prefs write --app <bundle-id> --force <key> <value> --type bool` (stops the app) |
 | Capture live logs | `icli log syslog --seconds 5 --process <name> --level error` |
-| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m]` then `icli log crash <path> --summary` (add nothing for the whole report) |
+| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m] [--kind crash\|spin\|diagnostic\|log]` then `icli log crash <path> --summary`, or `icli log crash --bundle-id <id> --summary` for its newest crash |
 | Run several commands in one process with checks | `echo '[["app","frontmost"],{"argv":["ui","wait","Ready"],"expect":{"found":true}}]' \| icli batch` |
 | Keep one icli process open and send it commands as you go | `icli session`, then one line per command: `{"id":1,"argv":["ui","tap","OK"]}` (one JSON line back each) |
 | Keep other agents' icli commands off the device during a run | `export ICLI_LEASE=$(icli lease acquire --owner ci \| jq -r .token)`, then `icli lease release` |
@@ -99,7 +100,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 
 ## Speed
 
-- **Batch or keep a session open.** Each separate `icli` process costs about 100 ms just to start on an iPhone 15 Pro Max (`icli --version`), and typical commands take 120–180 ms in all (`screen info` 120 ms, `ui tree` 170 ms, `status` 180 ms), plus the SSH round trip. Inside `icli session` the same command costs about 75 ms. For more than a couple of steps, run `icli batch` (a list of commands, each with an optional `expect`) or keep one `ssh … icli session` open.
+- **Batch or keep a session open.** Each separate `icli` process costs about 100 ms just to start on an iPhone 15 Pro Max (`icli --version`), and typical commands take 120–180 ms in all (`screen info` 120 ms, `ui tree` 170 ms, `status` 180 ms), plus the SSH round trip. Inside `icli session` the start-up is gone: `screen info` takes about 1 ms, `app frontmost` 3 ms, `ui tree` 26 ms and `status` 35 ms. For more than a couple of steps, run `icli batch` (a list of commands, each with an optional `expect`) or keep one `ssh … icli session` open.
 - **Wait on events, never sleep.** Use `ui tap --expect`/`--expect-gone`, `ui wait`/`wait-gone`, `screen wait --changed --stable` and `app launch --wait-foreground`. Each returns as soon as the condition holds.
 - **Check state in one call.** `icli status` replaces separate `screen info`, `app frontmost` and keyboard checks.
 - **Find things below the fold with one command.** Use `ui scroll-to` rather than swipe loops. It pages with accessibility when the view supports that (`method: accessibility`), falls back to touch strokes, and returns a point you can tap.

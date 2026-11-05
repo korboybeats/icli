@@ -19,7 +19,7 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 | `screen touch <down\|move\|up> <x> <y>` | One raw finger event; a gesture can span several calls | `--normalized` | no | unlocked |
 | `screen touch-sequence` | Several finger events from one process, with exact timing | `--events '<JSON [{phase,x,y,delay_ms},…]>'` (required), `--normalized` | no | unlocked |
 | `screen gesture <name>` | System gesture: `home`, `app-switcher`, `control-center`, `notification-center`, `spotlight` | | no | unlocked (`home`: any) |
-| `screen shot` | JPEG screenshot, upright | `--output <path>` (default: temporary file), `--stdout` (raw JPEG on stdout only; errors still JSON on stderr), `--base64`, `--native-resolution`, `--check-prompt` | no | any |
+| `screen shot` | JPEG or PNG screenshot, upright | `--output <path>` (default: temporary file), `--stdout` (raw JPEG on stdout only; errors still JSON on stderr), `--base64`, `--format jpeg\|png` (default png for an `--output` ending in .png), `--width <pixels>` (scaled, keeps its shape; not with `--native-resolution`), `--native-resolution`, `--check-prompt` | no | any |
 | `screen record` | Record a .mov at the panel's full resolution | `--seconds N` (omit to record until SIGINT, SIGTERM or SIGHUP; up to 3600), `--output <path>`, `--fps 30` (1–60), `--codec hevc\|h264` | no | any |
 | `screen ocr` | Vision text recognition of the current screen | `--lang <code>` (repeatable; default zh-Hans and en-US), `--min-confidence 0.3`, `--region x,y,width,height` (points; only that rectangle), `--fast` (quicker, less accurate), `--compact` (one line per block) | no | unlocked |
 | `screen describe` | Screenshot (base64), OCR and accessibility elements from one call | | no | unlocked |
@@ -37,13 +37,13 @@ Coordinates are UI points in the orientation shown on screen (see `icli screen i
 
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
-| `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--scope auto\|app\|system\|all` (auto: the front app or Home Screen, or whatever covers it, such as an alert or Control Center; system: SpringBoard with the status bar, also reads the Lock Screen and runs while locked), `--source ax\|ocr\|any`, `--lang` (OCR, default zh-Hans and en-US), `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only`, `--compact` (one line per element) | no | unlocked (`--scope system`: any) |
+| `ui tree` | Elements with `label`, `identifier`, `value`, `role`, `frame`, `clickable`, `visible` | `--scope auto\|app\|system\|all` (auto: the front app or Home Screen, or whatever covers it, such as an alert or Control Center; system: SpringBoard with the status bar, also reads the Lock Screen and runs while locked), `--source ax\|ocr\|any`, `--lang` (OCR, default zh-Hans and en-US), `--max-elements 250` (1–2000), `--limit N`, `--include-offscreen`, `--clickable-only`, `--compact` (one line per element), `--hierarchy` (each element's `depth` below the app; `--compact` indents by it; about 20–30 ms more) | no | unlocked (`--scope system`: any) |
 | `ui at <x> <y>` | Element at a point | `--compact` | no | unlocked |
 | `ui back` | Tap the screen's back button, or else swipe in from the left edge; `method` says which, and a swipe may do nothing | `--expect`, `--expect-gone` | no | unlocked |
 | `ui prompt` | Whether a prompt only the owner may answer is on screen (`human_required`, `kind`, `source`) | `--source ax\|ocr\|any` (default `any`) | no | any |
 | `ui tap [<text>]` | Find an element and tap its centre; refuses ambiguous matches (`error: ambiguous`, with `matches`) | `--identifier <id>`, `--role <role>`, `--match contains\|exact`, `--index N`, `--source ax\|ocr\|any`, `--lang`, `--expect`, `--expect-gone` | no | unlocked |
 | `ui perform` | Tap one element once, by exact identifier, in a verified foreground app, and confirm the change you expect | `--app` and `--tap-identifier` (both required), `--expect-appeared`, `--expect-disappeared`, `--expect-value-changed`, `--method touch\|accessibility`, `--timeout 10`, `--interval 0.1`, `--failure-screenshot <path>` | no | unlocked |
-| `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, `--value <text>` (omit to only empty it), `--submit`, `--expect`, `--expect-gone` | no | unlocked |
+| `ui fill [<text>]` | Tap a field, empty it, enter new text | same selectors, or `--x X --y Y` for a field at a point; `--value <text>` (omit to only empty it), `--submit`, `--expect`, `--expect-gone` | no | unlocked |
 | `ui scroll-to [<text>]` | Scroll until an element is on screen and report where, with accessibility paging (`method: accessibility`) where the view supports it, or else touch strokes; the point reported is tappable; stops at the end of the content | same selectors, `--direction down`, `--max-scrolls 10`, `--x`, `--y` | no | unlocked |
 | `ui alert <accept\|dismiss>` | Answer the alert on screen, including system permission alerts, and wait until it has closed; refuses passcode, Face ID, Touch ID, Apple Account, Allow Paste, VPN, profile and purchase prompts (`error: human_required`) | `--button <text>` instead of an action, `--expect`, `--expect-gone` | no | unlocked |
 | `ui wait [<text>]` | Wait until the element appears | same selectors, `--timeout 10`, `--interval 0.1`, `--compact` | no | unlocked |
@@ -85,7 +85,7 @@ A tap that lands while an alert is still animating in is dropped, so `ui alert` 
 | `input paste <text>` | Send the whole string as Unicode key events. Does not touch the clipboard | `--clear`, `--submit` | no | unlocked |
 | `input hide-keyboard` | Put the software keyboard away and wait until it has gone; does nothing when it is not up (`was_shown`) | | no | unlocked |
 | `input type <text>` | Send one grapheme at a time | `--delay-ms 30`, `--clear`, `--submit` | no | unlocked |
-| `input key <name>` | One key or chord | | no | unlocked |
+| `input key <name>` | One key or chord | `--count N` (1–100; presses it N times with the modifiers held throughout) | no | unlocked |
 | `input hid <page> <usage>` | Raw HID usage: press (down, 100 ms, up), or only one edge | `--down`, `--up` | no | unlocked |
 
 `input hid` takes decimal or `0x` hex, both 1–0xFFFF. Page 7 is the keyboard (`7 4` is `a`, `7 0xE1` is left shift) and page 12 (`0x0C`) is consumer controls (`0x0C 0xE9` volume up, `0x0C 0xEA` volume down, `0x0C 0xCF` Siri, which needs a 1.2 s hold). A key sent with `--down` stays down across calls until the matching `--up`, so `input hid 7 0xE1 --down`, `input hid 7 5`, `input hid 7 0xE1 --up` types `B`.

@@ -886,6 +886,10 @@ CGImageRef icli_screen_cgimage(bool native_resolution) {
 }
 
 bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool native_resolution) {
+    return icli_screenshot_write(path, quality, max_bytes, native_resolution, 0, false);
+}
+
+bool icli_screenshot_write(const char *path, float quality, int max_bytes, bool native_resolution, double width, bool png) {
     if (!path) {
         return false;
     }
@@ -900,11 +904,16 @@ bool icli_screenshot_jpeg(const char *path, float quality, int max_bytes, bool n
         IcliScreenMetrics metrics = icli_screen_metrics();
         size = CGSizeMake(metrics.width, metrics.height);
     }
+    if (width > 0 && size.width > 0) size = CGSizeMake(round(width), round(size.height * width / size.width));
     UIGraphicsBeginImageContextWithOptions(size, YES, 1);
     [image drawInRect:CGRectMake(0, 0, size.width, size.height)];
     image = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     if (!image) return false;
+    if (png) {
+        NSData *data = UIImagePNGRepresentation(image);
+        return data.length > 0 && [data writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
+    }
     float q = quality > 0 ? quality : 0.7f;
     NSData *data = UIImageJPEGRepresentation(image, q);
     if (max_bytes > 0) {

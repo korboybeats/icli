@@ -33,7 +33,13 @@ public func compactText(_ dict: [String: Any]) -> String {
         if let element = dict[key] as? [String: Any] {
             if !element.isEmpty { lines.append(compactElement(element)) }
         } else if let rows = dict[key] as? [[String: Any]] {
-            lines += rows.map(compactElement)
+            // With --hierarchy, one leading space per level below the shallowest element.
+            let depths = rows.compactMap { ($0["depth"] as? NSNumber)?.intValue }
+            let shallowest = depths.min() ?? 0
+            lines += rows.map { row in
+                let indent = (row["depth"] as? NSNumber).map { max($0.intValue - shallowest, 0) } ?? 0
+                return String(repeating: " ", count: indent) + compactElement(row)
+            }
         } else if let other = dict[key] {
             lines[0] += (lines[0].isEmpty ? "" : " ") + "\(key)=\(inlineJSON(other))"
         }
@@ -71,7 +77,7 @@ private func compactElement(_ element: [String: Any]) -> String {
     if element["visible"] as? Bool == false { parts.append("offscreen") }
     let handled: Set = [
         "role", "label", "text", "x", "y", "frame", "width", "height", "identifier", "value", "confidence",
-        "match_x", "match_y", "scope", "clickable", "enabled", "visible",
+        "match_x", "match_y", "scope", "clickable", "enabled", "visible", "depth",
         // The role and the enabled flag are read from the traits; the raw bits add nothing to read.
         "traits",
     ]

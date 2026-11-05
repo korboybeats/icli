@@ -212,7 +212,26 @@ static NSDictionary *serializeElement(AXElement element, BOOL fixedSpace) {
     };
 }
 
-static NSDictionary *elementsResultForTarget(int pid, int max_elements, NSString *identifier, AXElement *target) {
+// How deep an element sits: its parent chain (attribute 5002, what -[AXElement parent]
+// reads in AXRuntime 17.1.1) up to the application, which is depth 0. Elements share
+// their containers, so each container's depth is looked up once per query.
+static NSInteger elementDepth(AXElement element, CFMutableDictionaryRef depths, int levels) {
+    CFNumberRef known = CFDictionaryGetValue(depths, element);
+    if (known) return [(__bridge NSNumber *)known integerValue];
+    NSInteger depth = 0;
+    CFTypeRef parent = NULL;
+    if (levels > 0 && copyAttribute(element, (CFStringRef)(uintptr_t)5002, &parent) == 0 && parent
+        && CFGetTypeID(parent) == CFGetTypeID(element) && !CFEqual(parent, element)) {
+        if (setTimeout) setTimeout(parent, 0.25f);
+        depth = elementDepth(parent, depths, levels - 1) + 1;
+    }
+    if (parent) CFRelease(parent);
+    CFDictionarySetValue(depths, element, (__bridge CFNumberRef)@(depth));
+    return depth;
+}
+
+static NSDictionary *elementsResultForTarget(int pid, int max_elements, NSString *identifier, AXElement *target,
+                                             BOOL hierarchy) {
     AXElement root = createApp(pid);
     if (!root) return @{@"error": @"AX application unavailable"};
     if (setTimeout) setTimeout(root, 0.5f);
@@ -233,18 +252,27 @@ static NSDictionary *elementsResultForTarget(int pid, int max_elements, NSString
     BOOL truncated = NO;
     AXElement chosen = NULL;
     NSUInteger matches = 0;
+    CFMutableDictionaryRef depths = hierarchy
+        ? CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks)
+        : NULL;
     for (id element in elements) {
         if (rows.count >= (NSUInteger)max_elements || NSProcessInfo.processInfo.systemUptime >= deadline) {
             truncated = YES;
             break;
         }
         NSDictionary *node = serializeElement((__bridge AXElement)element, fixedSpace);
+        if (node && depths) {
+            NSMutableDictionary *nested = [node mutableCopy];
+            nested[@"depth"] = @(elementDepth((__bridge AXElement)element, depths, 64));
+            node = nested;
+        }
         if (node) [rows addObject:node];
         if (target && [node[@"visible"] boolValue] && [node[@"identifier"] isEqual:identifier]) {
             matches++;
             if (!chosen) chosen = CFRetain((__bridge AXElement)element);
         }
     }
+    if (depths) CFRelease(depths);
     if (target && matches == 1 && !truncated) *target = chosen;
     else if (chosen) CFRelease(chosen);
     return @{
@@ -256,8 +284,8 @@ static NSDictionary *elementsResultForTarget(int pid, int max_elements, NSString
     };
 }
 
-static NSDictionary *elementsResult(int pid, int max_elements) {
-    return elementsResultForTarget(pid, max_elements, nil, NULL);
+static NSDictionary *elementsResult(int pid, int max_elements, BOOL hierarchy) {
+    return elementsResultForTarget(pid, max_elements, nil, NULL, hierarchy);
 }
 
 static NSDictionary *elementAtResult(int pid, double x, double y) {
@@ -283,18 +311,22 @@ static NSDictionary *elementAtResult(int pid, double x, double y) {
 static const useconds_t kBundleLoadWait = 400000;
 
 char *icli_ax_elements_json(int pid, int max_elements) {
+    return icli_ax_elements_hierarchy_json(pid, max_elements, false);
+}
+
+char *icli_ax_elements_hierarchy_json(int pid, int max_elements, bool hierarchy) {
     if (pid <= 0 || max_elements < 1 || max_elements > 2000) return icli_json(@{@"error": @"invalid AX query"});
     if (!prepareAX()) return icli_json(@{@"error": @"AX runtime unavailable"});
     BOOL enabled = enableSwitches();
-    NSDictionary *result = elementsResult(pid, max_elements);
+    NSDictionary *result = elementsResult(pid, max_elements, hierarchy);
     if (enabled && [result[@"count"] unsignedIntegerValue] == 0) {
         usleep(kBundleLoadWait);
-        result = elementsResult(pid, max_elements);
+        result = elementsResult(pid, max_elements, hierarchy);
     }
     // An app in the middle of loading a screen answers -25216, then recovers.
     for (int retry = 0; retry < 15 && [result[@"error"] hasSuffix:@"(-25216)"]; retry++) {
         usleep(100000);
-        result = elementsResult(pid, max_elements);
+        result = elementsResult(pid, max_elements, hierarchy);
     }
     return icli_json(result);
 }
@@ -454,7 +486,7 @@ IcliAXActivationTarget *icli_ax_activation_target_create(int pid, const char *id
     AXElement element = NULL;
     if (pid > 0 && identifier && identifier[0] && prepareAX() && performAction && hitTest) {
         enableSwitches();
-        NSDictionary *result = elementsResultForTarget(pid, 2000, @(identifier), &element);
+        NSDictionary *result = elementsResultForTarget(pid, 2000, @(identifier), &element, NO);
         failure = result[@"error"] ? result : @{@"error": @"direct activation target missing, ambiguous or truncated"};
         if (element) {
             NSDictionary *node = serializeElement(element, framesInFixedSpace(pid));

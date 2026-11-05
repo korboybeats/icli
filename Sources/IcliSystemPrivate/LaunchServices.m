@@ -105,6 +105,17 @@ bool icli_app_is_installed(const char *bundle_id) {
     return [proxy respondsToSelector:@selector(bundleURL)] && [proxy performSelector:@selector(bundleURL)] != nil;
 }
 
+char *icli_app_name(const char *bundle_id) {
+    if (!bundle_id) return NULL;
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (![proxyClass respondsToSelector:lookup]) return NULL;
+    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, lookup, @(bundle_id));
+    if (![proxy respondsToSelector:@selector(bundleURL)] || ![proxy performSelector:@selector(bundleURL)]) return NULL;
+    NSString *name = icli_ls_string(icli_ls_value(proxy, @"localizedName"));
+    return name ? strdup(name.UTF8String) : NULL;
+}
+
 char *icli_apps_json(void) {
     id ws = icli_ls_workspace();
     NSArray *apps = nil;

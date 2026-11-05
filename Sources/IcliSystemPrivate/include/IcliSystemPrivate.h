@@ -43,6 +43,8 @@ const char *icli_launchd_strerror(int error);
 char *icli_apps_json(void);
 // Quicker than listing every app: true only when LaunchServices knows it.
 bool icli_app_is_installed(const char *bundle_id);
+/// The app's display name from its LaunchServices record (malloc'd), or NULL.
+char *icli_app_name(const char *bundle_id);
 char *icli_jetsam_json(void);
 
 #ifdef __OBJC__

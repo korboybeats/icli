@@ -48,7 +48,30 @@ public func parseCrashCutoff(_ text: String) throws -> Date {
     throw IcliError.failed("since must be ISO-8601, epoch seconds, or an age such as 30s, 5m or 2h: \(text)")
 }
 
-public func crashLogs(bundleID: String?, since: Date? = nil) throws -> [String: Any] {
+/// What a diagnostic report is, from its file name: a spin or hang, a
+/// crash, a system diagnostic (jetsam, resource, panic, watchdog…) or another log.
+public enum CrashReportKind: String, CaseIterable {
+    case crash, spin, log, diagnostic
+
+    private static let diagnosticWords = [
+        "_resource", "jetsamevent", "excresource", "panic", "watchdog", "lowbattery", "sirisearchfeedback",
+        "applicationnotresponding", "analytics", "sfa-", "proactive_event_tracker", "xp_amp_",
+    ]
+
+    public init(fileName: String) {
+        let name = fileName.lowercased()
+        if name.contains(".spin") || name.contains(".hang") || name.hasPrefix("stacks") || name.contains("_hang") {
+            self = .spin
+        } else if name.hasSuffix(".ips") || name.contains(".ips.") || name.hasSuffix(".crash") {
+            self = Self.diagnosticWords.contains { name.contains($0) } ? .diagnostic : .crash
+        } else {
+            self = .log
+        }
+    }
+}
+
+/// Without `kind`, every .ips and .crash report; with it, every file of that kind.
+public func crashLogs(bundleID: String?, since: Date? = nil, kind: CrashReportKind? = nil) throws -> [String: Any] {
     let dirs = [
         "/var/mobile/Library/Logs/CrashReporter",
         "/var/mobile/Library/Logs/DiagnosticReports",
@@ -60,7 +83,11 @@ public func crashLogs(bundleID: String?, since: Date? = nil) throws -> [String: 
     for dir in dirs {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
         for name in names {
-            guard name.hasSuffix(".ips") || name.hasSuffix(".crash") else { continue }
+            if let kind {
+                guard CrashReportKind(fileName: name) == kind else { continue }
+            } else {
+                guard name.hasSuffix(".ips") || name.hasSuffix(".crash") else { continue }
+            }
             if let bundleID, !name.localizedCaseInsensitiveContains(bundleID),
                appName.map({ name.localizedCaseInsensitiveContains($0) }) != true
             {
@@ -68,6 +95,8 @@ public func crashLogs(bundleID: String?, since: Date? = nil) throws -> [String: 
             }
             let path = (dir as NSString).appendingPathComponent(name)
             let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+            // Folders such as Retired and DiagnosticLogs are not reports.
+            if kind != nil, attributes?[.type] as? FileAttributeType == .typeDirectory { continue }
             let modified = attributes?[.modificationDate] as? Date ?? .distantPast
             if let since, modified < since { continue }
             files.append((path, modified))

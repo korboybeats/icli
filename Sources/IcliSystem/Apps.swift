@@ -11,6 +11,13 @@ public func appIsInstalled(_ bundleID: String) -> Bool {
     icli_app_is_installed(bundleID)
 }
 
+/// The display name LaunchServices has for an installed app, or nil.
+public func appDisplayName(_ bundleID: String) -> String? {
+    guard let name = icli_app_name(bundleID) else { return nil }
+    defer { free(name) }
+    return String(cString: name)
+}
+
 public func listApps() throws -> [String: Any] {
     var apps = decodeJSONArray(takeCString(icli_apps_json()))
     apps.append(contentsOf: scanApplicationDirs())

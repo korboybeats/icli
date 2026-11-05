@@ -1034,6 +1034,116 @@ def unicode_input(d):
     d.cli('url', 'open', 'icli-test://blur')
 
 
+@case('key_count_and_fill_point', 'input', ['input key', 'ui fill', 'app frontmost'])
+def key_count_and_fill_point(d):
+    d.fixture('reset')
+    d.cli('app', 'launch', BUNDLE, '--wait-foreground')
+    front = d.cli('app', 'frontmost')
+    assert front['bundle_id'] == BUNDLE and front['name'] == 'icli TestHost', front
+    field = next(e for e in d.cli('ui', 'tree')['elements'] if e['identifier'] == 'input.text')
+    filled = d.cli('ui', 'fill', '--x', str(round(field['x'])), '--y', str(round(field['y'])), '--value', 'abcdefgh')
+    assert filled['filled'] and filled['element'] == {'x': round(field['x']), 'y': round(field['y'])}, filled
+    d.wait_state('text', 'abcdefgh')
+    assert d.cli('input', 'key', 'delete', '--count', '3')['count'] == 3
+    d.wait_state('text', 'abcde')
+    # Modifiers stay held across the presses: shift+a three times types AAA.
+    d.cli('input', 'key', 'shift+a', '--count', '3')
+    d.wait_state('text', 'abcdeAAA')
+    d.cli('input', 'key', 'delete', '--count=0', expected=1)
+    d.cli('ui', 'fill', 'Test input', '--x', '10', '--y', '10', expected=1)
+    d.cli('ui', 'fill', '--x', '10', expected=1)
+    d.cli('url', 'open', 'icli-test://blur')
+
+
+@case('url_open_check_changed', 'apps', ['url open'])
+def url_open_check_changed(d):
+    d.cli('button', 'home')
+    d.cli('app', 'kill', BUNDLE, '--force', expected=None)
+    opened = d.cli('url', 'open', 'icli-test://reset', '--check-changed')
+    assert opened['screen_changed'] is True and opened['changed_ms'] >= 0, opened
+    d.wait_state('last_url', 'icli-test://reset')
+    d.cli('screen', 'wait', '--stable')
+    # TestHost handles an unknown path without drawing anything new.
+    still = d.cli('url', 'open', 'icli-test://noop', '--check-changed', '--timeout', '1')
+    assert still['screen_changed'] is False and 'did not change' in still['message'], still
+    assert 'screen_changed' not in d.cli('url', 'open', 'icli-test://noop')
+
+
+@case('app_settings_page', 'apps', ['app settings'])
+def app_settings_page(d):
+    refused = d.cli('app', 'settings', BUNDLE, '--timeout', '2', expected=1)
+    assert refused['error'] == 'no_settings_page' and refused['name'] == 'icli TestHost', refused
+    users = [a['bundle_id'] for a in d.cli('app', 'list', '--user')['apps'] if a.get('name')]
+    for bundle in users[:8]:
+        result = d.cli('app', 'settings', bundle, '--timeout', '3', expected=None)
+        if result.get('opened'):
+            assert d.cli('app', 'frontmost')['bundle_id'] == 'com.apple.Preferences'
+            assert result['url'] == 'prefs:root=' + bundle, result
+            d.observations.append(f'app settings opened {result["name"]}\'s page in {result["waited_ms"]} ms.')
+            break
+        assert result['error'] == 'no_settings_page', result
+    else:
+        d.observations.append('None of the first user apps has a Settings page, so only the refusal was checked.')
+    d.cli('button', 'home')
+
+
+@case('screenshot_png_and_width', 'screen', ['screen shot'])
+def screenshot_png_and_width(d):
+    png = d.cli('screen', 'shot', '--format', 'png', '--width', '200', '--base64')
+    data = base64.b64decode(png['data'])
+    assert data.startswith(b'\x89PNG\r\n\x1a\n') and png['mime_type'] == 'image/png', png['mime_type']
+    assert struct.unpack('>I', data[16:20])[0] == 200 == png['width'], png['width']
+    screen = d.cli('screen', 'info')
+    assert abs(png['height'] - 200 * screen['height'] / screen['width']) <= 1, png
+    jpeg = d.cli('screen', 'shot', '--width', '100', '--base64')
+    assert base64.b64decode(jpeg['data']).startswith(b'\xff\xd8') and jpeg['width'] == 100, jpeg['width']
+    path = d.cli('screen', 'shot', '--output', '/tmp/icli-acceptance.png')
+    assert path['mime_type'] == 'image/png', path
+    d.run(['rm', '-f', '/tmp/icli-acceptance.png'])
+    d.cli('screen', 'shot', '--width', '200', '--native-resolution', expected=1)
+    d.cli('screen', 'shot', '--format', 'gif', expected=1)
+
+
+@case('crash_report_kinds', 'logs', ['log crashes', 'log crash', 'app list'])
+def crash_report_kinds(d):
+    every = d.cli('log', 'crashes')
+    kinds = {k: d.cli('log', 'crashes', '--kind', k) for k in ('crash', 'spin', 'diagnostic', 'log')}
+    named = set(every['crashes'])
+    # The .ips and .crash reports the default lists are the crashes, spins and diagnostics among them.
+    assert named == {p for k in ('crash', 'spin', 'diagnostic') for p in kinds[k]['crashes']
+                     if p.endswith(('.ips', '.crash'))}, 'kinds do not cover the default list'
+    for path in kinds['diagnostic']['crashes'][:20]:
+        assert any(w in path.lower().rsplit('/', 1)[-1] for w in ('_resource', 'jetsamevent', 'excresource', 'panic',
+                   'watchdog', 'lowbattery', 'analytics', 'sfa-', 'xp_amp_', 'sirisearchfeedback',
+                   'applicationnotresponding', 'proactive_event_tracker')), path
+    d.cli('log', 'crashes', '--kind', 'other', expected=1)
+    if kinds['crash']['crashes']:
+        newest = kinds['crash']['crashes'][0]
+        process = newest.rsplit('/', 1)[-1].split('-')[0]
+        summary = d.cli('log', 'crash', '--bundle-id', process, '--summary')
+        assert summary['path'] == d.cli('log', 'crashes', '--kind', 'crash', '--bundle-id', process)['crashes'][0], summary.get('path')
+    d.cli('log', 'crash', '/x.ips', '--bundle-id', 'x', expected=1)
+    apps = d.cli('app', 'list')
+    user = d.cli('app', 'list', '--user')
+    assert user['count'] == sum(a.get('type') == 'User' for a in apps['apps']) == len(user['apps']), user['count']
+    d.observations.append('Crash reports by kind: ' + ', '.join(f'{k} {v["count"]}' for k, v in kinds.items())
+                          + f'; {every["count"]} in the default list.')
+
+
+@case('ui_tree_hierarchy', 'ax', ['ui tree'])
+def ui_tree_hierarchy(d):
+    d.fixture()
+    plain = d.cli('ui', 'tree')
+    nested = d.cli('ui', 'tree', '--hierarchy')
+    assert [e['identifier'] for e in nested['elements']] == [e['identifier'] for e in plain['elements']]
+    assert all(isinstance(e['depth'], int) and e['depth'] >= 1 for e in nested['elements']), nested['elements'][:3]
+    assert all('depth' not in e for e in plain['elements'])
+    header, rows = parse_compact(d.run([d.binary, 'ui', 'tree', '--hierarchy', '--compact']).stdout)
+    shallowest = min(e['depth'] for e in nested['elements'])
+    lines = d.run([d.binary, 'ui', 'tree', '--hierarchy', '--compact']).stdout.splitlines()[1:]
+    assert [len(l) - len(l.lstrip(' ')) for l in lines] == [e['depth'] - shallowest for e in nested['elements']], lines[:5]
+
+
 @case('raw_hid_events', 'input', ['input hid'])
 def raw_hid_events(d):
     def body():

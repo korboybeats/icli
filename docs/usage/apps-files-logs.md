@@ -4,6 +4,8 @@ Use `app list` to find an app's bundle identifier. Replace `example.bundle.id` w
 
 ```sh
 icli app list
+icli app list --user                           # the user's apps only
+icli app settings example.bundle.id            # Settings at the app's own page
 icli app info example.bundle.id
 icli app launch example.bundle.id
 icli app launch Settings                # by name, when only one visible app has it
@@ -14,9 +16,15 @@ icli log syslog --seconds 10 --subsystem com.example.tweak --message-contains 'l
 icli log crashes --bundle-id example.bundle.id
 icli log crash /var/mobile/Library/Logs/CrashReporter/example.ips --max-bytes 65536
 icli log crash /var/mobile/Library/Logs/CrashReporter/example.ips --summary
+icli log crash --bundle-id example.bundle.id --summary   # that app's newest crash
+icli log crashes --kind spin                   # also crash, diagnostic or log
 ```
 
 `log syslog` filters by process name (`--process`, a case-insensitive substring), `--pid`, `--subsystem` (with its dotted children), `--category` (exact), `--message-contains` (case-sensitive) and minimum `--level` (`all`, `debug`, `info`, `default`, `error`, `fault`). Every filter runs before `--max-lines`, so unrelated lines on a busy device never use up the cap; `truncated` says more lines matched than were kept. `log crash --max-bytes` reads at most that many bytes of a report, cut back to a whole character, and reports `truncated` and the whole file's `size`.
+
+`log crashes --kind` sorts reports by file name: `spin` is a spin or hang report (`.spin`, `.hang`, `_hang`, or a name starting `stacks`); among `.ips` and `.crash` reports, `diagnostic` is a system report whose name contains `jetsamevent`, `excresource`, `_resource`, `panic`, `watchdog`, `lowbattery`, `analytics`, `sfa-`, `xp_amp_`, `sirisearchfeedback`, `applicationnotresponding` or `proactive_event_tracker`, and `crash` is the rest; `log` is any other file. Without `--kind` the list is every `.ips` and `.crash` report, as before. `log crash --bundle-id <id>` reads that app's newest `crash` report.
+
+`app list --user` keeps the apps LaunchServices types `User`, leaving out system and bootstrap apps. `app settings <app>` opens Settings at the app's own page with `prefs:root=<bundle id>` and confirms the page's title is the app's name; an app with nothing to set there has no page, and the command fails with `no_settings_page`. `url open --check-changed` captures the screen first, then waits frame by frame (up to `--timeout`, default 5 s) for it to change; `screen_changed: false` says the URL showed nothing new.
 
 ### Permissions and Fresh Data
 

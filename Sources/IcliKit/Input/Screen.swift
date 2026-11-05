@@ -8,13 +8,26 @@ import Metal
 import UIKit
 import Vision
 
+/// A screenshot file. `png` writes lossless PNG instead of JPEG; `width`
+/// scales the image to that many pixels wide, up to the panel's own width.
 public func takeScreenshot(
     path requestedPath: String? = nil,
     base64: Bool = false,
     nativeResolution: Bool = false,
+    width: Double? = nil,
+    png: Bool = false,
 ) throws -> [String: Any] {
     icli_private_init()
-    let path = requestedPath ?? (JailbreakRoot.current.scratchDirectory() + "/icli-\(UUID().uuidString).jpg")
+    if let width {
+        guard !nativeResolution else { throw IcliError.failed("give --width or --native-resolution, not both") }
+        let metrics = icli_screen_metrics()
+        let panel = metrics.width * max(metrics.scale, 1)
+        guard width.isFinite, width >= 1, width <= panel else {
+            throw IcliError.failed("width must be 1–\(Int(panel)) pixels")
+        }
+    }
+    let path = requestedPath
+        ?? (JailbreakRoot.current.scratchDirectory() + "/icli-\(UUID().uuidString)." + (png ? "png" : "jpg"))
     // A path icli chose itself is of no use to the caller until it is reported
     // back, so it is removed when the caller wanted base64 instead and when the
     // call fails after the capture. A path the caller named is left to them.
@@ -24,13 +37,13 @@ public func takeScreenshot(
             try? FileManager.default.removeItem(atPath: path)
         }
     }
-    guard icli_screenshot_jpeg(path, 0.8, 800_000, nativeResolution) else {
+    guard icli_screenshot_write(path, 0.8, png ? 0 : 800_000, nativeResolution, width ?? 0, png) else {
         throw IcliError.failed("screenshot failed")
     }
     let data = try Data(contentsOf: URL(fileURLWithPath: path))
     guard let image = UIImage(data: data)?.cgImage else { throw IcliError.failed("screenshot is not a valid image") }
     let metrics = icli_screen_metrics()
-    var result: [String: Any] = ["bytes": data.count, "mime_type": "image/jpeg", "width": image.width,
+    var result: [String: Any] = ["bytes": data.count, "mime_type": png ? "image/png" : "image/jpeg", "width": image.width,
                                  "height": image.height, "coordinate_scale": Double(image.width) / metrics.width]
     if base64 {
         result["data"] = data.base64EncodedString()
@@ -201,7 +214,9 @@ public func typeText(_ text: String, delayMS: Double = 30) throws -> [String: An
     return ["sent": text.count, "method": "unicode_hid"]
 }
 
-public func pressKey(_ name: String) throws -> [String: Any] {
+/// Presses a key `count` times, with its modifiers held across all the presses.
+public func pressKey(_ name: String, count: Int = 1) throws -> [String: Any] {
+    guard (1 ... 100).contains(count) else { throw IcliError.failed("count must be 1–100") }
     let keys: [String: UInt16] = ["return": 0x28, "enter": 0x28, "delete": 0x2A, "backspace": 0x2A,
                                   "forward-delete": 0x4C, "tab": 0x2B, "escape": 0x29, "space": 0x2C, "up": 0x52,
                                   "down": 0x51, "left": 0x50, "right": 0x4F, "home": 0x4A, "end": 0x4D, "pageup": 0x4B, "pagedown": 0x4E]
@@ -232,10 +247,15 @@ public func pressKey(_ name: String) throws -> [String: Any] {
     for modifier in modifiers {
         guard icli_hid_key(0x07, modifier, true) else { throw IcliError.failed("HID keyboard unavailable") }
     }
-    guard icli_hid_key(0x07, usage, true) else { throw IcliError.failed("HID keyboard unavailable") }
-    usleep(20000)
-    guard icli_hid_key(0x07, usage, false) else { throw IcliError.failed("HID key release failed") }
-    return ["key": name, "dispatched": true]
+    for press in 0 ..< count {
+        if press > 0 { usleep(20000) }
+        guard icli_hid_key(0x07, usage, true) else { throw IcliError.failed("HID keyboard unavailable") }
+        usleep(20000)
+        guard icli_hid_key(0x07, usage, false) else { throw IcliError.failed("HID key release failed") }
+    }
+    var result: [String: Any] = ["key": name, "dispatched": true]
+    if count > 1 { result["count"] = count }
+    return result
 }
 
 public func pasteText(_ text: String) throws -> [String: Any] {
@@ -341,8 +361,10 @@ private func tagged(_ elements: [[String: Any]], scope: String) -> [[String: Any
     }
 }
 
-func axElements(pid: Int32, maxElements: Int) throws -> [String: Any] {
-    try decodeBridgeJSON(takeCString(icli_ax_elements_json(pid, Int32(maxElements))), "AX response")
+func axElements(pid: Int32, maxElements: Int, hierarchy: Bool = false) throws -> [String: Any] {
+    try decodeBridgeJSON(
+        takeCString(icli_ax_elements_hierarchy_json(pid, Int32(maxElements), hierarchy)), "AX response",
+    )
 }
 
 public func uiElements(
@@ -351,6 +373,7 @@ public func uiElements(
     clickableOnly: Bool = false,
     limit: Int? = nil,
     scope: ElementScope = .auto,
+    hierarchy: Bool = false,
 ) throws -> [String: Any] {
     guard (1 ... 2000).contains(maxElements), limit == nil || (limit! > 0 && limit! <= 2000) else {
         throw IcliError.failed("element limits must be between 1 and 2000")
@@ -359,11 +382,11 @@ public func uiElements(
     switch scope {
     case .auto:
         let front = try onScreenPID()
-        result = try axElements(pid: front, maxElements: maxElements)
+        result = try axElements(pid: front, maxElements: maxElements, hierarchy: hierarchy)
         // Over SpringBoard itself or a hidden app such as Spotlight there is nothing to add.
         var overlay = false
         if let shell = try? systemShellPID(), shell != front,
-           let system = try? axElements(pid: shell, maxElements: maxElements)
+           let system = try? axElements(pid: shell, maxElements: maxElements, hierarchy: hierarchy)
         {
             let covering = (system["elements"] as? [[String: Any]] ?? []).filter {
                 $0["visible"] as? Bool == true && (elementCoordinate($0["y"]) ?? 0) > statusBarBottom
@@ -375,15 +398,15 @@ public func uiElements(
         }
         result["system_overlay"] = overlay
     case .app:
-        result = try axElements(pid: onScreenPID(), maxElements: maxElements)
+        result = try axElements(pid: onScreenPID(), maxElements: maxElements, hierarchy: hierarchy)
     case .system:
-        result = try axElements(pid: systemShellPID(), maxElements: maxElements)
+        result = try axElements(pid: systemShellPID(), maxElements: maxElements, hierarchy: hierarchy)
     case .all:
         let shell = try systemShellPID()
-        result = try axElements(pid: shell, maxElements: maxElements)
+        result = try axElements(pid: shell, maxElements: maxElements, hierarchy: hierarchy)
         let front = try onScreenPID()
         if front != shell {
-            let app = try axElements(pid: front, maxElements: maxElements)
+            let app = try axElements(pid: front, maxElements: maxElements, hierarchy: hierarchy)
             result["elements"] = tagged(result["elements"] as? [[String: Any]] ?? [], scope: "system")
                 + (app["elements"] as? [[String: Any]] ?? [])
             if app["truncated"] as? Bool == true { result["truncated"] = true }
@@ -408,7 +431,7 @@ public func uiElements(
 /// from the tree and, when it lists nothing, from text recognition.
 public func screenElements(
     source: ElementSource, languages: [String], maxElements: Int = 250, visibleOnly: Bool = true,
-    clickableOnly: Bool = false, limit: Int? = nil, scope: ElementScope = .auto,
+    clickableOnly: Bool = false, limit: Int? = nil, scope: ElementScope = .auto, hierarchy: Bool = false,
 ) throws -> [String: Any] {
     guard source == .ax || !clickableOnly else {
         throw IcliError.failed("text recognition does not know what can be tapped; --clickable-only needs --source ax")
@@ -416,6 +439,7 @@ public func screenElements(
     if source != .ocr {
         let tree = try uiElements(
             maxElements: maxElements, visibleOnly: visibleOnly, clickableOnly: clickableOnly, limit: limit, scope: scope,
+            hierarchy: hierarchy,
         )
         if source == .ax || !(tree["elements"] as? [[String: Any]] ?? []).isEmpty { return tree }
     }

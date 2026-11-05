@@ -95,11 +95,6 @@ public func waitForScreen(
         throw IcliError.failed("timeout must be 0–60, interval 0–5, stable-for 0–30 seconds and threshold 0–1")
     }
     icli_private_init()
-    let start = ProcessInfo.processInfo.systemUptime
-    // A still screen draws no frames, so captures follow the frames shown and
-    // a quiet spell ends only to confirm --stable-for or at the timeout.
-    var gate = FrameGate()
-    defer { gate.close() }
     let reference: ScreenSample
     if let baseline {
         guard let image = UIImage(contentsOfFile: baseline)?.cgImage else {
@@ -109,6 +104,43 @@ public func waitForScreen(
     } else {
         reference = try captureScreenSample(region: region)
     }
+    return try waitForScreen(
+        from: reference, changed: changed, stable: stable, stableFor: stableFor, region: region,
+        threshold: threshold, timeout: timeout, interval: interval,
+    )
+}
+
+/// Opens a URL and waits, by the frames shown, until the screen differs from
+/// how it was before. A screen that did not change within `timeout` is
+/// `screen_changed: false`, not a failure.
+public func openURL(_ url: String, checkingChangeFor timeout: TimeInterval) throws -> [String: Any] {
+    guard timeout.isFinite, (0 ... 60).contains(timeout) else { throw IcliError.failed("timeout must be 0–60 seconds") }
+    icli_private_init()
+    let reference = try captureScreenSample(region: nil)
+    var result = try openURL(url)
+    do {
+        let waited = try waitForScreen(
+            from: reference, changed: true, stable: false, stableFor: 0, region: nil,
+            threshold: 0.001, timeout: timeout, interval: 0.05,
+        )
+        result["screen_changed"] = true
+        result["changed_ms"] = waited["changed_ms"]
+    } catch let IcliError.commandFailed(failure) where failure["error"] as? String == "timed_out" {
+        result["screen_changed"] = false
+        result["message"] = "the screen did not change within \(timeout) s"
+    }
+    return result
+}
+
+private func waitForScreen(
+    from reference: ScreenSample, changed: Bool, stable: Bool, stableFor: TimeInterval, region: ScreenRegion?,
+    threshold: Double, timeout: TimeInterval, interval: TimeInterval,
+) throws -> [String: Any] {
+    let start = ProcessInfo.processInfo.systemUptime
+    // A still screen draws no frames, so captures follow the frames shown and
+    // a quiet spell ends only to confirm --stable-for or at the timeout.
+    var gate = FrameGate()
+    defer { gate.close() }
 
     var previous = reference
     var frames = 0
