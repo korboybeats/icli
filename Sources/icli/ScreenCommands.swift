@@ -39,7 +39,7 @@ extension Screen {
         @Option(help: "End y in UI points.") var toY: Double
         @Option(help: "Duration of the movement in seconds, up to 60.") var seconds: Double = 0.25
         @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
-        @Flag(help: "Slow the finger to a stop before it lifts, so a scroll view does not fling; takes at least 0.6 seconds.")
+        @Flag(help: "End with a short slow move, so a scroll view stops when the finger lifts; --steps has no effect and --seconds can only lengthen the stroke.")
         var noMomentum = false
         func run() {
             emit(output) {
@@ -55,13 +55,14 @@ extension Screen {
             commandName: "scroll-by",
             abstract: "Scroll content an exact distance with touch, without a fling.",
             discussion: "up reveals content above, down content below. A long distance takes several strokes; "
-                + "the content stops sooner where it ends.",
+                + "the content stops sooner where it ends. Each stroke starts at --x/--y; by default it runs through "
+                + "the middle of the screen, starting 20% in from the edge it moves away from.",
         )
         @OptionGroup var output: OutputOptions
         @Argument(help: "up, down, left or right.") var direction: String
         @Argument(help: "Points the content moves.") var points: Double
-        @Option(help: "A point in the scroll view, x in UI points; default: the middle of the screen.") var x: Double?
-        @Option(help: "A point in the scroll view, y in UI points; default: the middle of the screen.") var y: Double?
+        @Option(help: "Where strokes start, x in UI points, in the scroll view.") var x: Double?
+        @Option(help: "Where strokes start, y in UI points, in the scroll view.") var y: Double?
         func run() {
             emit(output) { try scrollBy(direction: direction, points: points, x: x, y: y) }
         }
@@ -640,6 +641,8 @@ extension UI {
         static var configuration = CommandConfiguration(
             commandName: "scroll-to",
             abstract: "Scroll until an element is on screen and say where it is; stops at the end of the content.",
+            discussion: "Pages with accessibility where the scroll view allows it, else uses touch strokes; method in "
+                + "the result says which. A found element whose tap point is clipped is scrolled into view first.",
         )
         @OptionGroup var output: OutputOptions
         @OptionGroup var selection: ElementOptions
