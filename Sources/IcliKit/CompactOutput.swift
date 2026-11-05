@@ -7,13 +7,14 @@ import Foundation
 /// truncated, system_overlay and source first, then the rest sorted. Then one
 /// line per element (`elements`, `element`) or text block (`blocks`):
 ///
-///     [role] ["label"] x,y WxH [id="…"] [value=…] [conf=0.98] [match=x,y] [scope=…] [clickable] [disabled] [offscreen]
+///     [role] ["label"] x,y WxH [id="…"] [value=…] [conf=0.98] [match=x,y] [scope=…] [traits…] [clickable] [disabled] [offscreen]
 ///
 /// x,y is the point a tap goes to (an element's activation point, which can
 /// sit off its frame's centre), WxH the frame's size, all in whole points.
 /// Labels, identifiers, string values and any other string that is not one
 /// plain word are JSON string literals, so spaces, quotes and newlines stay
-/// unambiguous. Empty fields and the defaults (enabled, visible) are left out.
+/// unambiguous. Trait bits become words (selected, header, toggle, adjustable…).
+/// Empty fields and the defaults (enabled, visible) are left out.
 public func compactText(_ dict: [String: Any]) -> String {
     let leading = ["count", "truncated", "system_overlay", "source"]
     let listed: Set = ["elements", "blocks", "element"]
@@ -72,13 +73,16 @@ private func compactElement(_ element: [String: Any]) -> String {
         parts.append("match=\(whole(element["match_x"])),\(whole(element["match_y"]))")
     }
     if let scope = element["scope"] as? String { parts.append("scope=" + quotedIfNeeded(scope)) }
+    if let traits = (element["traits"] as? NSNumber)?.uint64Value {
+        parts += traitNames.filter { traits & (1 << $0.bit) != 0 }.map(\.name)
+    }
     if element["clickable"] as? Bool == true { parts.append("clickable") }
     if element["enabled"] as? Bool == false { parts.append("disabled") }
     if element["visible"] as? Bool == false { parts.append("offscreen") }
     let handled: Set = [
         "role", "label", "text", "x", "y", "frame", "width", "height", "identifier", "value", "confidence",
         "match_x", "match_y", "scope", "clickable", "enabled", "visible", "depth",
-        // The role and the enabled flag are read from the traits; the raw bits add nothing to read.
+        // Named from the bits below; the role and disabled already say Button, Static Text and Not Enabled.
         "traits",
     ]
     for key in element.keys.filter({ !handled.contains($0) }).sorted() {
@@ -86,6 +90,15 @@ private func compactElement(_ element: [String: Any]) -> String {
     }
     return parts.joined(separator: " ")
 }
+
+/// UIKit's accessibility trait bits, as icli reads them (attribute 2004); checked
+/// on iOS 17.1.1: a selected tab has bit 3, a section header bit 16, a row
+/// with a switch bit 53.
+private let traitNames: [(bit: UInt64, name: String)] = [
+    (1, "link"), (2, "image"), (3, "selected"), (4, "plays-sound"), (5, "keyboard-key"), (7, "summary"),
+    (9, "updates-frequently"), (10, "search-field"), (11, "starts-media"), (12, "adjustable"),
+    (13, "direct-interaction"), (14, "page-turn"), (15, "tab-bar"), (16, "header"), (17, "zoom"), (53, "toggle"),
+]
 
 private func whole(_ value: Any?) -> String {
     guard let number = (value as? NSNumber)?.doubleValue, number.isFinite else { return "?" }

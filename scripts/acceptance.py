@@ -537,6 +537,9 @@ def compact_output(d):
         assert row['size'] == (round_half_up(element['frame']['width']), round_half_up(element['frame']['height'])), (row, element)
         assert ('clickable' in row['flags']) == element['clickable'], (row, element)
         assert ('disabled' in row['flags']) == (not element['enabled']), (row, element)
+        named = {3: 'selected', 16: 'header', 53: 'toggle', 12: 'adjustable', 1: 'link', 2: 'image', 5: 'keyboard-key'}
+        for bit, word in named.items():
+            assert (word in row['flags']) == bool(element['traits'] >> bit & 1), (word, row, element)
     # --compact wins over --human, and is a fraction of the JSON's size.
     assert d.run([d.binary, 'ui', 'tree', '--compact', '--human']).stdout == compact.stdout
     pretty = d.run([d.binary, 'ui', 'tree']).stdout
@@ -1117,10 +1120,18 @@ def crash_report_kinds(d):
                    'watchdog', 'lowbattery', 'analytics', 'sfa-', 'xp_amp_', 'sirisearchfeedback',
                    'applicationnotresponding', 'proactive_event_tracker')), path
     d.cli('log', 'crashes', '--kind', 'other', expected=1)
+    d.cli('log', 'crashes', '--limit=0', expected=1)
+    if every['count'] > 2:
+        short = d.cli('log', 'crashes', '--limit', '2')
+        assert short['crashes'] == every['crashes'][:2] and short['count'] == every['count'] and short['truncated'], short
+    assert 'truncated' not in every, 'the default list is never cut'
     if kinds['crash']['crashes']:
         newest = kinds['crash']['crashes'][0]
         process = newest.rsplit('/', 1)[-1].split('-')[0]
         summary = d.cli('log', 'crash', '--bundle-id', process, '--summary')
+        names = {'109': 'crash', '309': 'crash', '308': 'user fault (the process kept running)',
+                 '298': 'jetsam (memory pressure)', '288': 'stackshot', '202': 'resource (CPU)', '145': 'resource (disk writes)'}
+        assert summary['report_type'] == names.get(summary['bug_type'], 'bug_type ' + str(summary['bug_type'])), summary['report_type']
         assert summary['path'] == d.cli('log', 'crashes', '--kind', 'crash', '--bundle-id', process)['crashes'][0], summary.get('path')
     d.cli('log', 'crash', '/x.ips', '--bundle-id', 'x', expected=1)
     apps = d.cli('app', 'list')

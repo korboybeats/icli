@@ -441,7 +441,13 @@ public func screenElements(
             maxElements: maxElements, visibleOnly: visibleOnly, clickableOnly: clickableOnly, limit: limit, scope: scope,
             hierarchy: hierarchy,
         )
-        if source == .ax || !(tree["elements"] as? [[String: Any]] ?? []).isEmpty { return tree }
+        if source == .ax || !(tree["elements"] as? [[String: Any]] ?? []).isEmpty {
+            var tree = tree
+            if source == .ax, tree["count"] as? Int == 0, tree["truncated"] as? Bool != true, !clickableOnly, limit == nil {
+                tree["note"] = "the app exposes no accessibility elements (often a game or a custom-drawn view); --source ocr reads its text"
+            }
+            return tree
+        }
     }
     guard limit == nil || (limit! > 0 && limit! <= 2000) else {
         throw IcliError.failed("element limits must be between 1 and 2000")

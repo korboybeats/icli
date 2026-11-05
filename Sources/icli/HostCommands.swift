@@ -46,6 +46,7 @@ extension Log {
         var since: String?
         @Option(help: "Only reports of one kind, by file name: crash, spin (spins and hangs), diagnostic (jetsam, resource, panic, watchdog…) or log (anything else). Default: every .ips and .crash report.")
         var kind: String?
+        @Option(help: "List only the newest N; count still says how many there are, and truncated is true.") var limit: Int?
         func run() {
             emit(output) {
                 let kind = try kind.map { name -> CrashReportKind in
@@ -54,7 +55,7 @@ extension Log {
                     }
                     return kind
                 }
-                return try crashLogs(bundleID: bundleID, since: since.map(parseCrashCutoff), kind: kind)
+                return try crashLogs(bundleID: bundleID, since: since.map(parseCrashCutoff), kind: kind, limit: limit)
             }
         }
     }

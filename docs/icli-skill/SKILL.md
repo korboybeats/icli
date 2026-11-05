@@ -77,7 +77,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Read or change preferences (like `defaults`) | `icli prefs read <domain> [<key>]` / `prefs write <domain> <key> <value> --type int` / `prefs delete <domain> <key>` |
 | Change an app's own container preferences | `icli prefs write --app <bundle-id> --force <key> <value> --type bool` (stops the app) |
 | Capture live logs | `icli log syslog --seconds 5 --process <name> --level error` |
-| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m] [--kind crash\|spin\|diagnostic\|log]` then `icli log crash <path> --summary`, or `icli log crash --bundle-id <id> --summary` for its newest crash |
+| Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m] [--kind crash\|spin\|diagnostic\|log] [--limit 5]` then `icli log crash <path> --summary`, or `icli log crash --bundle-id <id> --summary` for its newest crash |
 | Run several commands in one process with checks | `echo '[["app","frontmost"],{"argv":["ui","wait","Ready"],"expect":{"found":true}}]' \| icli batch` |
 | Keep one icli process open and send it commands as you go | `icli session`, then one line per command: `{"id":1,"argv":["ui","tap","OK"]}` (one JSON line back each) |
 | Keep other agents' icli commands off the device during a run | `export ICLI_LEASE=$(icli lease acquire --owner ci \| jq -r .token)`, then `icli lease release` |

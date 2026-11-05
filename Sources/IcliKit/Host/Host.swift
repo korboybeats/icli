@@ -71,7 +71,10 @@ public enum CrashReportKind: String, CaseIterable {
 }
 
 /// Without `kind`, every .ips and .crash report; with it, every file of that kind.
-public func crashLogs(bundleID: String?, since: Date? = nil, kind: CrashReportKind? = nil) throws -> [String: Any] {
+public func crashLogs(
+    bundleID: String?, since: Date? = nil, kind: CrashReportKind? = nil, limit: Int? = nil,
+) throws -> [String: Any] {
+    guard limit == nil || limit! > 0 else { throw IcliError.failed("limit must be at least 1") }
     let dirs = [
         "/var/mobile/Library/Logs/CrashReporter",
         "/var/mobile/Library/Logs/DiagnosticReports",
@@ -102,7 +105,19 @@ public func crashLogs(bundleID: String?, since: Date? = nil, kind: CrashReportKi
             files.append((path, modified))
         }
     }
-    return ["crashes": files.sorted { $0.1 > $1.1 }.map(\.0), "count": files.count]
+    let newest = files.sorted { $0.1 > $1.1 }.map(\.0)
+    guard let limit, newest.count > limit else { return ["crashes": newest, "count": files.count] }
+    // count stays the number found; truncated says the list stops short of it.
+    return ["crashes": Array(newest.prefix(limit)), "count": files.count, "truncated": true]
+}
+
+/// What a report's bug_type means; anything else is "bug_type <n>".
+public func reportTypeName(_ bugType: String) -> String {
+    [
+        "109": "crash", "309": "crash", "308": "user fault (the process kept running)",
+        "298": "jetsam (memory pressure)", "288": "stackshot", "202": "resource (CPU)",
+        "145": "resource (disk writes)",
+    ][bugType] ?? "bug_type \(bugType)"
 }
 
 /// The most a crash report read answers, in bytes.
@@ -173,6 +188,7 @@ public func summarizeCrashLog(_ path: String) throws -> [String: Any] {
         "incident": header["incident_id"] ?? NSNull(),
         "bug_type": header["bug_type"] ?? NSNull(),
     ]
+    if let type = header["bug_type"] as? String { summary["report_type"] = reportTypeName(type) }
     guard let body = (try? JSONSerialization.jsonObject(with: Data(rest.utf8))) as? [String: Any] else {
         summary["body"] = "text"
         summary["excerpt"] = String(rest.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1500))

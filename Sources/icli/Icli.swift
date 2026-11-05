@@ -16,6 +16,7 @@ let compactHelp = ArgumentHelp(
     "One line per element instead of JSON, for reading the screen in few tokens (wins over --human).",
     discussion: "First line: count, truncated, system_overlay, source and the other result fields as key=value. "
         + "Then per element: [role] [\"label\"] x,y WxH [id=\"…\"] [value=…] [conf=…] [match=x,y] [scope=…] "
+        + "[traits: selected, header, toggle, adjustable, link, image, keyboard-key, search-field, tab-bar…] "
         + "[clickable] [disabled] [offscreen]. x,y is the tap point and WxH the frame size, in whole points; "
         + "strings are JSON string literals; empty fields are left out.",
 )
