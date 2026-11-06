@@ -293,6 +293,38 @@ static void bridgeBasics(void) {
     expectValue("ObjC.use('NSMutableArray').array().copy().$class", @"__NSArray0");
 }
 
+/// The geometry structs, on the Mac where NSPoint, NSSize and NSRect are the
+/// CGPoint, CGSize and CGRect a device's UIKit hands back, and NSRange is the
+/// same two 8-byte fields there as anywhere.
+static void bridgeStructs(void) {
+    // Out of a method, as a plain object with one property per field, and
+    // into one. A range is two integers; a rect is four doubles, nested in
+    // the encoding and flat in the object a script writes.
+    expectValue("var range = ObjC.use('NSValue').valueWithRange_({location: 6, length: 5});"
+                "range.rangeValue().location", @"6");
+    expectValue("range.rangeValue().length", @"5");
+    expectValue("var rect = ObjC.use('NSValue').valueWithRect_({x: 1.5, y: 2, width: 3, height: 4});"
+                "rect.rectValue().x", @"1.5");
+    expectValue("rect.rectValue().y", @"2");
+    expectValue("rect.rectValue().width", @"3");
+    expectValue("rect.rectValue().height", @"4");
+    // A round trip through ObjC and back is the shape a script actually uses:
+    // read a frame, hand it to a setter.
+    expectValue("var again = ObjC.use('NSValue').valueWithRect_(rect.rectValue());"
+                "JSON.stringify(again.rectValue()) === JSON.stringify(rect.rectValue())", @"true");
+    expectValue("ObjC.use('NSValue').valueWithPoint_({x: 7, y: 8}).pointValue().y", @"8");
+    expectValue("ObjC.use('NSValue').valueWithSize_({width: 9, height: 10}).sizeValue().width", @"9");
+
+    // A field that is missing, not a number, or not finite would otherwise be
+    // a quiet zero or a NaN written into the struct.
+    expectThrowsContaining("ObjC.use('NSValue').valueWithPoint_({x: 1})", @"y is missing");
+    expectThrowsContaining("ObjC.use('NSValue').valueWithPoint_({x: 1})", @"x, y");
+    expectThrowsContaining("ObjC.use('NSValue').valueWithPoint_({x: 1, y: 'two'})", @"number for y");
+    expectThrowsContaining("ObjC.use('NSValue').valueWithPoint_({x: 1, y: 1 / 0})", @"finite y");
+    expectThrowsContaining("ObjC.use('NSValue').valueWithPoint_(5)", @"Expected an object with x, y");
+    expectThrowsContaining("ObjC.use('NSValue').valueWithPoint_(null)", @"Expected an object with x, y");
+}
+
 static void bridgeRefusals(void) {
     expectThrowsContaining("ObjC.use('NSProcessInfo').processInfo().noSuchMethodAtAll()", @"does not respond to");
     // A bare NSProxy raises from the methods a bridge asks an object about;
@@ -304,7 +336,8 @@ static void bridgeRefusals(void) {
     expectThrowsContaining("ObjC.use('NSString').stringWithUTF8String_('\\ud83d')", @"UTF-8 form");
     expectThrowsContaining("ObjC.use('NSMutableArray').array().addObject_('a', 'b')", @"takes 1 argument");
     expectThrowsContaining("ObjC.use('NSMutableArray').array().addObject_()", @"takes 1 argument");
-    // A struct return would need its layout read out of the encoding; the
+    // A struct the bridge's table does not name stays refused: its layout
+    // alone cannot say which struct it is or what to call its fields, and the
     // refusal has to name the type so the limit is obvious from the message.
     expectThrowsContaining("ObjC.use('NSProcessInfo').processInfo().operatingSystemVersion()", @"not supported");
     // Raising rather than crashing is the whole point of the @try around invoke.
@@ -424,6 +457,7 @@ int main(void) {
         runtimeBasics();
         outputCapture();
         bridgeBasics();
+        bridgeStructs();
         bridgeOwnership();
         bridgeRefusals();
         files();

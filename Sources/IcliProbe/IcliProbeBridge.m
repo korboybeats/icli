@@ -2,6 +2,8 @@
 
 #import <objc/runtime.h>
 
+#include <math.h>
+
 // Reflection is the point of the probe: without it a script can only do
 // arithmetic, and the frameworks a device keeps to itself are exactly what
 // there is no other way to reach. NSInvocation covers every method the runtime
@@ -159,6 +161,173 @@ static NSMethodSignature *icli_probe_signature(id target, SEL selector) {
     return types ? [NSMethodSignature signatureWithObjCTypes:types] : nil;
 }
 
+// MARK: - Structs
+
+/// A struct the bridge carries, described by the fields a script sees. Only
+/// the geometry UIKit hands back and takes is here, since a view's frame is
+/// the reason the probe needs structs at all. A struct this table does not
+/// name keeps the clear refusal rather than being read from its layout alone:
+/// CGRect and UIEdgeInsets are the same four doubles, so a layout cannot say
+/// which one it is or what to call its fields.
+typedef enum {
+    IcliProbeStructDoubles,
+    IcliProbeStructIntegers,
+} IcliProbeStructKind;
+
+typedef struct {
+    const char *name;
+    IcliProbeStructKind kind;
+    unsigned count;
+    const char *fields[4];
+} IcliProbeStructLayout;
+
+static const IcliProbeStructLayout icli_probe_struct_layouts[] = {
+    {"CGPoint", IcliProbeStructDoubles, 2, {"x", "y"}},
+    {"CGVector", IcliProbeStructDoubles, 2, {"dx", "dy"}},
+    {"CGSize", IcliProbeStructDoubles, 2, {"width", "height"}},
+    {"CGRect", IcliProbeStructDoubles, 4, {"x", "y", "width", "height"}},
+    {"UIEdgeInsets", IcliProbeStructDoubles, 4, {"top", "left", "bottom", "right"}},
+    {"NSDirectionalEdgeInsets", IcliProbeStructDoubles, 4, {"top", "leading", "bottom", "trailing"}},
+    {"_NSRange", IcliProbeStructIntegers, 2, {"location", "length"}},
+};
+
+/// Every struct in the table is a run of 8-byte fields, so one storage holds
+/// any of them and an invocation can be handed its address directly.
+union IcliProbeStructStorage {
+    double asDoubles[4];
+    unsigned long asIntegers[4];
+};
+
+/// The field names a script has to supply, for the message that says so.
+static NSString *icli_probe_field_list(const IcliProbeStructLayout *layout) {
+    NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:layout->count];
+    for (unsigned index = 0; index < layout->count; index++) [names addObject:@(layout->fields[index])];
+    return [names componentsJoinedByString:@", "];
+}
+
+/// Append the scalar field codes inside a struct body to `out`, flattening a
+/// nested struct: CGRect's body is two structs, and what it is in memory is
+/// four doubles. False when the body holds more fields than `capacity` or a
+/// nested struct never closes, which leaves the encoding unsupported rather
+/// than half-read.
+static bool icli_probe_flatten_fields(const char *body, char *out, size_t capacity, size_t *length) {
+    const char *cursor = body;
+    while (*cursor && *cursor != '}' && *cursor != ')') {
+        if (*cursor == '{' || *cursor == '(') {
+            const char *equals = strchr(cursor, '=');
+            if (!equals) return false;
+            if (!icli_probe_flatten_fields(equals + 1, out, capacity, length)) return false;
+            int depth = 0;
+            bool closed = false;
+            while (*cursor) {
+                if (*cursor == '{' || *cursor == '(') {
+                    depth++;
+                } else if (*cursor == '}' || *cursor == ')') {
+                    if (--depth == 0) {
+                        cursor++;
+                        closed = true;
+                        break;
+                    }
+                }
+                cursor++;
+            }
+            if (!closed) return false;
+            continue;
+        }
+        if (*length >= capacity) return false;
+        out[(*length)++] = *cursor++;
+    }
+    return true;
+}
+
+/// The layout for an encoding like `{CGRect={CGPoint=dd}{CGSize=dd}}`, or NULL
+/// where the bridge does not carry that struct. The name picks the entry and
+/// its flattened fields then have to agree with it, so a build whose struct is
+/// not the shape this table was written against is refused instead of being
+/// written through with the wrong one.
+static const IcliProbeStructLayout *icli_probe_struct_layout(const char *type) {
+    if (type[0] != '{') return NULL;
+    const char *equals = strchr(type, '=');
+    if (!equals || equals == type + 1) return NULL;
+    size_t nameLength = (size_t)(equals - type) - 1;
+    for (size_t entry = 0; entry < sizeof(icli_probe_struct_layouts) / sizeof(*icli_probe_struct_layouts); entry++) {
+        const IcliProbeStructLayout *layout = &icli_probe_struct_layouts[entry];
+        if (strlen(layout->name) != nameLength || strncmp(layout->name, type + 1, nameLength) != 0) continue;
+        char fields[8];
+        size_t length = 0;
+        if (!icli_probe_flatten_fields(equals + 1, fields, sizeof(fields), &length)) return NULL;
+        if (length != layout->count) return NULL;
+        for (size_t field = 0; field < length; field++) {
+            // A 64-bit device is the only target, so each field is 8 bytes:
+            // CGFloat is a double, and NSUInteger and NSInteger are 'Q' and
+            // 'q'. Anything else is a layout this table cannot write.
+            if (layout->kind == IcliProbeStructDoubles ? fields[field] != 'd'
+                                                       : !strchr("QqLl", fields[field])) {
+                return NULL;
+            }
+        }
+        return layout;
+    }
+    return NULL;
+}
+
+/// Fill `storage` from a script's plain object, one property per field. False
+/// once the context's exception is set.
+static bool icli_probe_fill_struct(union IcliProbeStructStorage *storage, const IcliProbeStructLayout *layout,
+                                   JSValue *value, JSContext *context) {
+    if (!value.isObject) {
+        icli_probe_throw(context, @"Expected an object with %@ for the %s argument",
+                         icli_probe_field_list(layout), layout->name);
+        return false;
+    }
+    for (unsigned index = 0; index < layout->count; index++) {
+        JSValue *field = value[@(layout->fields[index])];
+        if (!field || field.isUndefined || field.isNull) {
+            icli_probe_throw(context, @"The %s argument needs %@; %s is missing", layout->name,
+                             icli_probe_field_list(layout), layout->fields[index]);
+            return false;
+        }
+        // A string or a boolean converts to a number JSC's own way, which
+        // would write a quiet zero or a NaN into the struct instead.
+        if (!field.isNumber) {
+            icli_probe_throw(context, @"The %s argument needs a number for %s", layout->name, layout->fields[index]);
+            return false;
+        }
+        double number = [field toDouble];
+        if (!isfinite(number)) {
+            icli_probe_throw(context, @"The %s argument needs a finite %s", layout->name, layout->fields[index]);
+            return false;
+        }
+        if (layout->kind == IcliProbeStructDoubles) {
+            storage->asDoubles[index] = number;
+        } else {
+            storage->asIntegers[index] = (unsigned long)(long long)number;
+        }
+    }
+    return true;
+}
+
+/// The struct an invocation left behind, as a plain object with one property
+/// per field.
+static JSValue *icli_probe_struct_return(NSInvocation *invocation, const IcliProbeStructLayout *layout,
+                                         JSContext *context) {
+    union IcliProbeStructStorage storage = {.asDoubles = {0}};
+    // The layout says every field is 8 bytes, so a return of any other length
+    // is not the struct the table describes and reading it would overrun.
+    if (invocation.methodSignature.methodReturnLength != (NSUInteger)layout->count * sizeof(double)) {
+        icli_probe_throw(context, @"%s is not the %u fields this build expects", layout->name, layout->count);
+        return [IcliProbeValueClass valueWithUndefinedInContext:context];
+    }
+    [invocation getReturnValue:&storage];
+    NSMutableDictionary<NSString *, NSNumber *> *fields = [NSMutableDictionary dictionaryWithCapacity:layout->count];
+    for (unsigned index = 0; index < layout->count; index++) {
+        fields[@(layout->fields[index])] = layout->kind == IcliProbeStructDoubles
+            ? @(storage.asDoubles[index])
+            : @(storage.asIntegers[index]);
+    }
+    return [IcliProbeValueClass valueWithObject:fields inContext:context];
+}
+
 /// One argument slot, large enough for every scalar an invocation takes.
 union IcliProbeArgumentSlot {
     bool asBool;
@@ -179,6 +348,7 @@ union IcliProbeArgumentSlot {
     Class asClass;
     SEL asSelector;
     __unsafe_unretained id asObject;
+    union IcliProbeStructStorage asStruct;
 };
 
 /// Fill `slot` from `value` for one argument. `holds` keeps anything the
@@ -243,6 +413,14 @@ static bool icli_probe_fill(union IcliProbeArgumentSlot *slot, const char *type,
     case 'Q': slot->asUnsignedLongLong = (unsigned long long)[value toDouble]; return true;
     case 'f': slot->asFloat = (float)[value toDouble]; return true;
     case 'd': slot->asDouble = [value toDouble]; return true;
+    case '{': {
+        const IcliProbeStructLayout *layout = icli_probe_struct_layout(type);
+        if (!layout) {
+            icli_probe_throw(context, @"Arguments of type '%s' are not supported", type);
+            return false;
+        }
+        return icli_probe_fill_struct(&slot->asStruct, layout, value, context);
+    }
     case '^':
         // A script has no way to make a valid pointer, and letting it invent
         // one would only turn a typo into a crash.
@@ -313,6 +491,11 @@ static JSValue *icli_probe_return(NSInvocation *invocation, const char *type, SE
         [invocation getReturnValue:&result];
         return [IcliProbeValueClass valueWithBool:result inContext:context];
     }
+    case '{': {
+        const IcliProbeStructLayout *layout = icli_probe_struct_layout(type);
+        if (!layout) break;
+        return icli_probe_struct_return(invocation, layout, context);
+    }
     case '^': {
         void *result = NULL;
         [invocation getReturnValue:&result];
@@ -321,9 +504,10 @@ static JSValue *icli_probe_return(NSInvocation *invocation, const char *type, SE
                       : [IcliProbeValueClass valueWithNullInContext:context];
     }
     default:
-        icli_probe_throw(context, @"Return values of type '%s' are not supported", type);
-        return [IcliProbeValueClass valueWithUndefinedInContext:context];
+        break;
     }
+    icli_probe_throw(context, @"Return values of type '%s' are not supported", type);
+    return [IcliProbeValueClass valueWithUndefinedInContext:context];
 }
 
 - (JSValue *)sendSelectorNamed:(NSString *)name arguments:(JSValue *)arguments {
