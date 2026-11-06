@@ -86,11 +86,21 @@ for kind, arch, prefix, digest in layouts:
         members = tar.getmembers()
         assert all(m.uid == 0 and m.gid == 0 for m in members)
         executables = [m for m in members if m.isfile() and m.mode & 0o111]
-        assert len(executables) == 1 and executables[0].name.endswith('/icli'), executables
+        names = sorted(m.name.rsplit('/', 1)[-1] for m in executables)
+        # An iOS layout carries the probe agent as well: its own Mach-O, which
+        # `icli app launch --probe` inserts into an app. tvOS cannot launch one
+        # and keeps the executable alone.
+        expected = ['icli'] if kind == 'tvos' else ['icli', 'icli-probe-agent.dylib']
+        assert names == expected, names
+    agent_sha = None
+    if kind != 'tvos':
+        agent = folder / 'usr/lib/icli-probe-agent.dylib'
+        agent_sha = hashlib.sha256(agent.read_bytes()).hexdigest()
+        assert agent_sha == hashlib.sha256((root / '.build/icli-probe-agent.dylib').read_bytes()).hexdigest()
     report['packages'].append({'layout': kind, 'file': package.name,
                                'sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
                                'binary_sha256': digest, 'depends': dependencies,
-                               'single_binary': True, 'root_owned': True})
+                               'executables': names, 'agent_sha256': agent_sha, 'root_owned': True})
 (root / '.build/package-verification.json').write_text(json.dumps(report, indent=2) + '\n')
 print('PASS ' + ('iOS' if options.ios_only else 'iOS and tvOS') + ' package architecture, metadata, entitlements, system dependencies, ownership, '
       'CLI-only contents, JavaScriptCore loaded at runtime and no process-launch imports')

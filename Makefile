@@ -12,6 +12,18 @@ BUILD    := .build
 BIN      := $(BUILD)/icli
 ENT      := Resources/icli.entitlements
 
+# The probe agent: `icli probe` inside somebody else's app, injected per
+# launch by `icli app launch --probe`. It is its own Mach-O, compiled from the
+# same engine and bridge the CLI uses, with no Swift and nothing linked but
+# Foundation. Both slices in one invocation, the way an app's own dylib is
+# built: dyld picks arm64e where the app runs it.
+AGENT         := $(BUILD)/icli-probe-agent.dylib
+AGENT_SOURCES := Agent/IcliProbeAgent.m Sources/IcliProbe/IcliProbeContext.m Sources/IcliProbe/IcliProbeBridge.m
+AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
+	-Os -std=gnu11 -fobjc-arc -fobjc-weak -Wall -Wextra -Werror \
+	-ISources/IcliProbe -ISources/IcliProbe/include \
+	-install_name @rpath/icli-probe-agent.dylib -framework Foundation
+
 ifeq ($(DEBUG),1)
 CONFIGURATION := debug
 else
@@ -37,7 +49,7 @@ TVOS_FLAGS := --configuration $(CONFIGURATION) --triple $(TVOS_TARGET) --sdk $(T
 	--scratch-path $(BUILD)/swiftpm --product icli --force-resolved-versions \
 	-Xcc -F$(TVOS_STUBS) -Xswiftc -F$(TVOS_STUBS) -Xlinker -F$(TVOS_STUBS)
 
-.PHONY: all debug resolve install clean deb deb-rootless deb-roothide deb-rootful tvos deb-tvos
+.PHONY: all agent debug resolve install clean deb deb-rootless deb-roothide deb-rootful tvos deb-tvos
 
 all:
 	$(SWIFT) build $(SWIFT_FLAGS)
@@ -55,6 +67,12 @@ endif
 	$(LDID) -S$(ENT) $(BIN)
 	python3 scripts/verify-binary.py
 
+agent:
+	mkdir -p $(BUILD)
+	xcrun --sdk iphoneos clang $(AGENT_FLAGS) $(AGENT_SOURCES) -o $(AGENT)
+	$(LDID) -S $(AGENT)
+	python3 scripts/verify-binary.py --platform agent
+
 debug:
 	$(MAKE) DEBUG=1 all
 
@@ -69,15 +87,15 @@ install: all
 clean:
 	rm -rf $(BUILD) packaging/root
 
-deb: all
+deb: all agent
 	./packaging/build-deb.sh rootless
 
 deb-rootless: deb
 
-deb-roothide: all
+deb-roothide: all agent
 	./packaging/build-deb.sh roothide
 
-deb-rootful: all
+deb-rootful: all agent
 	./packaging/build-deb.sh rootful
 
 # tvOS: the same sources against the AppleTVOS SDK, as their own binary.

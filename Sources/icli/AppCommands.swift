@@ -128,12 +128,15 @@ extension App {
         var environment: [String] = []
         @Option(help: "Run in this language for this launch, such as fr or pt-BR. Stops a running app.") var language: String?
         @Option(help: "Use this region format for this launch, such as fr_FR. Stops a running app.") var locale: String?
+        @Flag(help: "Inject icli's probe agent, so 'icli probe --app <app>' can run scripts inside this launch. Stops a running app.")
+        var probe = false
         func run() {
             emit(output) {
                 let bundleID = try resolveAppName(app)
-                if !arguments.isEmpty || !environment.isEmpty || language != nil || locale != nil {
+                let env = probe ? try environmentWithProbeAgent(environment, bundleID: bundleID) : environment
+                if !arguments.isEmpty || !env.isEmpty || language != nil || locale != nil {
                     return try launchAppWithOptions(
-                        bundleID, arguments: arguments, environment: environment, language: language, locale: locale,
+                        bundleID, arguments: arguments, environment: env, language: language, locale: locale,
                         waitForeground: waitForeground, timeout: timeout,
                     )
                 }

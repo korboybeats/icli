@@ -17,13 +17,14 @@ Swift Package Manager resolves Argument Parser and the static [ArchiveKit packag
 | Output | Location |
 | --- | --- |
 | Signed executable | `.build/icli` |
+| Signed probe agent | `.build/icli-probe-agent.dylib` |
 | Rootless package | `.build/com.icli.icli_<version>_iphoneos-arm64.deb` |
 | Experimental RootHide package | `.build/com.icli.icli_<version>_iphoneos-arm64e.deb` |
 | Signed tvOS executable | `.build/icli-tvos` |
 | tvOS package | `.build/com.icli.icli_<version>_appletvos-arm64.deb` |
 | Package verification report | `.build/package-verification.json` |
 
-The version comes from `Resources/Info.plist`. `make deb` builds the rootless package. Every build checks for forbidden process-launch imports. Package checks repeat that check and verify architecture, deployment target, entitlements, system-only linked libraries, a firmware-only DEB dependency, ownership, and identical executable contents across the two iOS layouts and in the tvOS package. `check-packages.sh` needs both `make all` and `make tvos` first. Import checks detect direct linked calls; runtime acceptance also checks the environment report.
+The version comes from `Resources/Info.plist`. `make deb` builds the rootless package. `make agent` builds the probe agent, the dylib `icli app launch --probe` inserts into an app so `icli probe --app` can reach its live objects: its own Mach-O with both slices in one clang invocation, no Swift, and nothing linked but Foundation, held to the same import rules as the CLI (`scripts/verify-binary.py --platform agent`). Each iOS package carries it at `usr/lib/icli-probe-agent.dylib`; the tvOS package stays the executable alone. Every build checks for forbidden process-launch imports. Package checks repeat that check and verify architecture, deployment target, entitlements, system-only linked libraries, a firmware-only DEB dependency, ownership, and identical executable contents across the two iOS layouts and in the tvOS package. `check-packages.sh` needs both `make all` and `make tvos` first. Import checks detect direct linked calls; runtime acceptance also checks the environment report.
 
 The **DEB Release** GitHub Actions workflow builds both iOS layouts and the tvOS package and publishes the DEBs, `icli-tvos`, `SHA256SUMS`, and `package-verification.json`. It runs for version tags or can be dispatched with an existing tag. CI artifacts have their own hashes and package checks; device acceptance applies to the specific binary recorded in its report. Repository changes use ordinary incremental commits; published version tags remain fixed.
 

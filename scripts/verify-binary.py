@@ -84,16 +84,23 @@ def verify_floor_imports(binary, sdk_name='iphoneos', extra_frameworks=()):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--platform', choices=['ios', 'tvos'], default='ios')
+    parser.add_argument('--platform', choices=['ios', 'tvos', 'agent'], default='ios')
     platform = parser.parse_args().platform
     if platform == 'tvos':
         # The tvOS build takes IOKit's headers from the stub it links against.
         binary, sdk_name, extra = ROOT / '.build/icli-tvos', 'appletvos', [ROOT / '.build/tvos-stubs']
+    elif platform == 'agent':
+        # The probe agent runs inside somebody else's app, so it is held to the
+        # same rules: it starts no process, names nothing iOS 15.0 may not
+        # export, and still reaches JavaScriptCore with dlopen rather than
+        # forcing the framework into an app that never asked for it.
+        binary, sdk_name, extra = ROOT / '.build/icli-probe-agent.dylib', 'iphoneos', []
     else:
         binary, sdk_name, extra = ROOT / '.build/icli', 'iphoneos', []
+    label = {'tvos': 'tvOS', 'agent': 'iOS', 'ios': 'iOS'}[platform]
     verify_no_process_imports(binary)
     print('PASS no process-launch imports')
     verify_floor_imports(binary, sdk_name, extra)
-    print(f'PASS no strong import beyond the {"tvOS" if platform == "tvos" else "iOS"} 15.0 floor')
+    print(f'PASS no strong import beyond the {label} 15.0 floor')
     verify_javascriptcore_not_linked(binary)
     print('PASS JavaScriptCore is loaded at runtime, not linked')

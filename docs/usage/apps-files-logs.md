@@ -58,6 +58,7 @@ Maintainer scripts and package triggers are not executed. Transactions report sk
 ```sh
 icli app launch example.bundle.id --arg=-FeatureFlag --arg=YES --env API_URL=https://staging.example.com
 icli app launch example.bundle.id --language fr --locale fr_FR
+icli app launch example.bundle.id --probe        # carry the probe agent, for `icli probe --app`
 ```
 
 ### Verified Launches and Crash Checks
