@@ -316,7 +316,7 @@ private func recognizeImage(
         if haveGPU {
             blocks = try visionBlocks(in: downsampled, languages: languages, minConfidence: minConfidence,
                                       pointSize: pointSize, locating: locating, fast: fast)
-        } else if #available(iOS 17.0, *) {
+        } else if #available(iOS 17.0, tvOS 17.0, *) {
             blocks = try visionBlocksCPU(in: downsampled, languages: languages, minConfidence: minConfidence,
                                          pointSize: pointSize, locating: locating, fast: fast)
         } else {
@@ -839,7 +839,7 @@ private func visionBlocks(
 
 // GPU-free OCR: Vision on the CPU over a plain (non-IOSurface) 420f buffer filled with vImage,
 // so nothing needs the GPU user client the kernel withholds from non-app processes.
-@available(iOS 17.0, *)
+@available(iOS 17.0, tvOS 17.0, *)
 private func visionBlocksCPU(
     in image: CGImage,
     languages: [String],
