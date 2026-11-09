@@ -10,11 +10,11 @@ For app integration, add this repository as a Swift Package dependency and selec
 
 ## Install
 
-Download a DEB from [GitHub Releases](https://github.com/owngoal-dev/icli/releases), or [build from source](docs/development/building.md), then choose the package for your bootstrap:
+Download a DEB from [GitHub Releases](https://github.com/korboybeats/icli/releases), or [build from source](docs/development/building.md), then choose the package for your bootstrap:
 
 | Bootstrap | Package Architecture | Status |
 | --- | --- | --- |
-| Rootless (`/var/jb`) | `iphoneos-arm64` | Tested on the project's rootless vphone |
+| Rootless (`/var/jb`) | `iphoneos-arm64` | Tested on an iPhone 15 Pro Max (iOS 17.1.1, Dopamine) and the project's rootless vphone |
 | RootHide | `iphoneos-arm64e` | Experimental; service inspection verified on iOS 18.5, full acceptance pending |
 | tvOS, rootful (`/usr/bin`, Procursus `appletvos-arm64`) | `appletvos-arm64` | Package checks only; the same executable passed the tvOS acceptance on a tvOS 26.6 vphone |
 
@@ -28,15 +28,17 @@ See [Install](docs/install/install.md) for uploading over USB, rootless paths, a
 
 ## Features
 
-- **Touch and keyboard**: Tap, swipe, press and hold, drag along a path, enter Unicode text, and send keyboard shortcuts or raw HID events. On an iPad, click and scroll with a virtual pointer.
-- **Accessibility**: Read the UI tree, find elements by text, identifier, or role, tap a match, and wait for an element to appear or disappear.
-- **Screenshots and OCR**: Save JPEG screenshots, return images as Base64, recognize text, or collect an image, OCR results, and accessibility elements together.
-- **Apps**: List, launch, inspect, register, unregister, and refresh apps; inspect or repair their network policy. Install and remove local DEB packages or compatible IPA files.
+- **Touch and keyboard**: Tap, swipe, pinch, press and hold, drag along a path, scroll an exact distance, perform system gestures, enter Unicode text, and send keyboard shortcuts or raw HID events. On an iPad, click and scroll with a virtual pointer.
+- **Accessibility**: Read the UI tree, including system UI, find elements by text, identifier, or role, tap a match and verify what it changed, fill text fields, scroll until an element is on screen, answer alerts, go back, and wait for an element to appear or disappear.
+- **Screenshots and OCR**: Save JPEG or PNG screenshots, return images as Base64, record the screen to a movie, wait for the screen to change or settle, recognize text, or collect an image, OCR results, and accessibility elements together.
+- **Apps**: List, launch, relaunch, inspect, register, unregister, and refresh apps; grant, deny, or reset their privacy permissions, erase their data, and open their Settings page; inspect or repair their network policy. Install and remove local DEB packages and IPA files; an IPA installed with `--container` gets its own app and data containers and is re-signed ad-hoc inside icli, so decrypted App Store apps launch.
 - **Files and logs**: Read, write, copy, move, link, and remove files; change permissions and ownership; read and edit property lists; capture live logs and read crash reports.
-- **Device controls**: Brightness, volume, rotation, hardware buttons, the clipboard, Low Power Mode, Darwin notifications, Developer Mode, simulated location, reboots, and boot logos.
+- **Device controls**: Lock and unlock, keybag unlock with a supplied passcode, brightness, volume, rotation, appearance, accessibility text size and display settings, time zone, hardware buttons, the clipboard, Low Power Mode, Darwin notifications, Developer Mode, simulated location, reboots, and boot logos.
 - **System**: Manage launchd services, local DEB packages and repository sources, account passwords, system app visibility, SpringBoard restarts, packet capture, and test Keychain items; read jetsam bands and memory pressure.
 - **Preferences**: Read, write, and delete typed preference values like `defaults`.
-- **Scripting**: Run a JavaScriptCore script in-process with `icli probe`, with an Objective-C reflection bridge and icli's own capabilities through `api()`.
+- **Inspect running apps**: `icli flex` brings FLEX's in-app inspection to the command line (ported from FlexUltra): live objects and the heap, views and view controllers, the app's files, defaults, keychain, SQLite and Realm databases, network history, its log, and method tracing. The agent is loaded only while a command runs.
+- **Scripting**: Run a JavaScriptCore script in-process with `icli probe`, or inside an app with `icli probe --app`, with an Objective-C reflection bridge and icli's own capabilities through `api()`.
+- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners wait instead of interfering.
 
 ## Command Line
 
@@ -65,7 +67,7 @@ icli log syslog --seconds 3 --level error
 ## Development
 
 - [Build from Source](docs/development/building.md): toolchain, `make` targets, package outputs, and release CI.
-- [Testing and Compatibility](docs/development/testing.md): on-device self-tests, the acceptance suite, and tvOS acceptance. Results of the last recorded run are in the [acceptance report](docs/rootless-acceptance.md).
+- [Testing and Compatibility](docs/development/testing.md): on-device self-tests, the acceptance suite, and tvOS acceptance. The last full acceptance report, for 0.3.0 on the rootless vphone, is in the [acceptance report](docs/rootless-acceptance.md); later device checks are listed in each release's notes under [docs/releases](docs/releases).
 
 ## License
 
