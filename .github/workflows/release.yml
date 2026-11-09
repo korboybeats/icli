@@ -109,6 +109,8 @@ jobs:
               hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n' for path in files))
           commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           tag = os.environ['RELEASE_TAG']
+          # Links point at the repository the release is made in.
+          repository = os.environ['GITHUB_REPOSITORY']
           changes = Path(f"docs/releases/{tag.removeprefix('v')}.md").read_text().strip()
           notes = f'''Rootless and experimental RootHide DEBs contain the same signed arm64 executable. The tvOS DEB (`appletvos-arm64`, rootful) and the bare `icli-tvos` contain the signed tvOS executable.
 
@@ -122,7 +124,7 @@ jobs:
           - Source commit: `{commit}`.
           - Binary SHA-256: `{report['binary_sha256']}`; tvOS binary SHA-256: `{report['tvos']['binary_sha256']}`.
 
-          [Swift Package integration](https://github.com/owngoal-dev/icli/blob/{tag}/docs/swift-package.md) · [All entitlements](https://github.com/owngoal-dev/icli/blob/{tag}/docs/entitlements.md)
+          [Swift Package integration](https://github.com/{repository}/blob/{tag}/docs/swift-package.md) · [All entitlements](https://github.com/{repository}/blob/{tag}/docs/entitlements.md)
           '''
           (build / 'release-notes.md').write_text(notes)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
