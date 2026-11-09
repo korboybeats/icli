@@ -115,13 +115,27 @@ private func registerContainerApp(
 
 /// Installs an IPA the way installd lays out an App Store app: its own bundle
 /// container under /var/containers/Bundle/Application, a data container, and
-/// a containerized LaunchServices registration. The app is installed as it is
-/// signed; nothing in it is re-signed or modified, so its signature must be
-/// one this device runs. An app icli (or vphoned or TrollStore) installed
+/// a containerized LaunchServices registration. Its binaries are re-signed
+/// ad-hoc first (signAppBundle), as TrollStore Lite does, unless `resign` is
+/// false, which installs it as it is signed. An app icli (or vphoned or TrollStore) installed
 /// this way is upgraded in place; any other app with the identifier is left
 /// alone. A failed install removes what it added and restores an upgraded app.
-public func installIPAInContainer(_ path: String, registration: AppRegistrationType = .system) throws -> [String: Any] {
-    try installIPAInContainer(path, registration: registration, prepareApp: { _ in })
+public func installIPAInContainer(
+    _ path: String,
+    registration: AppRegistrationType = .system,
+    resign: Bool = true,
+) throws -> [String: Any] {
+    var signing: [String: Any]?
+    var result = try installIPAInContainer(path, registration: registration) { app in
+        if resign {
+            signing = try signAppBundle(app)
+        }
+    }
+    result["resigned"] = signing != nil
+    if let signing {
+        result.merge(signing) { $1 }
+    }
+    return result
 }
 
 /// Runs `prepareApp` on the validated, temporary Payload/*.app before it is

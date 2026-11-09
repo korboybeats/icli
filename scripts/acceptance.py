@@ -1448,6 +1448,71 @@ def install_ipa_container(d):
     d.fixture()
 
 
+def break_signature(source, target):
+    """Copy an IPA, changing one page hash in its main executable's
+    CodeDirectories so the kernel refuses that page: a signature this device
+    rejects, without touching any code."""
+    import zipfile
+    with zipfile.ZipFile(source) as ipa:
+        names = ipa.namelist()
+        app = next(n for n in names if re.fullmatch(r'Payload/[^/]+\.app/Info\.plist', n)).rsplit('/', 1)[0]
+        executable = app + '/' + plistlib.loads(ipa.read(app + '/Info.plist'))['CFBundleExecutable']
+        with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as out:
+            for info in ipa.infolist():
+                data = ipa.read(info)
+                if info.filename == executable:
+                    binary = bytearray(data)
+                    starts = [0]
+                    if binary[:4] == b'\xca\xfe\xba\xbe':
+                        count = struct.unpack('>I', binary[4:8])[0]
+                        starts = [struct.unpack('>I', binary[16 + i * 20:20 + i * 20])[0] for i in range(count)]
+                    changed = 0
+                    for base in starts:
+                        commands, offset = struct.unpack('<I', binary[base + 16:base + 20])[0], base + 32
+                        for _ in range(commands):
+                            command, size = struct.unpack('<II', binary[offset:offset + 8])
+                            if command == 0x1D:
+                                signature = base + struct.unpack('<I', binary[offset + 8:offset + 12])[0]
+                                for i in range(struct.unpack('>I', binary[signature + 8:signature + 12])[0]):
+                                    kind, relative = struct.unpack('>II', binary[signature + 12 + i * 8:signature + 20 + i * 8])
+                                    directory = signature + relative
+                                    if struct.unpack('>I', binary[directory:directory + 4])[0] == 0xFADE0C02:
+                                        hash_offset, = struct.unpack('>I', binary[directory + 16:directory + 20])
+                                        binary[directory + hash_offset] ^= 0xFF  # page 0's hash
+                                        changed += 1
+                            offset += size
+                    assert changed, 'fixture executable has no CodeDirectory'
+                    data = bytes(binary)
+                out.writestr(info, data)
+
+
+@case('install_resign_ipa_container', 'install', ['app install'])
+def install_resign_ipa_container(d):
+    # --container re-signs ad-hoc, so an app whose signature the kernel
+    # rejects launches; --keep-signature installs it as it is and it does not.
+    broken = ROOT / '.build/install-fixtures/icli-broken-signature-fixture.ipa'
+    break_signature(ROOT / '.build/install-fixtures/icli-container-install-fixture.ipa', broken)
+    remote = '/tmp/' + broken.name
+    d.upload(broken, remote)
+    bundle = 'dev.owngoal.icli.ContainerInstallFixture'
+    try:
+        kept = d.cli('app', 'install', remote, '--container', '--keep-signature', timeout=150, sudo=True)
+        assert kept['bundle_id'] == bundle and kept['resigned'] is False, kept
+        launch = d.run([d.binary, 'app', 'launch', bundle])
+        assert launch.returncode != 0, 'an app with a rejected signature launched: ' + launch.stdout
+        assert not any(a['bundle_id'] == bundle for a in d.cli('app', 'running')['apps']), 'rejected app is running'
+        signed = d.cli('app', 'install', remote, '--container', timeout=150, sudo=True)
+        assert signed['resigned'] is True and signed['upgraded'], signed
+        assert signed['signed_binaries'] >= 2 and signed['encrypted_binaries'] == [], signed
+        d.cli('app', 'launch', bundle)
+        assert any(a['bundle_id'] == bundle for a in d.cli('app', 'running')['apps']), 're-signed app is not running'
+        d.cli('app', 'install', remote, '--keep-signature', expected=1, sudo=True)
+    finally:
+        d.cli('app', 'uninstall', bundle, '--force', sudo=True)
+        d.run(['rm', '-f', remote], sudo=True)
+    d.fixture()
+
+
 @case('crash_report_roundtrip', 'logs', ['log crashes', 'log crash'])
 def crash_report(d):
     d.fixture()

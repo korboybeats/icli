@@ -10,7 +10,11 @@ func machOInfo(at path: String) throws -> [String: Any] {
 
 /// Whether the arm64 slice is encrypted, and its entitlements as signed.
 func machOSigning(at path: String) throws -> (encrypted: Bool, entitlements: [String: Any]) {
-    let data = try Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
+    // Read, never mapped: faulting in a page of a mapped binary whose code
+    // signature the kernel holds and rejects kills this process (SIGKILL
+    // CODESIGNING, "Invalid Page"), as reading a just-installed app's
+    // Apple-signed, decrypted executable did.
+    let data = try Data(contentsOf: URL(fileURLWithPath: path))
     func u32(_ offset: Int, bigEndian: Bool = false) throws -> UInt32 {
         guard offset >= 0, offset <= data.count - 4 else { throw IcliError.failed("truncated Mach-O metadata") }
         let values = (0 ..< 4).map { UInt32(data[offset + $0]) }

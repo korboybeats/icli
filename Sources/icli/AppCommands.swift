@@ -179,7 +179,7 @@ extension App {
     struct Install: ParsableCommand {
         static var configuration = CommandConfiguration(
             abstract: "Install a .deb, an .ipa or a .app bundle",
-            discussion: "An .ipa goes into the bootstrap's /Applications, or with --container into its own app container under /var/containers/Bundle/Application with a data container, like an App Store app. icli does not re-sign the app, so the IPA must already be signed so that this device can run it.",
+            discussion: "An .ipa goes into the bootstrap's /Applications, or with --container into its own app container under /var/containers/Bundle/Application with a data container, like an App Store app. A --container install re-signs every binary in the app ad-hoc first, as TrollStore Lite does: app and extension binaries keep their entitlements and get jb.pmap_cs.custom_trust, so decrypted App Store and developer-signed IPAs run. A FairPlay-encrypted main binary is refused. The bootstrap install does not re-sign.",
         )
         @OptionGroup var output: OutputOptions
         @Argument var path: String
@@ -187,12 +187,19 @@ extension App {
         var container = false
         @Option(help: "How LaunchServices lists a --container app: system or user (default: system). FrontBoard refuses to launch an ad-hoc signed User app (\"No code signature found\"); TrollStore Lite registers its apps as System too.")
         var registration: AppRegistrationType?
+        @Flag(help: "With --container, install the app as it is signed instead of re-signing it ad-hoc.")
+        var keepSignature = false
         func run() {
             emit(output) {
                 guard container || registration == nil else {
                     throw IcliError.failed("--registration applies only with --container")
                 }
-                return try installPackage(path, container: container, registration: registration ?? .system)
+                guard container || !keepSignature else {
+                    throw IcliError.failed("--keep-signature applies only with --container")
+                }
+                return try installPackage(
+                    path, container: container, registration: registration ?? .system, resign: !keepSignature,
+                )
             }
         }
     }

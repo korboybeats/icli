@@ -277,13 +277,14 @@ public func installPackage(
     _ path: String,
     container: Bool = false,
     registration: AppRegistrationType = .system,
+    resign: Bool = true,
 ) throws -> [String: Any] {
     guard FileManager.default.fileExists(atPath: path) else { throw IcliError.failed("package not found: \(path)") }
     if container {
         guard path.lowercased().hasSuffix(".ipa") else {
             throw IcliError.failed("--container installs only .ipa files")
         }
-        return try installIPAInContainer(path, registration: registration)
+        return try installIPAInContainer(path, registration: registration, resign: resign)
     }
     if path.lowercased().hasSuffix(".deb") {
         return try installDebFile(path)
