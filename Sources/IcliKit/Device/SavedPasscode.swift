@@ -1,20 +1,26 @@
 import Darwin
 import Foundation
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
 import Security
 
 private let savedPasscodeGroup = "com.icli.unlock"
 private let savedPasscodeService = "com.icli.device-passcode"
 
 private func savedPasscodeQuery() -> [String: Any] {
-    let context = LAContext()
-    context.interactionNotAllowed = true
-    return [kSecClass as String: kSecClassGenericPassword,
+    var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
      kSecAttrAccessGroup as String: savedPasscodeGroup,
      kSecAttrService as String: savedPasscodeService,
      kSecAttrAccount as String: "full-unlock",
-     kSecAttrSynchronizable as String: false,
-     kSecUseAuthenticationContext as String: context]
+     kSecAttrSynchronizable as String: false]
+    // tvOS has no LocalAuthentication; its Keychain never prompts here.
+    #if canImport(LocalAuthentication)
+    let context = LAContext()
+    context.interactionNotAllowed = true
+    query[kSecUseAuthenticationContext as String] = context
+    #endif
+    return query
 }
 
 private func requireSavedPasscodeRoot() throws {
