@@ -60,6 +60,11 @@ jobs:
       - name: Build and sign the CLI
         run: make all CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=
 
+      # The iOS packages ship the probe agent and the icli flex runtime
+      # (FLEX, the FlexUltra engine and reflection metadata) beside the CLI.
+      - name: Build and sign the probe agent and the icli flex runtime
+        run: make agent
+
       - name: Build and sign the tvOS CLI
         run: make tvos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=
 
