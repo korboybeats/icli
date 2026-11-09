@@ -14,7 +14,7 @@ Audio buttons try hardware events first and fall back to the system audio contro
 
 `icli status` returns lock and screen state, the app in front, whether the keyboard, a SpringBoard overlay or an owner-only prompt is up, and `springboard_pid` and `boot_time`. A runner that compares the last two between steps knows another agent resprang or rebooted the device under it.
 
-`icli lease acquire --owner <name> --ttl <seconds>` claims the device: until the lease is released or runs out, icli commands without its token fail with exit 75 and `error: leased`. Pass the printed `token` as `ICLI_LEASE`. `lease` and `status` always run.
+`icli lease acquire --owner <name>` claims the device until `icli lease release`: meanwhile icli commands without its token fail with exit 75 and `error: leased`. Every command carrying the token keeps the lease alive, however long the run; it lapses only after `--ttl` seconds (default 600) with no such command, which frees the device when a runner crashes without releasing. `lease status` shows `last_used_at` and `seconds_left`. Pass the printed `token` as `ICLI_LEASE`. `lease` and `status` always run.
 
 `ICLI_FAILURE_ARTIFACTS=<dir>` makes every failed command save `error.json`, `screen.jpg` and `tree.json` in a new folder under `<dir>`, named in the error's `artifacts`.
 

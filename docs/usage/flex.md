@@ -71,7 +71,19 @@ file opens with the app's own configuration, including its schema version. A
 file older than the app's schema version is refused rather than migrated; let the
 app open it first.
 Network/log history contains only what the underlying recorder captured; empty
-history is valid.
+history is valid. FLEX records HTTP only while its network observer is on, and
+nothing turns it on by default. `icli flex network record on --target <app>`
+turns it on (`off` and `status` too). The setting is saved in the app's FLEX
+defaults, so later launches record from the moment FLEX loads: at launch when a
+FLEX tweak such as FLEXing is installed, otherwise when icli first attaches.
+Requests made before FLEX loads are not recorded, as in the original.
+
+`logs messages` reads icli's own recorder of the app's unified log, which starts
+on the first `logs messages` call and keeps the newest 10000 messages. FLEX's
+System Log decodes every iOS 17 message as `<compose failure [corrupt log]>`:
+the log entry gained 8 bytes, so its message starts 8 bytes later than FLEX
+reads it. The recorder picks the offset whose timestamp is near now. Use
+`icli log syslog` for logs from before recording started.
 `health` exposes per-operation support and dependency reasons.
 
 Target history stores up to 128 lifecycle observations in

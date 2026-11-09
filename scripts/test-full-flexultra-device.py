@@ -7,6 +7,8 @@ The realm section reads Bark's (me.fin.bark) own Realm database and changes noth
 """
 import argparse
 import base64
+import time
+import traceback
 import hashlib
 import json
 import os
@@ -20,11 +22,31 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = 'dev.owngoal.icli.ContainerFixture'
 BIN = '/var/jb/usr/bin/icli'
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--section', choices=['core', 'storage', 'ui', 'trace', 'mcp', 'lifecycle', 'metadata', 'physical', 'realm', 'all'], default='core')
-parser.add_argument('--report', type=Path)
+ORDER = ['core', 'storage', 'ui', 'trace', 'mcp', 'metadata', 'physical', 'lifecycle', 'realm']
+parser.add_argument('--section', nargs='+', choices=ORDER + ['all'], default=['core'],
+                    help='One or more sections, run in order; a failing section does not stop the rest. all runs every section.')
+parser.add_argument('--report', type=Path, help='Report path, for a single section only.')
 args = parser.parse_args()
-REPORT = args.report or ROOT / ('.build/full-flex-validation-' + args.section + '.json')
-report = {'section': args.section, 'app': APP, 'trace': [], 'checks': [], 'conditional': [], 'passed': False}
+PLAN = ORDER if 'all' in args.section else list(dict.fromkeys(args.section))
+REPORT = None
+report = {}
+# One progress line for the status line (~/.local/share/lps-statusline), in
+# the gate row's tab-separated form: name, state, done, total, failures,
+# start:end, last check, filled cells of 12.
+PROGRESS = Path.home() / '.cache/icli-test-status'
+STARTED = int(time.time())
+progress_state = {'done': 0, 'failed': [], 'last': '-'}
+
+
+def progress(state='running'):
+    done, total = progress_state['done'], len(PLAN)
+    end = str(int(time.time())) if state == 'done' else ''
+    fields = ['icli flex', state, str(done), str(total), str(len(progress_state['failed'])),
+              f'{STARTED}:{end}', progress_state['last'].replace('\t', ' ')[:60], str(done * 12 // max(total, 1))]
+    PROGRESS.parent.mkdir(parents=True, exist_ok=True)
+    temporary = PROGRESS.with_suffix('.tmp')
+    temporary.write_text('\t'.join(fields) + '\n')
+    temporary.replace(PROGRESS)
 TOKEN = os.environ.get('ICLI_LEASE')
 BASE = (['env', 'ICLI_LEASE=' + TOKEN] if TOKEN else []) + [BIN]
 
@@ -67,6 +89,8 @@ def check(name, condition=True):
     report['checks'].append(name)
     persist()
     print('PASS ' + name, flush=True)
+    progress_state['last'] = report['section'] + ': ' + name
+    progress()
 
 
 def ready():
@@ -230,7 +254,32 @@ def storage():
         call('bookmarks.remove', ['bookmarks', 'remove', str(bookmark['index'])])
     for kind in ['http', 'websocket', 'firebase']:
         call('network.transactions', ['network', 'transactions', '--kind', kind, '--limit', '5']); check('network history ' + kind)
+    # Prove capture, not only an answer: record a request that never leaves the
+    # phone (port 9 refuses), then a log line the fixture writes every second.
+    def record(action):
+        p = run(['flex', 'network', 'record', action, '--target', APP])
+        assert p.returncode == 0, report['trace'][-1]
+        return json.loads(p.stdout)['result']['recording']
+    check('network record on', record('on') is True)
+    try:
+        marker = 'icli-net-' + unique
+        cli('probe', '--app', APP, '-e', "ObjC.use('NSURLSession').sharedSession().dataTaskWithURL_(ObjC.use('NSURL').URLWithString_('http://127.0.0.1:9/" + marker + "')).resume(); 'sent'")
+        found = []
+        for _ in range(10):
+            found = call('network.transactions', ['network', 'transactions', '--kind', 'http', '--query', marker, '--limit', '5'])['transactions']
+            if found: break
+            subprocess.run(['sleep', '0.3'])
+        check('network history records an actual request', len(found) == 1 and marker in json.dumps(found))
+    finally:
+        check('network record off', record('off') is False)
+    check('network record status', record('status') is False)
     call('logs.messages', ['logs', 'messages', '--query', unique, '--limit', '5']); check('log history')
+    logged = []
+    for _ in range(10):
+        subprocess.run(['sleep', '0.5'])
+        logged = call('logs.messages', ['logs', 'messages', '--query', 'icli-testhost-heartbeat', '--limit', '5'])['messages']
+        if logged: break
+    check('log history records the fixture heartbeat', len(logged) > 0 and 'icli-testhost-heartbeat' in json.dumps(logged))
     call('keychain.items', ['keychain', 'items', unique, '--limit', '5']); check('keychain fixture-only search')
     keychain = class_handle('FLEXKeychain')
     created = invoke(keychain, 'setPassword:forService:account:', 'acceptance-value', unique, unique, class_method=True)['value']
@@ -453,17 +502,34 @@ def realm():
 
 
 SECTIONS = {'core': core, 'storage':storage, 'ui':ui, 'trace':trace, 'mcp':mcp, 'metadata':metadata, 'physical':physical, 'lifecycle':lifecycle, 'realm':realm}
-try:
-    for artifact, remote in [('icli', BIN), ('icli-probe-agent.dylib', '/var/jb/usr/lib/icli-probe-agent.dylib'),
-                             ('libicli-flex.dylib', '/var/jb/usr/lib/icli/libFLEX.dylib'),
-                             ('libicli-flexultra.dylib', '/var/jb/usr/lib/icli/libicli-flexultra.dylib'),
-                             ('libicli-reflex.dylib', '/var/jb/usr/lib/icli/libicli-reflex.dylib')]:
-        expected = hashlib.sha256((ROOT / '.build' / artifact).read_bytes()).hexdigest()
-        p = subprocess.run(['ssh-iphone', shlex.join(['/var/jb/usr/bin/sha256sum', remote])], capture_output=True, text=True, timeout=20)
-        assert p.returncode == 0 and p.stdout.split()[0] == expected, artifact
-    check('all installed artifacts match build')
-    for section in (SECTIONS if args.section == 'all' else [args.section]):
+ARTIFACTS = [('icli', BIN), ('icli-probe-agent.dylib', '/var/jb/usr/lib/icli-probe-agent.dylib'),
+             ('libicli-flex.dylib', '/var/jb/usr/lib/icli/libFLEX.dylib'),
+             ('libicli-flexultra.dylib', '/var/jb/usr/lib/icli/libicli-flexultra.dylib'),
+             ('libicli-reflex.dylib', '/var/jb/usr/lib/icli/libicli-reflex.dylib')]
+assert args.report is None or len(PLAN) == 1, '--report takes a single section'
+progress()
+for section in PLAN:
+    REPORT = args.report or ROOT / ('.build/full-flex-validation-' + section + '.json')
+    report = {'section': section, 'app': APP, 'trace': [], 'checks': [], 'conditional': [], 'passed': False}
+    print('=== ' + section, flush=True)
+    try:
+        for artifact, remote in ARTIFACTS:
+            expected = hashlib.sha256((ROOT / '.build' / artifact).read_bytes()).hexdigest()
+            p = subprocess.run(['ssh-iphone', shlex.join(['/var/jb/usr/bin/sha256sum', remote])], capture_output=True, text=True, timeout=20)
+            assert p.returncode == 0 and p.stdout.split()[0] == expected, artifact
+        check('all installed artifacts match build')
         SECTIONS[section]()
-    report['passed'] = True
-finally:
-    persist()
+        report['passed'] = True
+    except Exception:
+        traceback.print_exc()
+        progress_state['failed'].append(section)
+        print('FAIL ' + section, flush=True)
+    finally:
+        persist()
+        progress_state['done'] += 1
+        progress()
+progress('done')
+print('passed: ' + ', '.join(x for x in PLAN if x not in progress_state['failed']), flush=True)
+if progress_state['failed']:
+    print('failed: ' + ', '.join(progress_state['failed']), flush=True)
+    raise SystemExit(1)

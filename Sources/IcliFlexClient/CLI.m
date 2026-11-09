@@ -59,6 +59,7 @@ static void IcliFUPrintUsage(void) {
         "  icli flex bookmarks add <handle|selector-json> --target <target> [--human]\n"
         "  icli flex bookmarks remove <index> --target <target> [--human]\n"
         "  icli flex network transactions --target <target> [--kind http|websocket|firebase] [--query <text>] [--offset N] [--limit N] [--human]\n"
+        "  icli flex network record on|off|status --target <target>\n"
         "  icli flex logs messages --target <target> [--query <text>] [--offset N] [--limit N] [--human]\n"
         "  icli flex globals entries --target <target> [--query <text>] [--offset N] [--limit N] [--human]\n"
         "  icli flex globals open <section-index> <row-index> --target <target> [--present] [--human]\n"
@@ -411,6 +412,39 @@ static void IcliFUPrintHuman(NSString *op, NSDictionary *response) {
     fputc('\n', stdout);
 }
 
+static NSDictionary *ICLIFlexRecordRequest(NSString *op, NSString *target, NSDictionary *fields) {
+    NSMutableDictionary *request = [@{@"v": @(IcliFUProtocolVersion), @"kind": @"request", @"id": NSUUID.UUID.UUIDString, @"op": op, @"target": target} mutableCopy];
+    [request addEntriesFromDictionary:fields];
+    return ICLIFlexHostRequest(request);
+}
+
+static NSDictionary *ICLIFlexNetworkRecord(int argc, const char *const *argv) {
+    NSString *action = @(argv[3]);
+    NSString *target = nil;
+    for (int i = 4; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--target") == 0 || strcmp(argv[i], "-t") == 0) target = @(argv[i + 1]);
+    }
+    if (![@[@"on", @"off", @"status"] containsObject:action] || !target.length) {
+        fprintf(stderr, "usage: icli flex network record on|off|status --target <target>\n");
+        return nil;
+    }
+    NSDictionary *response = ICLIFlexRecordRequest(@"network.transactions", target, @{@"network_kind": @"http", @"limit": @1});
+    if (![response[@"ok"] boolValue]) return response;
+    response = ICLIFlexRecordRequest(@"runtime.class", target, @{@"name": @"FLEXNetworkObserver"});
+    if (![response[@"ok"] boolValue]) return response;
+    NSString *handle = response[@"result"][@"class_object"][@"id"];
+    if (![handle isKindOfClass:NSString.class]) return response;
+    if (![action isEqualToString:@"status"]) {
+        response = ICLIFlexRecordRequest(@"object.call", target, @{@"handle": handle, @"selector": @"setEnabled:", @"method_kind": @"class", @"arguments": @[@([action isEqualToString:@"on"])]});
+        if (![response[@"ok"] boolValue]) return response;
+    }
+    response = ICLIFlexRecordRequest(@"object.call", target, @{@"handle": handle, @"selector": @"isEnabled", @"method_kind": @"class", @"arguments": @[]});
+    if (![response[@"ok"] boolValue]) return response;
+    NSMutableDictionary *result = [@{@"recording": @([response[@"result"][@"value"] boolValue]), @"source": @"FLEXNetworkObserver"} mutableCopy];
+    for (NSString *key in @[@"generation", @"agent_build"]) if (response[key]) result[key] = response[key];
+    return @{@"ok": @YES, @"result": result};
+}
+
 static int runCLI(int argc, const char *const *argv) {
     @autoreleasepool {
         if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) { IcliFUPrintUsage(); return 0; }
@@ -424,6 +458,12 @@ static int runCLI(int argc, const char *const *argv) {
         if (argc == 2 && strcmp(argv[1], "catalog") == 0) {
             IcliFUPrintJSON(@{@"ok": @YES, @"result": IcliFUOperationCatalog()});
             return 0;
+        }
+        if (argc >= 4 && strcmp(argv[1], "network") == 0 && strcmp(argv[2], "record") == 0) {
+            NSDictionary *response = ICLIFlexNetworkRecord(argc, argv);
+            if (!response) return 2;
+            IcliFUPrintJSON(response);
+            return [response[@"ok"] boolValue] ? 0 : 1;
         }
         if (argc < 2) {
             IcliFUPrintUsage();

@@ -110,6 +110,11 @@ for directory in ['Agent', 'Shared']:
             a = text.index('        NSArray<NSString *> *reflexPaths = @[')
             b = text.index('        ];', a) + len('        ];')
             text = text[:a] + '        NSArray<NSString *> *reflexPaths = @[ICLIFlexPrivatePath(@"libicli-reflex.dylib")];' + text[b:]
+        if path.name in ('FUFlexTools.m', 'FURuntime.m'):
+            # logs.messages reads icli's recorder (Agent/FlexUltra/ICLIOSLogController.m):
+            # FLEX's decodes every iOS 17 message as "<compose failure [corrupt log]>".
+            assert '@"FLEXOSLogController"' in text, path.name + ' log controller changed'
+            text = text.replace('@"FLEXOSLogController"', '@"ICLIOSLogController"')
         if path.name == 'FUStorage.m':
             text = text.replace(REALM_FACTORY, REALM_FACTORY_FIXED)
             assert REALM_FACTORY_FIXED in text, 'FUStorage.m Realm factory changed'
@@ -154,6 +159,9 @@ cli = cli[:a] + '''        NSDictionary *response = ICLIFlexHostRequest(request)
         if (!response) return 3;
 
 ''' + cli[b:]
+usage = '        "  flexultra network transactions --target <target> [--kind http|websocket|firebase] [--query <text>] [--offset N] [--limit N] [--human]\\n"\n'
+assert usage in cli, 'network usage line changed'
+cli = cli.replace(usage, usage + '        "  flexultra network record on|off|status --target <target>\\n"\n')
 cli = cli.replace('  flexultra ', '  icli flex ').replace('flexultra:', 'icli flex:')
 # JSON passthrough makes every catalog operation directly testable, including
 # operations with no dedicated spelling in the original parser.
@@ -170,6 +178,52 @@ cli = cli[:a] + '''        if (argc == 2 && (strcmp(argv[1], "--help") == 0 || s
             FUPrintJSON(@{@"ok": @YES, @"result": FUOperationCatalog()});
             return 0;
         }
+        if (argc >= 4 && strcmp(argv[1], "network") == 0 && strcmp(argv[2], "record") == 0) {
+            NSDictionary *response = ICLIFlexNetworkRecord(argc, argv);
+            if (!response) return 2;
+            FUPrintJSON(response);
+            return [response[@"ok"] boolValue] ? 0 : 1;
+        }
+''' + cli[a:]
+# FLEX records HTTP only while FLEXNetworkObserver is enabled, and nothing in
+# the original turns it on. `network record on|off|status` composes existing
+# operations: network.transactions loads FLEX, runtime.class finds the observer,
+# object.call flips +setEnabled: (which also persists the app's FLEX default, so
+# later launches record from whenever FLEX loads) and reads +isEnabled.
+a = cli.index('static int runCLI(int argc, const char *const *argv)')
+cli = cli[:a] + '''static NSDictionary *ICLIFlexRecordRequest(NSString *op, NSString *target, NSDictionary *fields) {
+    NSMutableDictionary *request = [@{@"v": @(FUProtocolVersion), @"kind": @"request", @"id": NSUUID.UUID.UUIDString, @"op": op, @"target": target} mutableCopy];
+    [request addEntriesFromDictionary:fields];
+    return ICLIFlexHostRequest(request);
+}
+
+static NSDictionary *ICLIFlexNetworkRecord(int argc, const char *const *argv) {
+    NSString *action = @(argv[3]);
+    NSString *target = nil;
+    for (int i = 4; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--target") == 0 || strcmp(argv[i], "-t") == 0) target = @(argv[i + 1]);
+    }
+    if (![@[@"on", @"off", @"status"] containsObject:action] || !target.length) {
+        fprintf(stderr, "usage: icli flex network record on|off|status --target <target>\\n");
+        return nil;
+    }
+    NSDictionary *response = ICLIFlexRecordRequest(@"network.transactions", target, @{@"network_kind": @"http", @"limit": @1});
+    if (![response[@"ok"] boolValue]) return response;
+    response = ICLIFlexRecordRequest(@"runtime.class", target, @{@"name": @"FLEXNetworkObserver"});
+    if (![response[@"ok"] boolValue]) return response;
+    NSString *handle = response[@"result"][@"class_object"][@"id"];
+    if (![handle isKindOfClass:NSString.class]) return response;
+    if (![action isEqualToString:@"status"]) {
+        response = ICLIFlexRecordRequest(@"object.call", target, @{@"handle": handle, @"selector": @"setEnabled:", @"method_kind": @"class", @"arguments": @[@([action isEqualToString:@"on"])]});
+        if (![response[@"ok"] boolValue]) return response;
+    }
+    response = ICLIFlexRecordRequest(@"object.call", target, @{@"handle": handle, @"selector": @"isEnabled", @"method_kind": @"class", @"arguments": @[]});
+    if (![response[@"ok"] boolValue]) return response;
+    NSMutableDictionary *result = [@{@"recording": @([response[@"result"][@"value"] boolValue]), @"source": @"FLEXNetworkObserver"} mutableCopy];
+    for (NSString *key in @[@"generation", @"agent_build"]) if (response[key]) result[key] = response[key];
+    return @{@"ok": @YES, @"result": result};
+}
+
 ''' + cli[a:]
 cli = '#import "ICLIFlexHost.h"\n' + cli
 cli += '''

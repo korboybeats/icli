@@ -276,7 +276,7 @@ func appIsRunning(_ app: [String: Any]) throws -> Bool {
 public func installPackage(
     _ path: String,
     container: Bool = false,
-    registration: AppRegistrationType = .user,
+    registration: AppRegistrationType = .system,
 ) throws -> [String: Any] {
     guard FileManager.default.fileExists(atPath: path) else { throw IcliError.failed("package not found: \(path)") }
     if container {

@@ -185,14 +185,14 @@ extension App {
         @Argument var path: String
         @Flag(help: "Install the .ipa into its own app container; reinstalling an app icli installed this way upgrades it in place.")
         var container = false
-        @Option(help: "How LaunchServices lists a --container app: user or system (default: user).")
+        @Option(help: "How LaunchServices lists a --container app: system or user (default: system). FrontBoard refuses to launch an ad-hoc signed User app (\"No code signature found\"); TrollStore Lite registers its apps as System too.")
         var registration: AppRegistrationType?
         func run() {
             emit(output) {
                 guard container || registration == nil else {
                     throw IcliError.failed("--registration applies only with --container")
                 }
-                return try installPackage(path, container: container, registration: registration ?? .user)
+                return try installPackage(path, container: container, registration: registration ?? .system)
             }
         }
     }
@@ -200,7 +200,7 @@ extension App {
     struct Uninstall: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument var bundleID: String
-        @Flag(help: "Required. Removes an app icli installed from an IPA, including its app and data containers for a --container install.")
+        @Flag(help: "Required. Removes an app installed from an IPA by icli or TrollStore, including its app and data containers for a container install.")
         var force = false
         @Flag(help: "Treat <bundle-id> as an installed Debian package identifier and remove that package; requires --force.")
         var package = false

@@ -1415,7 +1415,7 @@ def install_ipa_container(d):
             assert container.removeprefix('/private').startswith('/var/containers/Bundle/Application/'), container
             assert app.startswith(container + '/') and data.removeprefix('/private').startswith('/var/mobile/Containers/Data/Application/'), installed
             info = d.cli('app', 'info', bundle)
-            assert info['bundle_path'] == app and info['type'] == 'User', info
+            assert info['bundle_path'] == app and info['type'] == 'System', info
             if installed['containerized']:
                 assert info['data_path'] == data, info
             owner = d.run(['ls', '-ldn', d.sh(app)], sudo=True).stdout.split()
@@ -1435,10 +1435,10 @@ def install_ipa_container(d):
                 d.observations.append(f'{bundle} installed and registered but did not launch ({message}): this device does '
                                       'not run its ad-hoc signature from an app container (where this was diagnosed, the '
                                       'kernel log named the CMS blob). The same binary launches from the bootstrap install.')
-            upgraded = d.cli('app', 'install', package, '--container', '--registration', 'system', timeout=150, sudo=True)
+            upgraded = d.cli('app', 'install', package, '--container', '--registration', 'user', timeout=150, sudo=True)
             assert upgraded['upgraded'] and upgraded['bundle_container'] == container and upgraded['data_container'] == data, upgraded
             assert upgraded['plugins'] == plugins and upgraded['unregistered_plugins'] == [], upgraded
-            assert d.cli('app', 'info', bundle)['type'] == 'System'
+            assert d.cli('app', 'info', bundle)['type'] == 'User'
         finally:
             removed = d.cli('app', 'uninstall', bundle, '--force', sudo=True)
         assert removed['method'] == 'container' and {container, data} <= set(removed['removed_containers']), removed
@@ -3113,7 +3113,7 @@ def app_container_preferences(d):
     app = d.env.get('ICLI_PREFS_APP', 'dev.owngoal.icli.ContainerFixture')
     reports_preferences = app == 'dev.owngoal.icli.ContainerFixture'
     info = d.cli('app', 'info', app, expected=None)
-    assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with TrollStore'
+    assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with icli app install --container'
     plist = info['data_path'] + '/Library/Preferences/' + app + '.plist'
     token = uuid.uuid4().hex[:8]
     key, number = 'icli-acceptance-' + token, 'icli-acceptance-int-' + token
@@ -3349,6 +3349,16 @@ def lease(d):
         assert released['released'] and released['owner'] == 'taker', released
         assert not plain('lease', 'status')['held'] and plain('app', 'frontmost')['bundle_id']
         assert plain('lease', 'release') == {'released': False, 'held': False}
+        # Commands carrying the token keep the lease alive past its idle time;
+        # it lapses only once nothing has used it for that long.
+        short = plain('lease', 'acquire', '--owner', 'short', '--ttl', '3')
+        for _ in range(3):
+            time.sleep(1.5)
+            assert holding(short['token'], 'app', 'frontmost')['bundle_id']
+        alive = plain('lease', 'status')
+        assert alive['held'] and alive['owner'] == 'short' and alive['last_used_at'] > short['acquired_at'], alive
+        time.sleep(3.5)
+        assert not plain('lease', 'status')['held'] and plain('app', 'frontmost')['bundle_id']
         # An expired lease refuses nothing.
         plain('lease', 'acquire', '--owner', 'short', '--ttl', '1')
         time.sleep(1.5)
@@ -3529,7 +3539,7 @@ def app_reset(d):
     # The TrollStore-installed container fixture, as app_container_preferences uses it.
     app = 'dev.owngoal.icli.ContainerFixture'
     info = d.cli('app', 'info', app, expected=None)
-    assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with TrollStore'
+    assert info.get('data_path'), f'{app} is not installed with a data container: install .build/install-fixtures/icli-container-fixture.ipa with icli app install --container'
     data = info['data_path']
     key = 'icli-acceptance-reset-' + uuid.uuid4().hex[:8]
 
@@ -3670,14 +3680,13 @@ def main():
     report['planned_cases'] = [c[0] for c in selected]
     owner = f'acceptance {os.uname().nodename}:{os.getpid()}'
     if args.lease:
-        held = json.loads(device.run([device.binary, 'lease', 'acquire', '--owner', owner, '--ttl', '1800']).stdout)
+        # Held for the whole run: every command carrying the token keeps it alive.
+        held = json.loads(device.run([device.binary, 'lease', 'acquire', '--owner', owner]).stdout)
         assert held.get('token'), f'could not take the lease: {held}'
         device.lease = held['token']
     try:
         springboard = device.springboard_pid()
         for name, group, tools, test in selected:
-            if device.lease:
-                device.run([device.binary, 'lease', 'acquire', '--owner', owner, '--ttl', '1800'])
             device.trace = []
             device.observations = []
             start = time.monotonic()

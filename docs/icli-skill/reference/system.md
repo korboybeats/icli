@@ -7,12 +7,12 @@
 | `session` | Keep one icli process open: each JSON line on stdin runs one command and gets one JSON line back | | no | each command's own |
 | `batch` | Run a JSON array of commands from stdin in one process, stopping at the first failure; one report with `ok`, `completed`, `failed_step` and each step's `result` (`text` for a `--compact` step), `exit_code`, `elapsed_ms`. A step is an argument list or `{argv, expect, delay_ms, continue_on_error}`; `expect` keys may be dotted (`element.label`) | | no | each command's own |
 | `status` | `locked`, `screen_off`, `orientation`, `frontmost`, `keyboard_shown`, `system_overlay` with `overlay` labels, `prompt` (an owner-only prompt's kind or null), `appearance`, `springboard_pid`, `boot_time` | | no | any |
-| `lease acquire` | Claim the device; prints `token` | `--owner <name>` (required), `--ttl 900` (1–86400 s), `--force` (take it over) | no | any |
+| `lease acquire` | Claim the device; prints `token` | `--owner <name>` (required), `--ttl 600` idle seconds (1–86400), `--force` (take it over) | no | any |
 | `lease release` / `lease status` | End the lease, or show `held`, `owner`, `seconds_left`, `mine` | `--force` (release another's) | no | any |
 
 A session line is an argument list or an object with `argv`, the batch step fields `expect` and `delay_ms`, and an `id` the reply repeats. The first line out is `{"ready":true,"pid":…,"version":…}`. Each reply has `index`, `ok`, `exit_code`, `elapsed_ms`, `result` (or `text`, the lines of a `--compact` step), and `message` or `expect_failed`. A failed command does not end the session; end of input, SIGINT, SIGTERM or SIGHUP does, and a running `screen record` finishes its movie first. Commands get no stdin. `batch`, `session`, `probe`, `tests` and `screen shot --stdout` cannot run in it. Inside a session `app frontmost` took about 3 ms, `ui tree` 10–35 ms and `ui tap` about 150 ms, against about 0.1 s of process start-up and about 0.4 s for a new SSH login per command.
 
-While a lease is held, every icli command without its token fails with exit 75 and `error: leased`, naming the `owner`; `lease` and `status` always run. Pass the token as `ICLI_LEASE=<token>`. Acquiring again with the token renews it. A lease ends when released or when its time runs out, so a crashed runner blocks others for at most its `--ttl`.
+While a lease is held, every icli command without its token fails with exit 75 and `error: leased`, naming the `owner`; `lease` and `status` always run. Pass the token as `ICLI_LEASE=<token>`. Every command carrying the token keeps the lease alive, so hold it for the whole run and release it at the end. It lapses only after `--ttl` seconds with no command carrying the token, so a crashed runner blocks others for at most that long. Acquiring again with the token renews it.
 
 With `ICLI_FAILURE_ARTIFACTS=<dir>` set, a failed command (including a failed batch or session step) writes `<dir>/<time>-<pid>-<command words>/` with `error.json` (the arguments, the error, the app in front, lock state), `screen.jpg` and `tree.json`, and the error gets `artifacts` with that folder. A `leased` refusal writes none. Without the variable nothing is written.
 
@@ -113,6 +113,8 @@ including objects outside the UI tree; `flex object …` inspects and mutates re
 handles. `flex ui …`, `runtime …`, `trace …`, storage and experiment commands
 retain the original FlexUltra spellings. `flex catalog` lists all 105 operations;
 `flex mcp` serves all 102 original MCP tools over stdin/stdout. A process generation
-change invalidates handles. Swift inspection is metadata only, Realm needs a
-loaded Realm runtime, and target history records only agents observed by icli.
+change invalidates handles. `flex network record on|off|status --target <app>`
+turns FLEX's HTTP recorder on or off; it is off by default, so history is empty
+until then. Swift inspection is metadata only, Realm needs a loaded Realm
+runtime, and target history records only agents observed by icli.
 See `docs/usage/flex.md` for the complete contract. Existing `probe` remains available.

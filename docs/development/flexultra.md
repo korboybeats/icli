@@ -1,6 +1,6 @@
 # Complete FlexUltra port
 
-The `0.11.0+korboy26` implementation adapts the supplied FlexUltra.zip's entire
+The `0.11.0+korboy27` implementation adapts the supplied FlexUltra.zip's entire
 105-operation catalog: 90 native operations and 15 local/device operations.
 The CLI parser and MCP server retain the original 102 tool names and schemas:
 101 map to one operation each, and `flexultra_flex` dispatches to flex.status,
@@ -52,8 +52,14 @@ Device acceptance uses only `dev.owngoal.icli.ContainerFixture`:
 ICLI_LEASE=<token> python3 scripts/test-full-flexultra-device.py --section all
 ```
 
-Each section verifies all five installed artifact hashes first and retains
-complete protocol replies in `.build/full-flex-validation-<section>.json`.
+`--section` takes one or more of `core storage ui trace mcp metadata physical
+lifecycle realm` (or `all`) and runs them in that order; a failing section is
+reported and the rest still run, and the exit status is 1 if any failed. Run
+only the sections a change touches; `all` takes about 25 minutes. Each section
+verifies all five installed artifact hashes first and retains complete protocol
+replies in `.build/full-flex-validation-<section>.json`. Progress (sections
+done, failures, last check) is written to `~/.cache/icli-test-status` as one
+tab-separated line, for a status line to show.
 Sections cover runtime/object/heap operations, storage and experiments, UI,
 tracing, MCP and process-generation recovery. Realm's dependency-unavailable
 path is tested in the fixture; the `realm` section reads Bark's (me.fin.bark)

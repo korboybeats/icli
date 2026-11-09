@@ -47,11 +47,17 @@ public func deviceStatus() -> [String: Any] {
 /// An exclusive claim on the device for one runner, so another agent's input
 /// does not land in the middle of its test. Without a lease nothing changes;
 /// while one is held, commands without its token fail with `leased`.
+///
+/// A lease is held until its runner releases it. Every command that carries
+/// the token keeps it alive, so a run of any length never loses it; only a
+/// lease nothing has used for `idle_seconds` lapses, which frees the device
+/// after a runner crashed or lost its connection without releasing.
 public enum Lease {
     public static let path = "/var/mobile/Library/Caches/com.icli.icli/lease.json"
     /// Set by the lease and status commands, which must run whoever holds it.
     public static var exempt = false
     public static let exitStatus = 75
+    public static let defaultIdleSeconds = 600.0
 
     static func current() -> [String: Any]? {
         guard let data = FileManager.default.contents(atPath: path),
@@ -63,21 +69,61 @@ public enum Lease {
 
     static var callerToken: String? { ProcessInfo.processInfo.environment["ICLI_LEASE"] }
 
+    static func idleSeconds(_ lease: [String: Any]) -> Double {
+        if let idle = lease["idle_seconds"] as? Double { return idle }
+        // A lease written before idle_seconds existed lasted its whole TTL.
+        return (lease["expires_at"] as? Double ?? 0) - (lease["acquired_at"] as? Double ?? 0)
+    }
+
     static func check() throws {
-        guard FileManager.default.fileExists(atPath: path), let lease = current(),
-              callerToken != lease["token"] as? String
-        else { return }
+        guard FileManager.default.fileExists(atPath: path), let lease = current() else { return }
+        guard callerToken != lease["token"] as? String else {
+            touch(lease)
+            return
+        }
         throw IcliError.commandFailed(describe(lease).merging([
             "error": "leased", "status": exitStatus,
             "message": "\(lease["owner"] as? String ?? "another runner") holds this device; run with its ICLI_LEASE token or wait until it is released",
         ]) { $1 })
     }
 
+    /// Moves the holder's lease forward to `idle_seconds` from now. Commands
+    /// within a second of the last use skip the write.
+    static func touch(_ lease: [String: Any]) {
+        let now = Date().timeIntervalSince1970
+        guard now - (lease["last_used_at"] as? Double ?? lease["acquired_at"] as? Double ?? 0) >= 1 else { return }
+        var renewed = lease
+        renewed["idle_seconds"] = idleSeconds(lease)
+        renewed["last_used_at"] = now
+        renewed["expires_at"] = now + idleSeconds(lease)
+        try? store(renewed)
+    }
+
+    static func store(_ lease: [String: Any]) throws {
+        let directory = (path as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(
+            atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700],
+        )
+        try JSONSerialization.data(withJSONObject: lease).write(to: URL(fileURLWithPath: path), options: .atomic)
+        // Root and mobile both run icli, and either must be able to renew or
+        // release the lease, so mobile owns the directory and the file, as it
+        // does the passcode ledger beside them. The atomic write replaces the
+        // file, so its owner is set again on every write.
+        if geteuid() == 0 {
+            chown(directory, 501, 501)
+            chown(path, 501, 501)
+        }
+        chmod(path, 0o600)
+    }
+
     static func describe(_ lease: [String: Any]) -> [String: Any] {
         let expires = lease["expires_at"] as? Double ?? 0
+        let acquired = lease["acquired_at"] as? Double ?? 0
         return ["owner": lease["owner"] ?? "", "expires_at": expires,
                 "seconds_left": max(0, Int(expires - Date().timeIntervalSince1970)),
-                "acquired_at": lease["acquired_at"] ?? 0]
+                "idle_seconds": idleSeconds(lease),
+                "last_used_at": lease["last_used_at"] as? Double ?? acquired,
+                "acquired_at": acquired]
     }
 }
 
@@ -86,14 +132,18 @@ public func leaseStatus() -> [String: Any] {
     return Lease.describe(lease).merging(["held": true, "mine": Lease.callerToken == lease["token"] as? String]) { $1 }
 }
 
+/// `seconds` is how long the lease survives without a command carrying its
+/// token; acquiring again with the token renews it and may change that.
 public func acquireLease(owner: String, seconds: Double, force: Bool) throws -> [String: Any] {
     guard !owner.isEmpty, owner.count <= 200 else { throw IcliError.failed("owner must be 1–200 characters") }
     guard seconds.isFinite, (1 ... 86400).contains(seconds) else { throw IcliError.failed("ttl must be 1–86400 seconds") }
     let now = Date().timeIntervalSince1970
     var token = UUID().uuidString
+    var acquired = now
     if let lease = Lease.current() {
         if Lease.callerToken == lease["token"] as? String {
             token = lease["token"] as? String ?? token
+            acquired = lease["acquired_at"] as? Double ?? now
         } else if !force {
             throw IcliError.commandFailed(Lease.describe(lease).merging([
                 "error": "leased", "status": Lease.exitStatus,
@@ -101,20 +151,9 @@ public func acquireLease(owner: String, seconds: Double, force: Bool) throws -> 
             ]) { $1 })
         }
     }
-    let lease: [String: Any] = ["owner": owner, "token": token, "acquired_at": now, "expires_at": now + seconds]
-    let directory = (Lease.path as NSString).deletingLastPathComponent
-    try FileManager.default.createDirectory(
-        atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700],
-    )
-    try JSONSerialization.data(withJSONObject: lease).write(to: URL(fileURLWithPath: Lease.path), options: .atomic)
-    // Root and mobile both run icli, and either must be able to renew or
-    // release the lease, so mobile owns the directory and the file, as it
-    // does the passcode ledger beside them.
-    if geteuid() == 0 {
-        chown(directory, 501, 501)
-        chown(Lease.path, 501, 501)
-    }
-    chmod(Lease.path, 0o600)
+    let lease: [String: Any] = ["owner": owner, "token": token, "acquired_at": acquired, "last_used_at": now,
+                                "idle_seconds": seconds, "expires_at": now + seconds]
+    try Lease.store(lease)
     return Lease.describe(lease).merging(["held": true, "token": token]) { $1 }
 }
 

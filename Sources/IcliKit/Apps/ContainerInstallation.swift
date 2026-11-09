@@ -120,7 +120,7 @@ private func registerContainerApp(
 /// one this device runs. An app icli (or vphoned or TrollStore) installed
 /// this way is upgraded in place; any other app with the identifier is left
 /// alone. A failed install removes what it added and restores an upgraded app.
-public func installIPAInContainer(_ path: String, registration: AppRegistrationType = .user) throws -> [String: Any] {
+public func installIPAInContainer(_ path: String, registration: AppRegistrationType = .system) throws -> [String: Any] {
     try installIPAInContainer(path, registration: registration, prepareApp: { _ in })
 }
 

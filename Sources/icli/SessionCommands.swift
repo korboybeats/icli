@@ -101,10 +101,13 @@ struct LeaseCommand: ParsableCommand {
         abstract: "Claim the device for one runner, so other agents' commands are refused instead of landing mid-test.",
         discussion: """
         While a lease is held, every icli command run without its token fails with error leased and exit status 75; \
-        lease and status still run. Pass the token as ICLI_LEASE=<token>. A lease ends when released or when its \
-        time runs out.
+        lease and status still run. Pass the token as ICLI_LEASE=<token>. A lease is held until it is released: \
+        every command carrying the token keeps it alive, however long the run. Only a lease no command has used \
+        for --ttl seconds (default 600) lapses, so a runner that crashed or lost its connection frees the device.
 
-          export ICLI_LEASE=$(icli lease acquire --owner ci --ttl 900 | jq -r .token)
+          export ICLI_LEASE=$(icli lease acquire --owner ci | jq -r .token)
+          ...
+          icli lease release
         """,
         subcommands: [Acquire.self, Release.self, StatusCommand.self],
     )
@@ -112,7 +115,7 @@ struct LeaseCommand: ParsableCommand {
     struct Acquire: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Option(help: "Who holds it, shown to anyone refused.") var owner: String
-        @Option(help: "Seconds it lasts, 1–86400; acquiring again with the token renews it.") var ttl: Double = 900
+        @Option(help: "Idle seconds, 1–86400: the lease lapses only after this long without a command carrying its token. Acquiring again with the token renews it.") var ttl: Double = Lease.defaultIdleSeconds
         @Flag(help: "Take it over from another holder.") var force = false
         func run() {
             Lease.exempt = true
