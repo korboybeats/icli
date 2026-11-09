@@ -41,7 +41,7 @@ struct Icli: ParsableCommand {
             LockScreenCommand.self, SavedUnlock.self, Device.self, Screen.self, Button.self, Input.self, App.self,
             UI.self, Clipboard.self, FS.self, Log.self, URLCommand.self,
             Pkg.self, SB.self, Svc.self, Account.self, Env.self,
-            Proc.self, Sec.self, Net.self, Prefs.self, Location.self, Notify.self, Probe.self, Tests.self, Batch.self,
+            Proc.self, Sec.self, Net.self, Prefs.self, Location.self, Notify.self, Probe.self, Flex.self, Tests.self, Batch.self,
             Session.self, Status.self, LeaseCommand.self,
         ],
     )

@@ -72,7 +72,7 @@ struct BatchStep {
         guard let argv = fields["argv"] as? [String], let command = argv.first else {
             throw IcliError.failed("step \(index): needs a non-empty list of string arguments")
         }
-        guard !["batch", "session", "probe", "tests"].contains(command) else {
+        guard !["batch", "session", "probe", "flex", "tests"].contains(command) else {
             throw IcliError.failed("step \(index): \(command) cannot run inside a batch or session")
         }
         // Its JPEG would go to the batch's stdout; refuse it before any step runs.

@@ -84,11 +84,17 @@ def verify_floor_imports(binary, sdk_name='iphoneos', extra_frameworks=()):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--platform', choices=['ios', 'tvos', 'agent'], default='ios')
+    parser.add_argument('--platform', choices=['ios', 'tvos', 'agent', 'flex', 'engine', 'reflex'], default='ios')
     platform = parser.parse_args().platform
     if platform == 'tvos':
         # The tvOS build takes IOKit's headers from the stub it links against.
         binary, sdk_name, extra = ROOT / '.build/icli-tvos', 'appletvos', [ROOT / '.build/tvos-stubs']
+    elif platform == 'engine':
+        binary, sdk_name, extra = ROOT / '.build/libicli-flexultra.dylib', 'iphoneos', []
+    elif platform == 'reflex':
+        binary, sdk_name, extra = ROOT / '.build/libicli-reflex.dylib', 'iphoneos', []
+    elif platform == 'flex':
+        binary, sdk_name, extra = ROOT / '.build/libicli-flex.dylib', 'iphoneos', []
     elif platform == 'agent':
         # The probe agent runs inside somebody else's app, so it is held to the
         # same rules: it starts no process, names nothing iOS 15.0 may not
@@ -97,7 +103,7 @@ if __name__ == '__main__':
         binary, sdk_name, extra = ROOT / '.build/icli-probe-agent.dylib', 'iphoneos', []
     else:
         binary, sdk_name, extra = ROOT / '.build/icli', 'iphoneos', []
-    label = {'tvos': 'tvOS', 'agent': 'iOS', 'ios': 'iOS'}[platform]
+    label = 'tvOS' if platform == 'tvos' else 'iOS'
     verify_no_process_imports(binary)
     print('PASS no process-launch imports')
     verify_floor_imports(binary, sdk_name, extra)

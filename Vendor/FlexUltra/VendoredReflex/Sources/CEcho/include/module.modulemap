@@ -1,0 +1,8 @@
+module CEcho {
+    header "AtomicCompat.h"
+    header "CallAccessor.h"
+    header "Functions.h"
+    header "KnownMetadata.h"
+    header "ValueWitnessTable.h"
+    export *
+}

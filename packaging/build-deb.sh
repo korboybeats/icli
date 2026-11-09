@@ -19,8 +19,13 @@ esac
 # ships beside the CLI wherever an app can be launched. tvOS has no such
 # layout and its package stays the executable alone.
 AGENT="$ROOT/.build/icli-probe-agent.dylib"
+FLEX="$ROOT/.build/libicli-flex.dylib"
 if [ "$PLATFORM" = iOS ]; then
   [ -f "$AGENT" ] || { echo 'build the probe agent first: make agent' >&2; exit 66; }
+  [ -f "$FLEX" ] || { echo 'build the private FLEX runtime first: make agent' >&2; exit 66; }
+  for name in libicli-flexultra.dylib libicli-reflex.dylib; do
+    [ -f "$ROOT/.build/$name" ] || { echo "build $name first: make agent" >&2; exit 66; }
+  done
 fi
 # Sign once in the build. Packaging must preserve the exact same executable.
 ENTITLEMENTS=$(ldid -e "$BIN")
@@ -35,6 +40,13 @@ if [ "$PLATFORM" = iOS ]; then
   mkdir -p "$STAGE$PREFIX/usr/lib"
   cp "$AGENT" "$STAGE$PREFIX/usr/lib/icli-probe-agent.dylib"
   chmod 755 "$STAGE$PREFIX/usr/lib/icli-probe-agent.dylib"
+  mkdir -p "$STAGE$PREFIX/usr/lib/icli"
+  cp "$FLEX" "$STAGE$PREFIX/usr/lib/icli/libFLEX.dylib"
+  chmod 755 "$STAGE$PREFIX/usr/lib/icli/libFLEX.dylib"
+  for name in libicli-flexultra.dylib libicli-reflex.dylib; do
+    cp "$ROOT/.build/$name" "$STAGE$PREFIX/usr/lib/icli/$name"
+    chmod 755 "$STAGE$PREFIX/usr/lib/icli/$name"
+  done
 fi
 cp "$ROOT/Resources/Licenses/"*.txt "$DOC/licenses/"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/LICENSE" "$DOC/"

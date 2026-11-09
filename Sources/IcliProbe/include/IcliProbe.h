@@ -53,6 +53,12 @@ void icli_probe_set_api_handler(char *(*handler)(const char *request));
 /// caller's own disposition, which by default ends the process.
 int icli_probe_repl(void);
 
+/// The same terminal editor and multiline handling with a host evaluator.
+/// The callback returns malloc-owned result/error strings, as evaluate does.
+/// The host prints any captured output before returning. No local JS context
+/// is created; the banner identifies where statements actually run.
+int icli_probe_repl_with_evaluator(char *(*evaluate)(const char *, char **), const char *banner);
+
 #ifdef __cplusplus
 }
 #endif

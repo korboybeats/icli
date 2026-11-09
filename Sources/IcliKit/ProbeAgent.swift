@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import IcliPrivate
 import IcliSystem
 
 // `icli probe --app` is `icli probe` run somewhere else: the agent dylib holds
@@ -12,7 +13,7 @@ import IcliSystem
 // loopback port would work too, and be reachable by every other app on the
 // device; the container is reachable by root and by the app alone, so the
 // sandbox does the access control and there is no secret to hand out. Nothing
-// listens until `app launch --probe` asks for it.
+// listens until `probe --app` or `app launch --probe` asks for it.
 
 /// What `DYLD_INSERT_LIBRARIES` points at: the agent beside the CLI in
 /// whichever bootstrap layout is installed.
@@ -28,6 +29,7 @@ public func probeAgentDylibPath() -> String {
 /// of its own, which a system app can be, binds under its home instead, named
 /// for its bundle so two cannot collide.
 public func probeAgentSocketPath(for bundleID: String) throws -> String {
+    if bundleID == SystemShell.bundleID { return "/var/mobile/tmp/icli-probe-\(bundleID).sock" }
     let info = try appInfo(bundleID)
     let container = (info["data_path"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     let path: String
@@ -75,6 +77,66 @@ public func environmentWithProbeAgent(_ environment: [String], bundleID: String)
     return result
 }
 
+/// Reuse an existing agent, or load it into the foreground app without
+/// relaunching it. Only a missing/refused socket permits attachment: a timed
+/// out or failed evaluation is never retried. --check does not call this.
+public func prepareProbeAgent(for bundleID: String) throws -> [String: Any] {
+    do {
+        return try probeAgentSend(["op": "ping"], for: bundleID, timeout: 2)
+    } catch let IcliError.commandFailed(report) where report["error"] as? String == "probe_agent_missing" {
+        let front = frontmostApp()
+        let pid: Int
+        let executable: String
+        if bundleID == SystemShell.bundleID, let shellPID = processPID(named: SystemShell.processName),
+           let rows = try listProcesses(filter: SystemShell.processName)["processes"] as? [[String: Any]],
+           let process = rows.first(where: { $0["pid"] as? Int == Int(shellPID) }),
+           let path = process["executable"] as? String, !path.isEmpty {
+            pid = Int(shellPID)
+            executable = path
+        } else {
+            guard front["bundle_id"] as? String == bundleID, front["verified"] as? Bool == true,
+                  let foregroundPID = front["pid"] as? Int, foregroundPID > 1 else {
+                throw IcliError.failed("bring \(bundleID) to the front with 'icli app launch \(bundleID)' before probing it")
+            }
+            let info = try appInfo(bundleID)
+            guard let path = info["executable"] as? String, !path.isEmpty else {
+                throw IcliError.failed("cannot identify the executable for \(bundleID)")
+            }
+            pid = foregroundPID
+            executable = path
+        }
+        let dylib = probeAgentDylibPath()
+        guard access(dylib, R_OK) == 0 else { throw IcliError.missing(dylib) }
+        let socketPath = try probeAgentSocketPath(for: bundleID)
+        _ = try decodeBridgeJSON(
+            takeCString(icli_probe_attach_json(Int32(pid), executable, dylib, socketPath)), "probe attachment")
+        let answer = try probeAgentSend(["op": "ping", "expected_pid": pid], for: bundleID, timeout: 2)
+        guard answer["ok"] as? Bool == true, answer["pid"] as? Int == pid,
+              answer["bundle_id"] as? String == bundleID else {
+            throw IcliError.failed("the app changed while attaching; no script was sent")
+        }
+        return answer
+    }
+}
+
+/// Evaluate only in the process the caller connected to. A REPL must never
+/// silently start using a new process after an app restart.
+public func evaluateAppProbe(_ source: String, bundleID: String, pid: Int, timeout: TimeInterval) -> ProbeResult {
+    do {
+        let answer = try probeAgentSend(
+            ["op": "evaluate", "source": source, "timeout": timeout, "expected_pid": pid],
+            for: bundleID, timeout: timeout + 2)
+        return ProbeResult(
+            result: answer["result"] as? String,
+            error: answer["ok"] as? Bool == true ? nil : (answer["error"] as? String ?? "invalid probe answer"),
+            output: answer["output"] as? String ?? "")
+    } catch let error as IcliError {
+        return ProbeResult(result: nil, error: error.payload["message"] as? String ?? error.message, output: "")
+    } catch {
+        return ProbeResult(result: nil, error: error.localizedDescription, output: "")
+    }
+}
+
 /// Send one request to an app's agent and return its answer, waiting at most
 /// `timeout` for it.
 ///
@@ -89,6 +151,8 @@ public func probeAgentSend(
     let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
     guard descriptor >= 0 else { throw IcliError.failed("cannot make a socket: \(errorText(errno))") }
     defer { close(descriptor) }
+    var noSignal: Int32 = 1
+    setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
 
     var address = sockaddr_un()
     address.sun_family = sa_family_t(AF_UNIX)
@@ -104,8 +168,10 @@ public func probeAgentSend(
     guard connected == 0 else {
         let reason = errno
         if reason == ENOENT || reason == ECONNREFUSED {
-            throw IcliError.failed(
-                "no probe agent is listening for \(bundleID); start it with 'icli app launch \(bundleID) --probe'")
+            throw IcliError.commandFailed([
+                "error": "probe_agent_missing", "status": 1,
+                "message": "no probe agent is listening for \(bundleID); run 'icli probe --app \(bundleID)' to attach, or 'icli app launch \(bundleID) --probe'",
+            ])
         }
         throw IcliError.failed("cannot reach the probe agent for \(bundleID): \(errorText(reason))")
     }

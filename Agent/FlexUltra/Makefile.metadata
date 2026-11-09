@@ -1,0 +1,21 @@
+SHELL := /bin/sh
+ROOT := ../..
+SDK ?= $(shell xcrun --sdk iphoneos --show-sdk-path)
+SOURCES := $(shell find $(ROOT)/Vendor/FlexUltra/VendoredReflex/Sources/Echo -name '*.swift') $(ROOT)/Vendor/FlexUltra/VendoredReflex/Sources/Reflex/FLEXSwiftMetadataInspector.swift
+CECHO := $(ROOT)/Vendor/FlexUltra/VendoredReflex/Sources/CEcho
+C_SOURCES := $(wildcard $(CECHO)/*.c)
+BUILD := $(ROOT)/.build/flex-metadata
+OUTPUT := $(ROOT)/.build/libicli-reflex.dylib
+.PHONY: all
+all: $(OUTPUT)
+$(BUILD)/arm64.dylib: $(SOURCES) $(C_SOURCES) Makefile.metadata
+	mkdir -p $(BUILD)/arm64
+	for source in $(C_SOURCES); do xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot $(SDK) -I$(CECHO)/include -c $$source -o $(BUILD)/arm64/$$(basename $$source).o || exit $$?; done
+	xcrun --sdk iphoneos swiftc -swift-version 5 -target arm64-apple-ios15.0 -sdk $(SDK) -Onone -emit-library -module-name IcliFlexMetadata -I$(CECHO)/include $(SOURCES) $(BUILD)/arm64/*.o -Xlinker -install_name -Xlinker @rpath/libicli-reflex.dylib -o $@
+$(BUILD)/arm64e.dylib: $(SOURCES) $(C_SOURCES) Makefile.metadata
+	mkdir -p $(BUILD)/arm64e
+	for source in $(C_SOURCES); do xcrun --sdk iphoneos clang -target arm64e-apple-ios15.0 -isysroot $(SDK) -I$(CECHO)/include -c $$source -o $(BUILD)/arm64e/$$(basename $$source).o || exit $$?; done
+	xcrun --sdk iphoneos swiftc -swift-version 5 -target arm64e-apple-ios15.0 -sdk $(SDK) -Onone -emit-library -module-name IcliFlexMetadata -I$(CECHO)/include $(SOURCES) $(BUILD)/arm64e/*.o -Xlinker -install_name -Xlinker @rpath/libicli-reflex.dylib -o $@
+$(OUTPUT): $(BUILD)/arm64.dylib $(BUILD)/arm64e.dylib
+	xcrun lipo -create $^ -output $@
+	ldid -S $@

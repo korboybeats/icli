@@ -86,8 +86,13 @@ let package = Package(
             linkerSettings: [.linkedFramework("Foundation")],
         ),
         .target(
+            name: "IcliFlexClient",
+            publicHeadersPath: "include",
+            linkerSettings: [.linkedFramework("Foundation")],
+        ),
+        .target(
             name: "IcliKit",
-            dependencies: ["IcliPrivate", "IcliSystem", "IcliLaunch", "IcliProbe"],
+            dependencies: ["IcliPrivate", "IcliSystem", "IcliLaunch", "IcliProbe", "IcliFlexClient"],
             linkerSettings: [.linkedLibrary("sqlite3")],
         ),
         .executableTarget(

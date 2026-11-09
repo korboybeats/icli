@@ -15,14 +15,14 @@ ENT      := Resources/icli.entitlements
 # The probe agent: `icli probe` inside somebody else's app, injected per
 # launch by `icli app launch --probe`. It is its own Mach-O, compiled from the
 # same engine and bridge the CLI uses, with no Swift and nothing linked but
-# Foundation. Both slices in one invocation, the way an app's own dylib is
+# Foundation and UIKit. Both slices in one invocation, the way an app's own dylib is
 # built: dyld picks arm64e where the app runs it.
 AGENT         := $(BUILD)/icli-probe-agent.dylib
-AGENT_SOURCES := Agent/IcliProbeAgent.m Sources/IcliProbe/IcliProbeContext.m Sources/IcliProbe/IcliProbeBridge.m
+AGENT_SOURCES := Agent/IcliProbeAgent.m Agent/IcliObjectInspection.m Agent/ICLIFlexBridge.m Sources/IcliProbe/IcliProbeContext.m Sources/IcliProbe/IcliProbeBridge.m
 AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
 	-Os -std=gnu11 -fobjc-arc -fobjc-weak -Wall -Wextra -Werror \
-	-ISources/IcliProbe -ISources/IcliProbe/include \
-	-install_name @rpath/icli-probe-agent.dylib -framework Foundation
+	-ISources/IcliProbe -ISources/IcliProbe/include -I.build/flexultra-src \
+	-install_name @rpath/icli-probe-agent.dylib -framework Foundation -framework UIKit
 
 ifeq ($(DEBUG),1)
 CONFIGURATION := debug
@@ -52,6 +52,7 @@ TVOS_FLAGS := --configuration $(CONFIGURATION) --triple $(TVOS_TARGET) --sdk $(T
 .PHONY: all agent debug resolve install clean deb deb-rootless deb-roothide deb-rootful tvos deb-tvos
 
 all:
+	python3 scripts/prepare-flexultra.py
 	$(SWIFT) build $(SWIFT_FLAGS)
 	cp "$$($(SWIFT) build $(SWIFT_FLAGS) --show-bin-path)/icli" $(BIN)
 ifneq ($(TARGET),$(ARM64E_TARGET))
@@ -68,6 +69,13 @@ endif
 	python3 scripts/verify-binary.py
 
 agent:
+	python3 scripts/prepare-flexultra.py
+	$(MAKE) -C Vendor/FLEX -j8 SDK="$(SDK)"
+	python3 scripts/verify-binary.py --platform flex
+	$(MAKE) -C Agent/FlexUltra -j8 SDK="$(SDK)"
+	python3 scripts/verify-binary.py --platform engine
+	$(MAKE) -C Agent/FlexUltra -f Makefile.metadata -j2 SDK="$(SDK)"
+	python3 scripts/verify-binary.py --platform reflex
 	mkdir -p $(BUILD)
 	xcrun --sdk iphoneos clang $(AGENT_FLAGS) $(AGENT_SOURCES) -o $(AGENT)
 	$(LDID) -S $(AGENT)

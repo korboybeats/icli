@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify signed single-binary package invariants after check-packages.sh extracts them."""
+"""Verify signed CLI and private runtime packages after extraction."""
 import hashlib
 import argparse
 import io
@@ -61,6 +61,25 @@ def verify_binary(binary, platform, sdk_name, extra_frameworks=()):
             'architecture': ' '.join(architectures), 'slices': slices}
 
 
+def verify_private_runtime(binary, install_name):
+    assert subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split() == ['arm64', 'arm64e']
+    with tempfile.TemporaryDirectory(prefix='icli-flex-slices-') as directory:
+        for architecture in ['arm64', 'arm64e']:
+            thin = Path(directory) / architecture
+            subprocess.run(['lipo', str(binary), '-thin', architecture, '-output', str(thin)], check=True)
+            build = subprocess.check_output(['xcrun', 'vtool', '-show-build', str(thin)], text=True)
+            fields = [line.split() for line in build.splitlines()]
+            assert ['platform', 'IOS'] in fields and ['minos', '15.0'] in fields, build
+            loads = subprocess.check_output(['otool', '-L', str(thin)], text=True).splitlines()[1:]
+            assert loads[0].strip().split(' (')[0] == install_name
+            for load in loads[1:]:
+                name = load.strip().split(' (')[0]
+                assert name.startswith(('/System/Library/', '/usr/lib/')), name
+            verifier['verify_no_process_imports'](thin)
+            verifier['verify_floor_imports'](thin)
+            verifier['verify_javascriptcore_not_linked'](thin)
+
+
 ios = verify_binary(root / '.build/icli', 'IOS', 'iphoneos')
 report = {'version': version, **ios, 'minimum_ios': '15.0', 'packages': []}
 # tvOS is its own executable: the same sources built against the AppleTVOS
@@ -87,20 +106,34 @@ for kind, arch, prefix, digest in layouts:
         assert all(m.uid == 0 and m.gid == 0 for m in members)
         executables = [m for m in members if m.isfile() and m.mode & 0o111]
         names = sorted(m.name.rsplit('/', 1)[-1] for m in executables)
-        # An iOS layout carries the probe agent as well: its own Mach-O, which
-        # `icli app launch --probe` inserts into an app. tvOS cannot launch one
-        # and keeps the executable alone.
-        expected = ['icli'] if kind == 'tvos' else ['icli', 'icli-probe-agent.dylib']
+        # iOS carries the agent and its lazily loaded private FLEX runtime.
+        # tvOS keeps the executable alone.
+        expected = ['icli'] if kind == 'tvos' else ['icli', 'icli-probe-agent.dylib', 'libFLEX.dylib', 'libicli-flexultra.dylib', 'libicli-reflex.dylib']
         assert names == expected, names
-    agent_sha = None
+    agent_sha = flex_sha = None
+    runtimes = {}
     if kind != 'tvos':
         agent = folder / 'usr/lib/icli-probe-agent.dylib'
         agent_sha = hashlib.sha256(agent.read_bytes()).hexdigest()
         assert agent_sha == hashlib.sha256((root / '.build/icli-probe-agent.dylib').read_bytes()).hexdigest()
+        flex = folder / 'usr/lib/icli/libFLEX.dylib'
+        flex_sha = hashlib.sha256(flex.read_bytes()).hexdigest()
+        assert flex_sha == hashlib.sha256((root / '.build/libicli-flex.dylib').read_bytes()).hexdigest()
+        assert (folder / 'usr/share/doc/icli/licenses/FLEX.txt').read_bytes() == (root / 'Resources/Licenses/FLEX.txt').read_bytes()
+        verify_private_runtime(flex, '@rpath/libFLEX.dylib')
+        runtimes = {}
+        for name in ['libicli-flexultra.dylib', 'libicli-reflex.dylib']:
+            runtime = folder / 'usr/lib/icli' / name
+            digest_runtime = hashlib.sha256(runtime.read_bytes()).hexdigest()
+            assert digest_runtime == hashlib.sha256((root / '.build' / name).read_bytes()).hexdigest()
+            verify_private_runtime(runtime, '@rpath/' + name)
+            runtimes[name] = digest_runtime
+        for license in (root / 'Resources/Licenses').glob('*.txt'):
+            assert (folder / 'usr/share/doc/icli/licenses' / license.name).read_bytes() == license.read_bytes()
     report['packages'].append({'layout': kind, 'file': package.name,
                                'sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
                                'binary_sha256': digest, 'depends': dependencies,
-                               'executables': names, 'agent_sha256': agent_sha, 'root_owned': True})
+                               'executables': names, 'agent_sha256': agent_sha, 'flex_sha256': flex_sha, 'private_runtimes': runtimes, 'root_owned': True})
 (root / '.build/package-verification.json').write_text(json.dumps(report, indent=2) + '\n')
 print('PASS ' + ('iOS' if options.ios_only else 'iOS and tvOS') + ' package architecture, metadata, entitlements, system dependencies, ownership, '
       'CLI-only contents, JavaScriptCore loaded at runtime and no process-launch imports')

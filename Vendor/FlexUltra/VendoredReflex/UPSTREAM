@@ -1,0 +1,32 @@
+Reflex
+  URL: https://github.com/FLEXTool/Reflex
+  Commit: 2b992b7eddbf0420a8dcc66630b3d3abfe1a9a48
+  Vendored: Reflex/*.swift
+
+Echo
+  URL: https://github.com/NSExceptional/Echo
+  Commit: e912ad88d3524725127f5163a2c5015573078b08
+  Vendored: Sources/Echo and Sources/CEcho
+
+FLEX public headers (compile-time only; FLEX implementation is not vendored)
+  URL: https://github.com/FLEXTool/FLEX
+  Commit: ac50a6d36b738a15a6d3b6b51683d8a152319f59
+  Version: 4.7.0
+  Vendored: Classes/Headers/*.h
+
+Local build adaptations:
+  - Echo and Reflex Swift sources are compiled into the same libreflex Swift module,
+    so Reflex's redundant `import Echo` lines are removed.
+  - FLEX 4.7 compatibility shims dynamically probe newer FLEX mirror selectors
+    and fall back to the selectors available in the pinned 4.7 public headers.
+  - Echo's four swift-atomics accesses in ClassDescriptor.swift are replaced by
+    CEcho C11 atomic helpers with the same seq_cst, release, and relaxed orderings.
+    Int.AtomicRepresentation is layout-compatible with its integer storage; the
+    adapted stored field uses Int at the same pointer-sized layout.
+  - CEcho's module map exposes only declaration-safe headers; ImageInspection.h
+    is excluded because it contains function definitions that break object emission.
+  - Pointer-authentication helper declarations used by Swift are visible to the
+    Clang importer on both build slices, while arm64e-only definitions stay guarded.
+  - SignedPointer.swift uses one generic signing accessor and applies arm64e
+    stripping for ProtocolDescriptor, ValueWitnessTable, and TypeContextDescriptor.
+  - CEcho and FLEX module maps are supplied locally for Theos Swift compilation.

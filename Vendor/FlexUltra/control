@@ -1,0 +1,10 @@
+Package: moe.waru.flexultra
+Name: FlexUltra
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Headless FLEX bridge and CLI for jailbroken iOS devices.
+X-FlexUltra-Product-Requirement: Complete product; automate implementation, packaging, install, and testing where possible; always install FlexUltra to the 26.0, 16.7.16, and 16.3.1 device aliases.
+Maintainer: waruhachi
+Author: waruhachi
+Section: Tweaks
+Depends: firmware (>= 15.0)

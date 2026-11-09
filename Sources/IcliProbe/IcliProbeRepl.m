@@ -224,12 +224,16 @@ static const char *icli_probe_help =
     "  ^C                             abandon a half-finished statement;\n"
     "                                 while one runs, it ends this process\n";
 
-int icli_probe_repl(void) {
+static char *icli_probe_repl_evaluate(const char *source, char **error) {
+    return icli_probe_evaluate(source, error, NULL);
+}
+
+int icli_probe_repl_with_evaluator(char *(*evaluate)(const char *, char **), const char *banner) {
     // A failed first evaluation is how a missing JavaScriptCore or a failed
     // prelude surfaces; evaluate a trivial statement to build the context and
     // report either here, before the banner.
     char *failure = NULL;
-    char *started = icli_probe_evaluate("1", &failure, NULL);
+    char *started = evaluate("1", &failure);
     if (!started) {
         fprintf(stderr, "%s\n", failure ?: "The probe could not start");
         free(failure);
@@ -239,8 +243,9 @@ int icli_probe_repl(void) {
 
     icli_probe_load_line_editor();
     NSOperatingSystemVersion version = NSProcessInfo.processInfo.operatingSystemVersion;
-    printf("icli probe on %ld.%ld.%ld, pid %d. .help for what is here.\n",
-           (long)version.majorVersion, (long)version.minorVersion, (long)version.patchVersion, getpid());
+    if (banner) printf("%s\n", banner);
+    else printf("icli probe on %ld.%ld.%ld, pid %d. .help for what is here.\n",
+                (long)version.majorVersion, (long)version.minorVersion, (long)version.patchVersion, getpid());
     fflush(stdout);
 
     // ^C is caught only while a line is read. While a statement runs, SIGINT
@@ -269,7 +274,13 @@ int icli_probe_repl(void) {
                                           [NSCharacterSet whitespaceAndNewlineCharacterSet]];
             if ([command isEqualToString:@".exit"] || [command isEqualToString:@".quit"]) break;
             if ([command isEqualToString:@".help"]) {
-                fputs(icli_probe_help, stdout);
+                if (banner) {
+                    puts("Statements run in the app's main thread. ObjC, fs, print and console.log are available; api() is not.\n"
+                         "Output appears when each statement returns. Variables stay in the app until it exits.\n"
+                         "  .exit  .quit   leave the shell; the app and agent keep running\n"
+                         "  ^C            abandon unfinished input, or end this client during evaluation\n"
+                         "                (a submitted script may still run in the app)");
+                } else fputs(icli_probe_help, stdout);
                 fflush(stdout);
                 continue;
             }
@@ -280,7 +291,7 @@ int icli_probe_repl(void) {
         if (icli_probe_source_is_incomplete(pending.UTF8String)) continue;
 
         char *error = NULL;
-        char *described = icli_probe_evaluate(pending.UTF8String, &error, NULL);
+        char *described = evaluate(pending.UTF8String, &error);
         [pending setString:@""];
         if (described) {
             if (strcmp(described, "undefined") != 0) printf("%s\n", described);
@@ -293,4 +304,8 @@ int icli_probe_repl(void) {
         fflush(stderr);
     }
     return 0;
+}
+
+int icli_probe_repl(void) {
+    return icli_probe_repl_with_evaluator(icli_probe_repl_evaluate, NULL);
 }

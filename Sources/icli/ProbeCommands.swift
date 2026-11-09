@@ -13,11 +13,18 @@ struct Probe: ParsableCommand {
 
         --app runs the script inside an app instead, where its live objects \
         are: a UIView there is the view on screen, not just a class. The app \
-        has to have been started with `icli app launch <app> --probe`, which \
-        injects the agent for that launch; nothing listens in an app launched \
-        any other way. A script runs on the app's main thread, as UIKit \
+        must be in front. If it has no agent yet, icli loads one into the \
+        running app without restarting it. `app launch --probe` is still \
+        available for launch-time loading. --check only reports; it never attaches. \
+        A script runs on the app's main thread, as UIKit \
         requires, and a crash there takes the app rather than icli. api() \
         belongs to icli's own process and is not available in an app.
+
+        --inspect window, root-controller, or x,y returns a structured report \
+        with the object's class, properties, fields and methods. It loads the \
+        bundled FLEX runtime only when inspection is requested. --values also \
+        reads values, executing property getters in the app. --limit and \
+        --offset page each group of members independently.
 
         Examples:
           icli probe -e "ObjC.use('NSProcessInfo').processInfo().processName()"
@@ -26,13 +33,15 @@ struct Probe: ParsableCommand {
           icli probe repl
           icli app launch com.example.app --probe
           icli probe --app com.example.app --check
+          icli probe --app com.example.app --inspect root-controller
+          icli probe --app com.example.app --inspect 215,466 --limit 20
           icli probe --app com.example.app -e "ObjC.use('UIApplication').sharedApplication().keyWindow().$class"
 
         Evaluation prints one JSON line {ok, result | error, output}: stdout \
         carries only that line, with everything the script printed collected \
         into output. --app answers in the same shape. The interactive REPL \
-        (`repl`, or no argument) writes its output live instead, and runs only \
-        in icli's own process.
+        (`repl`, or no argument) also works with --app; its output appears \
+        when each statement returns. .exit leaves the app running.
         """,
     )
 
@@ -44,16 +53,38 @@ struct Probe: ParsableCommand {
 
     @Option(
         name: .customLong("app"),
-        help: "Run the script inside this app's process, through the agent 'app launch --probe' injected. Bundle ID or display name.")
+        help: "Run inside this foreground app; load the agent if needed, without restarting it. Bundle ID or display name.")
     var app: String?
 
     @Flag(help: "With --app, report whether an agent is listening instead of running a script.")
     var check = false
 
+    @Option(help: "Inspect a live object with FLEX: window, root-controller, or x,y in screen points. Needs --app.")
+    var inspect: String?
+
+    @Flag(help: "With --inspect, read property and field values too. Property getters execute app code.")
+    var values = false
+
+    @Option(help: "With --inspect, maximum entries per member group, 1–500.")
+    var limit: Int = 100
+
+    @Option(help: "With --inspect, skip this many entries in each member group.")
+    var offset: Int = 0
+
     @Option(help: "Seconds --app waits for the app's main thread, 0.1–600.")
     var timeout: Double = 30
 
     func run() throws {
+        if inspect != nil {
+            guard app != nil, eval == nil, input == nil, !check else {
+                throw ValidationError("--inspect needs --app and cannot be combined with a script, repl or --check")
+            }
+            guard (1 ... 500).contains(limit), offset >= 0 else {
+                throw ValidationError("--inspect needs --limit 1–500 and --offset 0 or greater")
+            }
+        } else if values || offset != 0 || limit != 100 {
+            throw ValidationError("--values, --limit and --offset belong to --inspect")
+        }
         if let app {
             runInApp(app)
         }
@@ -86,39 +117,65 @@ struct Probe: ParsableCommand {
             printProbeLine(["ok": false, "error": "timeout must be 0.1–600 seconds", "output": ""])
             Darwin.exit(1)
         }
-        var request: [String: Any]
-        if check {
-            request = ["op": "ping"]
-        } else {
-            let source: String
-            switch (eval, input) {
-            case let (eval?, _):
-                source = eval
-            case (nil, "-"?):
-                source = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
-            case (nil, nil), (nil, "repl"?):
-                // The REPL reads this process's own terminal and shares one
-                // context with it; an app's agent is reached one request at a
-                // time, so there is nothing for `repl` to attach to yet.
-                printProbeLine(["ok": false, "error": "--app has no REPL; pass -e, a script file or '-'", "output": ""])
-                Darwin.exit(1)
-            case let (nil, path?):
-                source = readScript(path)
-            }
-            request = ["op": "evaluate", "source": source, "timeout": timeout]
-        }
         do {
             let bundleID = try resolveAppName(app)
-            // A ping is answered on the agent's own serving thread, so it
-            // does not wait on --timeout: an agent that cannot answer one
-            // promptly is in a suspended app, and waiting changes nothing. An
-            // evaluation is given two seconds past the agent's own deadline,
-            // so its timeout is the one that reports.
-            let answer = try probeAgentSend(request, for: bundleID, timeout: check ? 2 : timeout + 2)
-            printProbeLine(answer)
-            Darwin.exit(answer["ok"] as? Bool == true ? 0 : 1)
+            if check {
+                let answer = try probeAgentSend(["op": "ping"], for: bundleID, timeout: 2)
+                printProbeLine(answer)
+                Darwin.exit(answer["ok"] as? Bool == true ? 0 : 1)
+            }
+            if let inspect {
+                var request: [String: Any] = ["op": "inspect", "timeout": timeout,
+                                              "values": values, "limit": limit, "offset": offset]
+                if inspect == "window" || inspect == "root-controller" {
+                    request["target"] = inspect
+                } else {
+                    let coordinates = inspect.split(separator: ",", omittingEmptySubsequences: false)
+                    guard coordinates.count == 2, let x = Double(coordinates[0]), let y = Double(coordinates[1]),
+                          x.isFinite, y.isFinite else {
+                        throw IcliError.failed("--inspect target must be window, root-controller, or x,y in screen points")
+                    }
+                    request["target"] = "point"
+                    request["x"] = x
+                    request["y"] = y
+                }
+                let agent = try prepareProbeAgent(for: bundleID)
+                guard agent["object_inspection"] as? Bool == true,
+                      let pid = agent["pid"] as? Int, agent["bundle_id"] as? String == bundleID else {
+                    throw IcliError.failed("the app's loaded probe agent predates object inspection; relaunch the app once to update it")
+                }
+                request["expected_pid"] = pid
+                let answer = try probeAgentSend(request, for: bundleID, timeout: timeout + 2)
+                printProbeLine(answer)
+                Darwin.exit(answer["ok"] as? Bool == true ? 0 : 1)
+            }
+            // Read the script before loading anything into the app: a missing
+            // file should not change the target process.
+            let source: String?
+            switch (eval, input) {
+            case let (eval?, _): source = eval
+            case (nil, "-"?):
+                source = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+            case (nil, nil), (nil, "repl"?): source = nil
+            case let (nil, path?): source = readScript(path)
+            }
+            let agent = try prepareProbeAgent(for: bundleID)
+            guard agent["ok"] as? Bool == true, let pid = agent["pid"] as? Int,
+                  agent["bundle_id"] as? String == bundleID else {
+                throw IcliError.failed(agent["error"] as? String ?? "the probe agent did not identify its process")
+            }
+            if let source {
+                let result = evaluateAppProbe(source, bundleID: bundleID, pid: pid, timeout: timeout)
+                var line: [String: Any] = ["ok": result.ok, "output": result.output]
+                if let error = result.error { line["error"] = error } else { line["result"] = result.result }
+                printProbeLine(line)
+                Darwin.exit(result.ok ? 0 : 1)
+            }
+            Darwin.exit(runProbeREPL(banner: "icli probe in \(bundleID), pid \(pid). .help for help; .exit leaves the app running.") {
+                evaluateAppProbe($0, bundleID: bundleID, pid: pid, timeout: timeout)
+            })
         } catch let error as IcliError {
-            printProbeLine(["ok": false, "error": error.message, "output": ""])
+            printProbeLine(["ok": false, "error": error.payload["message"] as? String ?? error.message, "output": ""])
             Darwin.exit(1)
         } catch {
             printProbeLine(["ok": false, "error": error.localizedDescription, "output": ""])

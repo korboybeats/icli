@@ -1,0 +1,12 @@
+FLEX
+  URL: https://github.com/FLEXTool/FLEX
+  Commit: ac50a6d36b738a15a6d3b6b51683d8a152319f59
+  Version: 4.7.0
+  License: BSD (see LICENSE)
+
+FlexUltra build adaptation:
+  - FLEX is built as a private arm64/arm64e dylib and packaged at
+    /var/jb/usr/lib/flexultra/libFLEX.dylib by the rootless package.
+  - The private runtime removes FlexUltra's package-time dependency on an
+    externally configured libflex repository while preserving FLEX execution
+    inside each injected target process.

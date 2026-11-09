@@ -277,6 +277,9 @@ int icli_keybag_unlock(const uint8_t *passcode, size_t length, bool *available);
 char *icli_full_unlock_json(const uint8_t *passcode, size_t length, bool checkOnly);
 bool icli_full_unlock_signals_begin(void);
 bool icli_full_unlock_signals_end(void);
+/// Load and start the probe agent in an existing app without relaunching it.
+/// Verifies the task's executable before using the owned-thread transport.
+char *icli_probe_attach_json(int pid, const char *executable, const char *dylib, const char *socketPath);
 /// timed's automatic time zone: 1 on, 0 off, -1 when CoreTime does not offer
 /// it, -2 when timed does not answer within 3 seconds.
 int icli_automatic_time_zone_get(void);

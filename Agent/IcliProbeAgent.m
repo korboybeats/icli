@@ -1,6 +1,9 @@
 #import <Foundation/Foundation.h>
 
 #include "IcliProbe.h"
+#import "IcliObjectInspection.h"
+#import "ICLIFlexBridge.h"
+#include "ICLIFlexBuild.h"
 
 #include <dispatch/dispatch.h>
 #include <errno.h>
@@ -20,10 +23,9 @@
 // loaded into an app and reachable over a socket, so `icli probe --app`
 // answers with one JSON line in the shape `icli probe` already answers in.
 //
-// It is injected per launch, through the DYLD_INSERT_LIBRARIES that
-// `icli app launch --probe` sets, and it does nothing at all unless
-// ICLI_PROBE_SOCKET names where to listen. An app icli did not launch this
-// way carries no agent, so an idle device runs no extra code.
+// Loaded on demand by `icli probe --app`, or at launch by --probe.
+// Merely loading the library does nothing unless a socket is requested.
+// There is no global tweak filter and no resident broker.
 //
 // Everything a script touches belongs to the app's main thread: a UIView read
 // from any other thread is a race, and UIKit says so. So the socket is served
@@ -36,6 +38,31 @@
 /// Where to listen. Absent means this process was not asked to serve, which
 /// is every process but the one icli launched with `--probe`.
 static const char *const IcliProbeAgentSocketVariable = "ICLI_PROBE_SOCKET";
+static NSString *IcliProbeIdentityPath;
+static NSMutableDictionary *IcliProbeIdentity;
+NSString *icli_probe_agent_generation(void) {
+    static NSString *generation;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ generation = [[NSUUID.UUID.UUIDString lowercaseString] stringByReplacingOccurrencesOfString:@"-" withString:@""]; });
+    return generation;
+}
+
+void icli_probe_agent_update_identity(NSDictionary *metadata) {
+    @synchronized (NSBundle.mainBundle) {
+        if (!IcliProbeIdentityPath) return;
+        if (!IcliProbeIdentity) {
+            IcliProbeIdentity = [@{@"pid": @(getpid()),
+                @"bundle_id": NSBundle.mainBundle.bundleIdentifier ?: @"",
+                @"process": NSProcessInfo.processInfo.processName,
+                @"flexultra_build": @ICLI_FULL_FLEX_BUILD,
+                @"generation": icli_probe_agent_generation(),
+                @"connected_at_unix_ms": @(NSDate.date.timeIntervalSince1970 * 1000)} mutableCopy];
+        }
+        [IcliProbeIdentity addEntriesFromDictionary:metadata];
+        NSData *data = [NSJSONSerialization dataWithJSONObject:IcliProbeIdentity options:0 error:nil];
+        [data writeToFile:IcliProbeIdentityPath options:NSDataWritingAtomic error:nil];
+    }
+}
 
 /// How long a request waits for the app's main thread before it is abandoned,
 /// unless the request asks for its own. A launch animation or a network call
@@ -47,18 +74,6 @@ static const double IcliProbeAgentDefaultTimeout = 30.0;
 /// the app's memory until it is killed: 8 MiB of script is far past anything
 /// a probe sends.
 static const size_t IcliProbeAgentRequestLimit = 8u << 20;
-
-/// One evaluation handed to the main queue. The serving thread waits for it,
-/// but gives up after the timeout: `abandoned` says which side owns what is
-/// in here, so a late answer is freed rather than written into a response
-/// nobody is waiting for.
-typedef struct {
-    pthread_mutex_t lock;
-    bool abandoned;
-    char *result;
-    char *error;
-    char *output;
-} IcliProbeAgentCall;
 
 // MARK: - Serving One Request
 
@@ -72,81 +87,46 @@ static char *icli_probe_agent_api(const char *request) {
                   "run that part as a plain `icli probe` and pass what it answers into this script\"}}");
 }
 
-/// Evaluate `source` on the app's main thread and answer in the shape
-/// `icli probe` answers in: ok with result, or ok false with error, and
-/// whatever the script printed either way.
-static NSDictionary *icli_probe_agent_evaluate(NSString *source, double timeout) {
-    // The block outlives this scope when the main thread is slow, so it gets
-    // its own copy of the script rather than a pointer into an autoreleased
-    // buffer.
-    char *script = strdup(source.UTF8String ?: "");
-    if (!script) return @{@"ok": @NO, @"error": @"out of memory", @"output": @""};
-
-    IcliProbeAgentCall *call = calloc(1, sizeof(*call));
-    if (!call) {
-        free(script);
-        return @{@"ok": @NO, @"error": @"out of memory", @"output": @""};
-    }
-    pthread_mutex_init(&call->lock, NULL);
+/// Both scripts and inspections run on the same main queue. The block owns
+/// its request and reply even when the serving thread stops waiting.
+static NSDictionary *icli_probe_agent_on_main(NSDictionary *(^work)(void), double timeout) {
+    NSObject *lock = [NSObject new];
     dispatch_semaphore_t answered = dispatch_semaphore_create(0);
-
+    __block NSDictionary *response = nil;
     dispatch_async(dispatch_get_main_queue(), ^{
-        char *error = NULL;
-        char *output = NULL;
-        char *result = icli_probe_evaluate(script, &error, &output);
-        free(script);
-        pthread_mutex_lock(&call->lock);
-        if (call->abandoned) {
-            // Nobody is waiting: this call's memory is ours to release, and
-            // the lock is ours to destroy.
-            pthread_mutex_unlock(&call->lock);
-            free(result);
-            free(error);
-            free(output);
-            pthread_mutex_destroy(&call->lock);
-            free(call);
-            return;
+        @autoreleasepool {
+            NSDictionary *reply = work();
+            @synchronized (lock) {
+                response = reply;
+                dispatch_semaphore_signal(answered);
+            }
         }
-        call->result = result;
-        call->error = error;
-        call->output = output;
-        pthread_mutex_unlock(&call->lock);
-        dispatch_semaphore_signal(answered);
     });
-
     dispatch_time_t deadline = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC));
-    if (dispatch_semaphore_wait(answered, deadline) != 0) {
-        pthread_mutex_lock(&call->lock);
-        call->abandoned = true;
-        pthread_mutex_unlock(&call->lock);
-        return @{
-            @"ok": @NO,
-            @"error": [NSString stringWithFormat:@"the app's main thread did not answer within %g s; "
-                                                 @"it is busy or blocked, and the script may still run later",
-                                                 timeout],
-            @"output": @"",
-        };
+    dispatch_semaphore_wait(answered, deadline);
+    @synchronized (lock) {
+        if (response) return response;
     }
+    return @{@"ok": @NO, @"error": [NSString stringWithFormat:
+        @"the app's main thread did not answer within %g s; it is busy or blocked, and the request may still run later", timeout],
+        @"output": @""};
+}
 
-    NSMutableDictionary *response = [NSMutableDictionary dictionary];
-    response[@"output"] = @(call->output ?: "");
-    if (call->result) {
-        response[@"ok"] = @YES;
-        response[@"result"] = @(call->result);
-    } else {
-        response[@"ok"] = @NO;
-        response[@"error"] = @(call->error ?: "Unknown error");
-    }
-    free(call->result);
-    free(call->error);
-    free(call->output);
-    pthread_mutex_destroy(&call->lock);
-    free(call);
+static NSDictionary *icli_probe_agent_evaluate(NSString *source) {
+    char *error = NULL, *output = NULL;
+    char *value = icli_probe_evaluate(source.UTF8String, &error, &output);
+    NSDictionary *response = value
+        ? @{@"ok": @YES, @"result": @(value), @"output": @(output ?: "")}
+        : @{@"ok": @NO, @"error": @(error ?: "Unknown error"), @"output": @(output ?: "")};
+    free(value); free(error); free(output);
     return response;
 }
 
 /// The answer to one request object.
 static NSDictionary *icli_probe_agent_answer(NSDictionary *request) {
+    if (request[@"expected_pid"] && [request[@"expected_pid"] intValue] != getpid()) {
+        return @{@"ok": @NO, @"error": @"the app restarted; open a new probe shell before sending more scripts", @"output": @""};
+    }
     NSString *operation = [request[@"op"] isKindOfClass:[NSString class]] ? request[@"op"] : @"evaluate";
     if ([operation isEqualToString:@"ping"]) {
         return @{
@@ -155,12 +135,20 @@ static NSDictionary *icli_probe_agent_answer(NSDictionary *request) {
             @"bundle_id": NSBundle.mainBundle.bundleIdentifier ?: [NSNull null],
             @"process": NSProcessInfo.processInfo.processName ?: @"",
             @"javascriptcore": @(icli_probe_available()),
+            @"object_inspection": @YES,
+            @"flexultra_build": @ICLI_FULL_FLEX_BUILD,
+            @"generation": icli_probe_agent_generation(),
         };
     }
-    if (![operation isEqualToString:@"evaluate"]) {
+    if ([operation isEqualToString:@"flexultra"]) {
+        if (![request[@"request"] isKindOfClass:NSDictionary.class])
+            return @{@"ok": @NO, @"error": @"a FlexUltra request object is required", @"output": @""};
+        return icli_full_flex_request(request[@"request"]);
+    }
+    if (![operation isEqualToString:@"evaluate"] && ![operation isEqualToString:@"inspect"]) {
         return @{@"ok": @NO, @"error": [NSString stringWithFormat:@"unknown op '%@'", operation], @"output": @""};
     }
-    if (![request[@"source"] isKindOfClass:[NSString class]]) {
+    if ([operation isEqualToString:@"evaluate"] && ![request[@"source"] isKindOfClass:[NSString class]]) {
         return @{@"ok": @NO, @"error": @"a request needs a 'source' string", @"output": @""};
     }
     double timeout = IcliProbeAgentDefaultTimeout;
@@ -168,7 +156,9 @@ static NSDictionary *icli_probe_agent_answer(NSDictionary *request) {
         double asked = [request[@"timeout"] doubleValue];
         if (asked > 0 && asked <= 600) timeout = asked;
     }
-    return icli_probe_agent_evaluate(request[@"source"], timeout);
+    return icli_probe_agent_on_main(^NSDictionary *{
+        return [operation isEqualToString:@"inspect"] ? icli_probe_inspect_object(request) : icli_probe_agent_evaluate(request[@"source"]);
+    }, timeout);
 }
 
 // MARK: - The Socket
@@ -234,45 +224,10 @@ static void icli_probe_agent_serve_connection(int fd) {
     }
 }
 
-/// Bind `path` and answer on it for the life of the process. A path already
-/// there is a socket from a launch that is gone, since the one live agent for
-/// an app is this process.
+/// Serve on the socket that start prepared before returning to the caller.
 static void *icli_probe_agent_listen(void *context) {
     pthread_setname_np("com.icli.probe-agent");
-    char *path = context;
-    int server = -1;
-    @autoreleasepool {
-        struct sockaddr_un address = {0};
-        address.sun_family = AF_UNIX;
-        if (strlen(path) >= sizeof(address.sun_path)) {
-            NSLog(@"[icli probe agent] the socket path is longer than %zu characters: %s",
-                  sizeof(address.sun_path) - 1, path);
-            free(path);
-            return NULL;
-        }
-        strlcpy(address.sun_path, path, sizeof(address.sun_path));
-        server = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (server < 0) {
-            NSLog(@"[icli probe agent] socket failed: %s", strerror(errno));
-            free(path);
-            return NULL;
-        }
-        unlink(path);
-        if (bind(server, (struct sockaddr *)&address, sizeof(address)) != 0) {
-            NSLog(@"[icli probe agent] cannot bind %s: %s", path, strerror(errno));
-            close(server);
-            free(path);
-            return NULL;
-        }
-        if (listen(server, 8) != 0) {
-            NSLog(@"[icli probe agent] cannot listen on %s: %s", path, strerror(errno));
-            close(server);
-            free(path);
-            return NULL;
-        }
-        free(path);
-        icli_probe_set_api_handler(icli_probe_agent_api);
-    }
+    int server = (int)(intptr_t)context;
 
     for (;;) {
         int client = accept(server, NULL, NULL);
@@ -280,6 +235,10 @@ static void *icli_probe_agent_listen(void *context) {
             if (errno == EINTR || errno == ECONNABORTED) continue;
             break;
         }
+        // Leaving a remote REPL or interrupting its client must not kill the
+        // app when a script finally returns to a closed socket.
+        int noSignal = 1;
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, sizeof(noSignal));
         @autoreleasepool {
             icli_probe_agent_serve_connection(client);
         }
@@ -300,18 +259,58 @@ static bool icli_probe_agent_is_app(void) {
     return ![bundle.infoDictionary[@"NSExtension"] isKindOfClass:[NSDictionary class]];
 }
 
-__attribute__((constructor)) static void icli_probe_agent_start(void) {
-    @autoreleasepool {
-        const char *socketPath = getenv(IcliProbeAgentSocketVariable);
-        if (!socketPath || !*socketPath) return;
-        if (!icli_probe_agent_is_app()) return;
-        char *owned = strdup(socketPath);
-        if (!owned) return;
+/// Explicit entry point for attaching to an already-running app. Binding
+/// happens before return, so the client needs no guessed startup delay.
+int icli_probe_agent_attach(const char *path) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static bool started;
+    pthread_mutex_lock(&lock);
+    if (started) { pthread_mutex_unlock(&lock); return 0; }
+    int error = 0, server = -1;
+    struct sockaddr_un address = {0};
+    address.sun_family = AF_UNIX;
+    if (!icli_probe_agent_is_app()) error = EINVAL;
+    else if (!path || !*path || strlen(path) >= sizeof(address.sun_path)) error = ENAMETOOLONG;
+    if (!error) {
+        strlcpy(address.sun_path, path, sizeof(address.sun_path));
+        server = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (server < 0) error = errno;
+    }
+    if (!error) {
+        unlink(path);
+        if (bind(server, (struct sockaddr *)&address, sizeof(address)) || listen(server, 8)) error = errno;
+    }
+    if (!error) {
+        icli_probe_set_api_handler(icli_probe_agent_api);
         pthread_t thread;
         pthread_attr_t attributes;
         pthread_attr_init(&attributes);
         pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
-        if (pthread_create(&thread, &attributes, icli_probe_agent_listen, owned) != 0) free(owned);
+        error = pthread_create(&thread, &attributes, icli_probe_agent_listen, (void *)(intptr_t)server);
         pthread_attr_destroy(&attributes);
+    }
+    if (error && server >= 0) { close(server); unlink(path); }
+    if (!error) {
+        started = true;
+        IcliProbeIdentityPath = [@(path) stringByAppendingString:@".info"];
+        icli_probe_agent_update_identity(@{});
+    }
+    pthread_mutex_unlock(&lock);
+    return error;
+}
+
+__attribute__((constructor)) static void icli_probe_agent_start(void) {
+    @autoreleasepool {
+        const char *path = getenv(IcliProbeAgentSocketVariable);
+        if (path && *path) {
+            int error = icli_probe_agent_attach(path);
+            if (error) {
+                // Constructor failures have no caller to answer. Keep them in
+                // the app's own files, never its console.
+                NSString *log = [NSHomeDirectory() stringByAppendingPathComponent:@"tmp/icli-probe-debug.log"];
+                [[NSString stringWithFormat:@"agent start: %s\n", strerror(error)]
+                    writeToFile:log atomically:YES encoding:NSUTF8StringEncoding error:nil];
+            }
+        }
     }
 }

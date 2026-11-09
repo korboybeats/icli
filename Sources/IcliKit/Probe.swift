@@ -127,6 +127,31 @@ public func runProbeREPL(api: ProbeAPIHandler? = nil) -> Int32 {
     return icli_probe_repl()
 }
 
+/// Use the existing terminal REPL with an evaluator hosted in another process.
+/// Calls are serialized just like the local REPL and its shared context.
+public func runProbeREPL(banner: String, evaluator: @escaping (String) -> ProbeResult) -> Int32 {
+    currentRemoteProbeEvaluator = evaluator
+    defer { currentRemoteProbeEvaluator = nil }
+    return icli_probe_repl_with_evaluator(remoteProbeEvaluator, banner)
+}
+
+private var currentRemoteProbeEvaluator: ((String) -> ProbeResult)?
+
+private func remoteProbeEvaluator(
+    _ source: UnsafePointer<CChar>?, _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?,
+) -> UnsafeMutablePointer<CChar>? {
+    guard let source, let evaluate = currentRemoteProbeEvaluator else { return nil }
+    let result = evaluate(String(cString: source))
+    if !result.output.isEmpty {
+        try? FileHandle.standardOutput.write(contentsOf: Data(result.output.utf8))
+    }
+    if let failure = result.error {
+        error?.pointee = strdup(failure)
+        return nil
+    }
+    return strdup(result.result ?? "undefined")
+}
+
 // MARK: - The api() Trampoline
 
 /// The handler a caller passed `evaluateProbe` or `runProbeREPL`, while that

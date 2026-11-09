@@ -38,6 +38,23 @@ objc_unsafeClaimAutoreleasedReturnValue
 _objc_empty_cache
 __objc_personality_v0
 OBJC_EHTYPE_$_NSException
+# Additional compiler-emitted FLEX support, exported in the iPhoneOS14.5 SDK's
+# usr/lib/libobjc.A.tbd and libc++abi.tbd (before the 15.0 deployment floor).
+OBJC_EHTYPE_id
+__gxx_personality_v0
+objc_getProperty
+objc_setProperty_atomic
+objc_setProperty_nonatomic_copy
+# FlexUltra/ObjSee and Echo support, exported by iPhoneOS14.5's libobjc,
+# libsystem_blocks, libsystem_c and libswiftCore stubs before the 15.0 floor.
+_Block_signature
+objc_debug_class_getNameRaw
+__cxa_atexit
+swift_demangle
+swift_getTypeName
+swift_reflectionMirror_count
+swift_reflectionMirror_displayStyle
+swift_reflectionMirror_subscript
 NSConstantArray
 NSConstantDictionary
 NSConstantDoubleNumber

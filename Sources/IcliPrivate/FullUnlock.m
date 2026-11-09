@@ -454,7 +454,7 @@ static bool prepareContext(FullUnlock *s, bool checkOnly) {
     s->pthreadExit = symbol(s, "pthread_exit");
     if (s->error[0]) return false;
     s->mainThread = findMain(s);
-    if (!s->mainThread) return fail(s, "Cannot unambiguously identify SpringBoard's main dispatch thread.");
+    if (!s->mainThread) return fail(s, "Cannot unambiguously identify the target's main dispatch thread.");
     arm_thread_state64_t state;
     kern_return_t conversion = localThreadState(s->mainThread, &state);
     if (conversion != KERN_SUCCESS) {
@@ -707,6 +707,45 @@ bool icli_full_unlock_signals_end(void) {
     return restored;
 #else
     return true;
+#endif
+}
+
+// Reuse the temporary-thread transport for the probe's one-time dlopen.
+// This entry point never invokes any lock-screen or passcode operations.
+char *icli_probe_attach_json(int pid, const char *executable, const char *dylib, const char *socketPath) {
+#if defined(__arm64__) && !TARGET_OS_TV
+    if (geteuid() || pid <= 1 || pid == getpid() || !executable || !dylib || !socketPath)
+        return icli_json(@{@"error": @"Probe attachment requires root and a running app."});
+    if (!icli_full_unlock_signals_begin())
+        return icli_json(@{@"error": @"Another remote call is already active."});
+    FullUnlock s = {0};
+    char path[4096] = {0}, actual[4096] = {0}, expected[4096] = {0};
+    kern_return_t kr = task_for_pid(mach_task_self(), pid, &s.task);
+    if (kr != KERN_SUCCESS) {
+        snprintf(s.error, sizeof(s.error), "Cannot control app pid %d: %s (Mach %d).", pid, mach_error_string(kr), kr);
+    } else if (proc_pidpath(pid, path, sizeof(path)) <= 0 ||
+               !realpath(path, actual) || !realpath(executable, expected) || strcmp(actual, expected)) {
+        fail(&s, "The target executable changed; no agent was loaded.");
+    } else if (prepareContext(&s, false)) {
+        uint64_t handle = 0, entry = 0, result = 0;
+        uint64_t library = text(&s, dylib);
+        if (library && call(&s, symbol(&s, "dlopen"), &handle, library,RTLD_NOW,0,0,0,0,0,0) && !handle)
+            fail(&s, "The app's loader refused the probe agent.");
+        uint64_t name = text(&s, "icli_probe_agent_attach");
+        if (handle && name && call(&s, symbol(&s, "dlsym"), &entry, handle,name,0,0,0,0,0,0) && !entry)
+            fail(&s, "The loaded probe agent has no attach entry point; restart the app to update it.");
+        // dlsym's function pointer is signed in the target process. rpc signs
+        // thread-state PC itself; only its stripped address crosses that API.
+        uint64_t socket = text(&s, socketPath);
+        if (entry && socket && call(&s, strip((void *)entry), &result, socket,0,0,0,0,0,0,0) && result)
+            snprintf(s.error, sizeof(s.error), "The probe agent could not start: %s (errno %llu).", strerror((int)result), result);
+    }
+    cleanup(&s);
+    bool restored = icli_full_unlock_signals_end();
+    if (!restored) fail(&s, "Cannot restore the caller's signal handlers.");
+    return icli_json(s.error[0] ? @{@"error": @(s.error)} : @{@"ok": @YES, @"pid": @(pid)});
+#else
+    return icli_json(@{@"error": @"Attaching a probe requires an arm64 iPhone or iPad; use app launch --probe on this platform."});
 #endif
 }
 

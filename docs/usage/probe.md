@@ -19,20 +19,63 @@ A class method, then an instance method on what it returns: `ObjC.use('NSProcess
 
 ## Inside an App
 
-`--app` runs the script in an app's own process instead of icli's, which is where its live objects are: a `UIView` there is a view on screen with a frame and a superview, not just a class. Start the app with `icli app launch <app> --probe` first — that launch, and only that launch, carries the agent — then `icli probe --app <app>` answers in the same `{ok, result | error, output}` line. `--check` reports whether an agent is listening, with the PID it is listening in.
+`--app` runs the script in an app's own process instead of icli's, which is where its live objects are: a `UIView` there is a view on screen with a frame and a superview, not just a class. Bring the app to the front, then use `icli probe --app <app>`. If no agent is listening, icli loads it into the running process without restarting the app. `-e`, a file or stdin answers in the same `{ok, result | error, output}` line. With no script, or `repl`, it opens an interactive shell. `--check` only reports whether an agent is listening, with its PID; it never loads one.
 
 ```sh
-icli app launch com.example.app --probe --wait-foreground
-icli probe --app com.example.app --check
+icli app launch com.example.app --wait-foreground
+icli probe --app com.example.app repl
 icli probe --app com.example.app -e "ObjC.use('UIApplication').sharedApplication().keyWindow().subviews().count()"
 echo "ObjC.use('UIScreen').mainScreen().bounds()" | icli probe --app com.example.app -
 ```
 
-The agent is `/var/jb/usr/lib/icli-probe-agent.dylib`, injected for that one launch through `DYLD_INSERT_LIBRARIES`; an app started any other way carries no agent and nothing listens. It binds a Unix socket inside the app's own container, which the sandbox keeps to root and to that app — a loopback port would be reachable by every other app on the device. `--probe` keeps any `DYLD_INSERT_LIBRARIES` the same launch already asked for, and the bootstrap's own loader stays in front of both.
+The agent is `/var/jb/usr/lib/icli-probe-agent.dylib`, loaded on demand using a temporary thread in the existing app. This needs root and a jailbreak that grants task control; a refusal reports an error without restarting the app. `icli app launch <app> --probe` remains available to load it at launch through `DYLD_INSERT_LIBRARIES`. There is no global tweak filter, saved launch setting or resident broker. After an app exits, the next `probe --app` command attaches to its new foreground process again. It binds a Unix socket inside the app's own container, which the sandbox keeps to root and to that app — a loopback port would be reachable by every other app on the device. `--probe` keeps any `DYLD_INSERT_LIBRARIES` the same launch already asked for, and the bootstrap's own loader stays in front of both.
 
 The app has to be **in front**. iOS suspends a backgrounded app, and a suspended process runs no threads, so its agent cannot answer even `--check`; the connection still succeeds, because the kernel accepts it into the listen backlog while the app is frozen, so it reads as a silent agent rather than a refusal. icli says which case it is. Bring the app forward and ask again.
 
-A script runs on the app's **main thread**, as UIKit requires, so it sees a consistent view tree and a setter takes effect where the app would have made it. A main thread that does not answer within `--timeout` (30 s by default) gives an error instead of hanging forever; the script may still run later, which is the app's own business. A script that crashes takes the **app** down, not icli — `icli log crashes` reports it, and the next `--probe` launch starts a fresh agent. `api()` reaches icli's own capabilities and is refused inside an app: run that part as a plain `icli probe` and pass what it answers into the script. `repl` has no `--app` form yet; use `-e`, a script file or `-`.
+A script runs on the app's **main thread**, as UIKit requires, so it sees a consistent view tree and a setter takes effect where the app would have made it. A main thread that does not answer within `--timeout` (30 s by default) gives an error instead of hanging forever; the script may still run later, which is the app's own business. A script that crashes takes the **app** down, not icli — `icli log crashes` reports it, and the next app launch and probe command start a fresh agent. `api()` reaches icli's own capabilities and is refused inside an app: run that part as a plain `icli probe` and pass what it answers into the script. The remote REPL shares the app's context, including variables from earlier commands. Multiline input, `.help`, `.exit` and Ctrl-C while editing work as in the local shell. Output is collected until each statement returns. Exiting leaves the app and agent running; Ctrl-C during evaluation ends only the client, and the submitted script may still run. Each shell is pinned to its original PID: if the app restarts, a new process refuses its scripts before evaluation. Open a new shell to attach again.
+
+## Inspect a Live Object
+
+```sh
+icli probe --app com.example.app --inspect window
+icli probe --app com.example.app --inspect root-controller
+icli probe --app com.example.app --inspect 215,466 --limit 20
+icli probe --app com.example.app --inspect root-controller --values --limit 20
+icli probe --app com.example.app --inspect root-controller --offset 20 --limit 20
+```
+
+`--inspect` uses the bundled FLEX object explorer. `window` selects the foreground
+key window; `root-controller` selects that window's root controller. `x,y` selects
+the actual view hit at that screen point, so a point from `ui tree` can inspect a
+button directly. A point outside the window returns an error.
+
+The reply is one JSON object `{ok, result, output}` with a **structured object**
+in `result`, containing `class`, `address`, `pid`, `bundle_id`, `class_hierarchy`,
+`properties`, `ivars`, `methods` and `class_methods`. `runtime_image` names the
+actual loaded FLEX library. Every member includes its
+name, declaring class and type encoding. Properties also describe their getters
+and setters; fields include their offset and size. Addresses identify this
+process's objects; they are not accepted as input or durable handles.
+
+Values are omitted by default. `--values` reads property getters and fields through
+FLEX, executing app code on the main thread. Exceptions become per-member
+`value_error` entries. Strings are bounded; object values are class/address
+references instead of recursively walking their contents. A getter can still
+block or crash its app, like any other in-app probe.
+
+`--limit` (default 100, maximum 500) and `--offset` apply independently to each
+member group. `totals` and `truncated` describe the groups; these are the members
+FLEX exposes under the app's FLEX explorer preferences. Method arguments include
+Objective-C's implicit receiver and selector. Listing methods does not call them.
+
+If the app already has a compatible FLEX explorer, inspection reuses it.
+Otherwise FLEX is loaded **only on the first inspection**, from the private
+packaged `usr/lib/icli/libFLEX.dylib`. Ordinary scripts and REPLs do not load it. There is
+no added global tweak or background service, and no inspector interface is shown.
+An app already carrying an older agent needs one relaunch before it can use
+inspection. This command selects UIKit objects; [icli flex](flex.md) exposes
+the complete FlexUltra command set, including arbitrary object handles, heap
+searches, mutation, tracing and MCP tools.
 
 ## Inline, In icli
 
