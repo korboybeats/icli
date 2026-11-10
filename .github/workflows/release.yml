@@ -40,7 +40,7 @@ jobs:
           import os, plistlib, re
           from pathlib import Path
           tag = os.environ['RELEASE_TAG']
-          assert re.fullmatch(r'v?[0-9]+\.[0-9]+\.[0-9]+', tag), 'expected a release version tag'
+          assert re.fullmatch(r'v?[0-9]+\.[0-9]+\.[0-9]+(\+korboy[0-9]+)?', tag), 'expected a release version tag'
           with open('Resources/Info.plist', 'rb') as source:
               version = plistlib.load(source)['CFBundleShortVersionString']
           assert tag.removeprefix('v') == version, 'tag and Info.plist version differ'
