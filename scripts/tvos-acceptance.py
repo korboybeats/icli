@@ -108,7 +108,7 @@ def read_file(g, path):
 
 @case('environment')
 def environment(g):
-    assert re.fullmatch(r'\d+\.\d+\.\d+', g.cli('--version').strip())
+    assert re.fullmatch(r'\d+\.\d+\.\d+(\+korboy\d+)?', g.cli('--version').strip())
     env = g.cli('env', 'info')
     assert env['layout'] is None and env['euid'] == 0, env
     assert env['external_tools_used'] == {} or env['external_tools_used'] == [], env
