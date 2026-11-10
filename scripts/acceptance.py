@@ -3852,6 +3852,17 @@ def install_fixture_apps(device):
 
 def remove_fixture_apps(device, bundles):
     """Removes the test apps this run installed, while the lease is still held."""
+    # Removing the app in front leaves SpringBoard showing its emptied window,
+    # a black screen that stays until someone presses Home: go home first.
+    front = device.cli('app', 'frontmost', expected=None).get('bundle_id')
+    if front in bundles:
+        device.cli('screen', 'gesture', 'home', expected=None)
+        deadline = time.monotonic() + 5
+        while device.cli('app', 'frontmost', expected=None).get('bundle_id') != 'com.apple.springboard':
+            if time.monotonic() > deadline:
+                print(f'{front} is still in front; removing it anyway', flush=True)
+                break
+            time.sleep(0.1)
     for bundle in bundles:
         try:
             if bundle == BUNDLE:
