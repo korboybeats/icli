@@ -249,7 +249,7 @@ class Device:
     def install(self):
         version = plistlib.loads((ROOT / 'Resources/Info.plist').read_bytes())['CFBundleShortVersionString']
         arch = {'rootless': 'iphoneos-arm64', 'roothide': 'iphoneos-arm64e', 'rootful': 'iphoneos-arm'}[self.layout]
-        package = ROOT / f'.build/com.icli.icli_{version}_{arch}.deb'
+        package = ROOT / f'.build/com.korboy.icli_{version}_{arch}.deb'
         subprocess.run([str(ROOT / 'packaging/build-deb.sh'), self.layout], cwd=ROOT, check=True)
         subprocess.run(self.prefix + ['scp', '-P', self.port] + self.options +
                        [str(package), self.user + '@' + self.host + ':/tmp/icli-acceptance.deb'], env=self.env, check=True)

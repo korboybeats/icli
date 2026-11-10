@@ -6,7 +6,7 @@ import IcliKit
 /// read APIs below come from IcliSystem, which IcliKit re-exports.
 let comparison = try compareDebianVersions("1.0~beta", "1.0")
 precondition(comparison["relation"] as? String == "lt")
-let packages = try packageStatus("com.icli.icli")
+let packages = try packageStatus("com.korboy.icli")
 precondition(packages["installed"] as? Bool == true)
 let environment = try environmentReport()
 precondition(environment["spawns_processes"] as? Bool == false)

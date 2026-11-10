@@ -73,8 +73,8 @@ saves the credential without making an unlock attempt. Ordinary Windows
 `icli-unlock` behavior is unchanged. Once provisioned, the phone command works
 without Windows, SSH or a helper process.
 
-The Keychain item uses the separate `com.icli.unlock` access group, service
-`com.icli.device-passcode`, and `AfterFirstUnlockThisDeviceOnly` accessibility.
+The Keychain item uses the separate `com.korboy.icli.unlock` access group, service
+`com.korboy.icli.device-passcode`, and `AfterFirstUnlockThisDeviceOnly` accessibility.
 It does not synchronize or migrate to another device. After a restart, manually
 unlock once before this Keychain item becomes available. Owned input buffers
 are wiped; Security/Foundation can retain internal copies outside icli's control.
@@ -106,7 +106,7 @@ icli device passcode forget --force
 
 The passcode never goes in argv. `--passcode-file` refuses a file that is not regular, not owned by you or root, or open to group or others. Nothing reaches the keybag when it is already unlocked, when the same passcode was rejected before, when the larger of icli's recorded failures and the keybag's failed-attempt counter has reached `--max-failures` (default 3, at most 4, so icli never makes the fifth attempt that starts iOS's delays), or while the keybag backs off. Every answer carries `attempts_remaining` and a `hint`.
 
-icli records a salted PBKDF2 digest of each rejected passcode in `/var/mobile/Library/Caches/com.icli.icli/passcode-ledger.json` (0600), and empties it when an unlock succeeds. After the device passcode changes, a passcode recorded as wrong may now be right: run `forget --force`. The exit status is 0 unlocked, 3 rejected now, 4 rejected before and not retried, 5 refused by a guard, 6 a keybag error that did not count as an attempt.
+icli records a salted PBKDF2 digest of each rejected passcode in `/var/mobile/Library/Caches/com.korboy.icli/passcode-ledger.json` (0600), and empties it when an unlock succeeds. After the device passcode changes, a passcode recorded as wrong may now be right: run `forget --force`. The exit status is 0 unlocked, 3 rejected now, 4 rejected before and not retried, 5 refused by a guard, 6 a keybag error that did not count as an attempt.
 
 Without `--dismiss`, unlocking the keybag does not dismiss the lock screen;
 `lock_screen` in the answer shows whether it is still up. With `--dismiss`,

@@ -12,7 +12,7 @@
 > Latest native-unlock follow-up: user wants to type only the command in a phone
 > terminal, with no passcode entry. **`icli unlock` is implemented, installed and
 > provisioned in the phone's Keychain.** Requires a root terminal; no stdin or
-> prompt. Dedicated `com.icli.unlock` group, device-only after-first-unlock item;
+> prompt. Dedicated `com.korboy.icli.unlock` group, device-only after-first-unlock item;
 > same existing full-unlock engine/ledger/guards, no retry. Windows vault remains
 > intact; new `icli-unlock --provision-phone` transfers it securely once. Both
 > 12 boundary tests and 18 old policy tests passed. Actual locked/screen-off ->

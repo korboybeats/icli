@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 MAC_DIR=/Users/korboy/Projects/icli-src/icli-update-e295e0f
 VERSION=$(python3 -c 'import plistlib, sys; print(plistlib.load(open(sys.argv[1], "rb"))["CFBundleShortVersionString"])' Resources/Info.plist)
-DEB="com.icli.icli_${VERSION}_iphoneos-arm64.deb"
+DEB="com.korboy.icli_${VERSION}_iphoneos-arm64.deb"
 git diff --check
 rsync -a --delete --exclude=.git --exclude=.build ./ "mac:$MAC_DIR/"
 # The linker embeds Info.plist with -sectcreate, which SwiftPM does not track:
@@ -20,11 +20,13 @@ scp "mac:$MAC_DIR/.build/IcliLeaseIndicator.dylib" .build/IcliLeaseIndicator.dyl
 scp "mac:$MAC_DIR/.build/$DEB" ".build/$DEB"
 scp "mac:$MAC_DIR/.build/automation-build.log" .build/
 scp-iphone ".build/$DEB" "/var/mobile/Documents/Downloads/$DEB"
+# The package was renamed from com.icli.icli; drop its hold so dpkg can replace it.
+ssh-iphone "/var/jb/usr/bin/apt-mark unhold com.icli.icli >/dev/null 2>&1 || true"
 ssh-iphone "/var/jb/usr/bin/dpkg -i /var/mobile/Documents/Downloads/$DEB && /var/jb/usr/bin/rm -f /var/mobile/Documents/Downloads/$DEB"
 # dpkg -i clears a hold; without one, the next upstream release replaces this build.
-ssh-iphone "/var/jb/usr/bin/apt-mark hold com.icli.icli"
-ssh-iphone "/var/jb/usr/bin/apt-mark showhold" | grep -qx com.icli.icli || { echo "com.icli.icli is not on hold" >&2; exit 1; }
-installed=$(ssh-iphone '/var/jb/usr/bin/icli --version; /var/jb/usr/bin/dpkg-query -W -f="\${Version}\n" com.icli.icli; /var/jb/usr/bin/sha256sum /var/jb/usr/bin/icli')
+ssh-iphone "/var/jb/usr/bin/apt-mark hold com.korboy.icli"
+ssh-iphone "/var/jb/usr/bin/apt-mark showhold" | grep -qx com.korboy.icli || { echo "com.korboy.icli is not on hold" >&2; exit 1; }
+installed=$(ssh-iphone '/var/jb/usr/bin/icli --version; /var/jb/usr/bin/dpkg-query -W -f="\${Version}\n" com.korboy.icli; /var/jb/usr/bin/sha256sum /var/jb/usr/bin/icli')
 echo "$installed"
 local_sha=$(sha256sum .build/icli | cut -d' ' -f1)
 [ "$(sed -n 1p <<<"$installed")" = "$VERSION" ] || { echo "icli --version is not $VERSION" >&2; exit 1; }

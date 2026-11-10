@@ -16,9 +16,9 @@
 #import <notify.h>
 #import <objc/message.h>
 
-static NSString *const LeasePath = @"/var/mobile/Library/Caches/com.icli.icli/lease.json";
-static NSString *const HiddenPath = @"/var/mobile/Library/Caches/com.icli.icli/indicator-off";
-static const char *const LeaseChanged = "com.icli.icli.lease-changed";
+static NSString *const LeasePath = @"/var/mobile/Library/Caches/com.korboy.icli/lease.json";
+static NSString *const HiddenPath = @"/var/mobile/Library/Caches/com.korboy.icli/indicator-off";
+static const char *const LeaseChanged = "com.korboy.icli.lease-changed";
 
 // A window SpringBoard draws on top of other apps still takes their touches
 // unless the system skips it when it routes them: UIKit asks the window's

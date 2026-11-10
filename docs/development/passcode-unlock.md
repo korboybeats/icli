@@ -61,7 +61,7 @@ read passcode (stdin | 0600 file | TTY)      argv never
 ## The ledger
 
 The ledger remains separate from the saved credential. `SavedPasscode.swift`
-stores the credential in `com.icli.unlock` / `com.icli.device-passcode` /
+stores the credential in `com.korboy.icli.unlock` / `com.korboy.icli.device-passcode` /
 `full-unlock`, with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and
 `kSecAttrSynchronizable: false`. Queries use an LAContext with interaction
 disabled. A missing/inaccessible item fails before the unlock engine; it never
@@ -112,7 +112,7 @@ missing-credential.json,device.json}` and its device runner `test-device.py`.
 The unit tests do not prove first-unlock-after-reboot behavior; that limitation
 comes from the SDK's accessibility-class contract and is documented in usage.
 
-`/var/mobile/Library/Caches/com.icli.icli/passcode-ledger.json`, 0600 in a 0700 directory, owned by mobile even when root wrote it, so `sudo icli` and `icli` share one budget.
+`/var/mobile/Library/Caches/com.korboy.icli/passcode-ledger.json`, 0600 in a 0700 directory, owned by mobile even when root wrote it, so `sudo icli` and `icli` share one budget.
 
 ```json
 {"version":1,"iterations":200000,"salt":"<16 random bytes>","rejected":[{"digest":"<PBKDF2-HMAC-SHA256>","at":1793000000}]}

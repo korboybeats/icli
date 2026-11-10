@@ -226,7 +226,7 @@ static void icli_probe_agent_serve_connection(int fd) {
 
 /// Serve on the socket that start prepared before returning to the caller.
 static void *icli_probe_agent_listen(void *context) {
-    pthread_setname_np("com.icli.probe-agent");
+    pthread_setname_np("com.korboy.icli.probe-agent");
     int server = (int)(intptr_t)context;
 
     for (;;) {

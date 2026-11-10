@@ -28,7 +28,7 @@ Version: 1.0
 Architecture: $ARCH
 Maintainer: OwnGoal
 Section: Development
-Depends: firmware (>= 15.0), com.icli.icli (>= 0.8.5)
+Depends: firmware (>= 15.0), com.korboy.icli (>= 0.8.5)
 Description: Test-only fixture for icli acceptance
 CONTROL
 # RootHide runs maintainer scripts inside the jbroot, so its paths drop the prefix.

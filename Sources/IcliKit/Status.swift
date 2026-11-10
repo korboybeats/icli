@@ -53,12 +53,12 @@ public func deviceStatus() -> [String: Any] {
 /// lease nothing has used for `idle_seconds` lapses, which frees the device
 /// after a runner crashed or lost its connection without releasing.
 public enum Lease {
-    public static let path = "/var/mobile/Library/Caches/com.icli.icli/lease.json"
+    public static let path = "/var/mobile/Library/Caches/com.korboy.icli/lease.json"
     /// While this file exists the lease indicator in SpringBoard stays hidden.
-    public static let indicatorOffPath = "/var/mobile/Library/Caches/com.icli.icli/indicator-off"
+    public static let indicatorOffPath = "/var/mobile/Library/Caches/com.korboy.icli/indicator-off"
     /// Posted after every change to the lease file or the indicator switch;
     /// the lease indicator in SpringBoard reads the file again when it fires.
-    static let changedNotification = "com.icli.icli.lease-changed"
+    static let changedNotification = "com.korboy.icli.lease-changed"
 
     static func announce() {
         var delivered = false

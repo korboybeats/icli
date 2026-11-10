@@ -5,8 +5,8 @@ import LocalAuthentication
 #endif
 import Security
 
-private let savedPasscodeGroup = "com.icli.unlock"
-private let savedPasscodeService = "com.icli.device-passcode"
+private let savedPasscodeGroup = "com.korboy.icli.unlock"
+private let savedPasscodeService = "com.korboy.icli.device-passcode"
 
 private func savedPasscodeQuery() -> [String: Any] {
     var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,

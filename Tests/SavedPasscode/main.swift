@@ -17,8 +17,8 @@ let fixture = Array("synthetic-fixture-only".utf8)
 
 func assertQuery(_ query: CFDictionary) -> [String: Any] {
     let q = query as! [String: Any]
-    precondition(q[kSecAttrAccessGroup as String] as? String == "com.icli.unlock")
-    precondition(q[kSecAttrService as String] as? String == "com.icli.device-passcode")
+    precondition(q[kSecAttrAccessGroup as String] as? String == "com.korboy.icli.unlock")
+    precondition(q[kSecAttrService as String] as? String == "com.korboy.icli.device-passcode")
     precondition(q[kSecAttrAccount as String] as? String == "full-unlock")
     precondition(q[kSecAttrSynchronizable as String] as? Bool == false)
     return q

@@ -5,14 +5,14 @@
 	<key>CFBundleExecutable</key>
 	<string>icli</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.icli.icli</string>
+	<string>com.korboy.icli</string>
 	<key>CFBundleName</key>
 	<string>icli</string>
 	<key>CFBundlePackageType</key>
 	<string>TOOL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.11.0+korboy33</string>
+	<string>0.11.0+korboy34</string>
 	<key>CFBundleVersion</key>
-	<string>58</string>
+	<string>59</string>
 </dict>
 </plist>

@@ -23,7 +23,7 @@ import Security
 /// ledger that cannot be parsed fails closed: nothing is attempted until it is
 /// cleared.
 public struct PasscodeLedger {
-    public static let defaultPath = "/var/mobile/Library/Caches/com.icli.icli/passcode-ledger.json"
+    public static let defaultPath = "/var/mobile/Library/Caches/com.korboy.icli/passcode-ledger.json"
     static let iterations: UInt32 = 200_000
 
     public struct State {

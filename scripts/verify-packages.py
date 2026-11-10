@@ -91,7 +91,7 @@ if not options.ios_only:
     report['tvos'] = {'binary': 'icli-tvos', **tvos, 'minimum_tvos': '15.0'}
     layouts.append(('tvos', 'appletvos-arm64', '', tvos['binary_sha256']))
 for kind, arch, prefix, digest in layouts:
-    package = root / f'.build/com.icli.icli_{version}_{arch}.deb'
+    package = root / f'.build/com.korboy.icli_{version}_{arch}.deb'
     folder = root / '.build/package-check' / kind / prefix
     cli = folder / 'usr/bin/icli'
     assert hashlib.sha256(cli.read_bytes()).hexdigest() == digest

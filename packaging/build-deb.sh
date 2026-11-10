@@ -58,15 +58,18 @@ fi
 cp "$ROOT/Resources/Licenses/"*.txt "$DOC/licenses/"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/LICENSE" "$DOC/"
 cat > "$STAGE/DEBIAN/control" <<CONTROL
-Package: com.icli.icli
+Package: com.korboy.icli
 Name: icli
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: icli
 Depends: firmware (>= 15.0)
+Provides: com.icli.icli (= $VERSION)
+Conflicts: com.icli.icli
+Replaces: com.icli.icli
 Section: Development
 Description: On-device $PLATFORM control CLI
 CONTROL
-OUTPUT="$ROOT/.build/com.icli.icli_${VERSION}_${ARCH}.deb"
+OUTPUT="$ROOT/.build/com.korboy.icli_${VERSION}_${ARCH}.deb"
 dpkg-deb --root-owner-group -b "$STAGE" "$OUTPUT"
 echo "built $OUTPUT"

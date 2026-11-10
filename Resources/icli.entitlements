@@ -5,9 +5,9 @@
 	<key>platform-application</key>
 	<true/>
 	<key>application-identifier</key>
-	<string>com.icli.icli</string>
+	<string>com.korboy.icli</string>
 	<key>com.apple.application-identifier</key>
-	<string>com.icli.icli</string>
+	<string>com.korboy.icli</string>
 	<key>com.apple.private.security.no-sandbox</key>
 	<true/>
 	<key>com.apple.private.security.container-required</key>
@@ -121,7 +121,7 @@
 	<key>keychain-access-groups</key>
 	<array>
 		<string>icli.test</string>
-		<string>com.icli.unlock</string>
+		<string>com.korboy.icli.unlock</string>
 	</array>
 	<key>com.apple.keystore.access-keychain-keys</key>
 	<true/>
