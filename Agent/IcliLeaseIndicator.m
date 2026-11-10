@@ -1,4 +1,5 @@
-// The lease indicator: a small label in SpringBoard naming the runner that
+// The lease indicator: a small label in SpringBoard, just above the home
+// indicator, naming the runner that
 // holds icli's device lease, so whoever holds the phone sees which agent is
 // driving it. The package installs it as a SpringBoard tweak with a bundle
 // filter; it hooks nothing.
@@ -30,6 +31,29 @@ static const char *const LeaseChanged = "com.icli.icli.lease-changed";
 @implementation IcliPassThroughWindow
 - (BOOL)_ignoresHitTest { return YES; }
 @end
+
+// Where the home indicator's top edge is, from the indicator view's own
+// geometry (MaterialKit's MTLumaDodgePillView: its height and its distance
+// from the bottom edge), so the label sits just above it on every device:
+// on the iPhone 15 Pro Max that is 5 points tall, 8 points up. 0 on a device
+// without one.
+static CGFloat homeIndicatorTop(void) {
+    if (UIScreen.mainScreen.bounds.size.height <= 0) return 0;
+    UIWindowScene *scene = nil;
+    for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes)
+        if ([candidate isKindOfClass:UIWindowScene.class]) scene = (UIWindowScene *)candidate;
+    // A device with a home button has no bottom safe area and no indicator.
+    if (scene.windows.firstObject.safeAreaInsets.bottom <= 0) return 0;
+    Class pill = NSClassFromString(@"MTLumaDodgePillView");
+    SEL edge = sel_registerName("suggestedEdgeSpacing");
+    SEL size = sel_registerName("suggestedSizeForContentWidth:");
+    if (![pill instancesRespondToSelector:edge] || ![pill instancesRespondToSelector:size]) return 0;
+    UIView *view = [[pill alloc] initWithFrame:CGRectMake(0, 0, 0, 0)];
+    CGFloat spacing = ((CGFloat (*)(id, SEL))objc_msgSend)(view, edge);
+    CGSize bar = ((CGSize (*)(id, SEL, CGFloat))objc_msgSend)(view, size, UIScreen.mainScreen.bounds.size.width);
+    if (spacing <= 0 || bar.height <= 0) return 0;
+    return UIScreen.mainScreen.bounds.size.height - spacing - bar.height;
+}
 
 @interface IcliLeaseIndicator : NSObject
 @property (nonatomic, strong) UIWindow *window;
@@ -94,9 +118,11 @@ static const char *const LeaseChanged = "com.icli.icli.lease-changed";
     [self.label sizeToFit];
     CGSize size = self.label.bounds.size;
     CGFloat width = MIN(size.width + 18, UIScreen.mainScreen.bounds.size.width - 40);
-    // Just under the status bar and the Dynamic Island.
-    CGFloat top = MAX(self.window.safeAreaInsets.top, 20) + 2;
-    self.label.frame = CGRectMake((UIScreen.mainScreen.bounds.size.width - width) / 2, top, width, 18);
+    CGSize screen = UIScreen.mainScreen.bounds.size;
+    CGFloat bottom = screen.height - 4;
+    CGFloat bar = homeIndicatorTop();
+    if (bar > 0) bottom = bar - 3;
+    self.label.frame = CGRectMake((screen.width - width) / 2, bottom - 18, width, 18);
 }
 
 - (NSDictionary *)lease {
