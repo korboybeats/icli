@@ -3,13 +3,18 @@ import IcliPrivate
 import UIKit
 
 /// How far a scroll view's pan runs behind the finger, measured with the stroke
-/// below: a stroke of this plus n points scrolls n, to within a point.
-private let scrollSlop = 11.0
+/// below: a stroke of this plus n points scrolls n, each stroke to within half a
+/// point (TestHost on iOS 17.1.1: single strokes of 167 points varied by two
+/// thirds of a point, six back to back by 1.3 points).
+private let scrollSlop = 10.7
 private let strokeStep = 0.01
 
 /// A stroke that lands where it should, with no fling, as distances along the line:
-/// - to 9 points at once, then half a point a step to 13, so the pan starts at the
-///   same place each time. Stopping at 11 sometimes lost a whole step of the body.
+/// - to 9 points at once, then a pixel a step to 13, so the pan starts at the same
+///   place each time: half-point steps left single strokes a point apart and six
+///   strokes four points apart. Holding each pixel for 30 ms was steadier still,
+///   but about one stroke in five then scrolled nothing. Stopping at 11 sometimes
+///   lost a whole step of the body.
 /// - the rest at up to 160 points a step (16,000 points a second).
 /// - 2 points over 8 steps. UIKit takes its fling speed from the last moves it sees,
 ///   so these have to be real moves: a hold, or moves on the spot, still flung after
@@ -21,7 +26,10 @@ private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double) -> (xs: 
     var distances = [0.0]
     if bodyEnd > slopEnd {
         distances += [4.5, 9]
-        distances += stride(from: 9.5, through: slopEnd, by: 0.5)
+        let pixel = 1 / max(icli_screen_metrics().scale, 1)
+        for distance in stride(from: 9 + pixel, through: slopEnd + pixel / 2, by: pixel) {
+            distances.append(distance)
+        }
         let span = bodyEnd - slopEnd
         let body = max(3, Int((span * 1.5 / 160).rounded(.up)))
         distances += (1 ... body).map { step in
