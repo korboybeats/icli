@@ -24,6 +24,14 @@ AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneo
 	-ISources/IcliProbe -ISources/IcliProbe/include -I.build/flexultra-src \
 	-install_name @rpath/icli-probe-agent.dylib -framework Foundation -framework UIKit
 
+# The lease indicator: loaded into SpringBoard by the tweak loader through
+# Resources/IcliLeaseIndicator.plist, it shows which runner holds the lease.
+# SpringBoard is arm64e on every device that has it as arm64e, so both slices.
+INDICATOR       := $(BUILD)/IcliLeaseIndicator.dylib
+INDICATOR_FLAGS := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
+	-Os -std=gnu11 -fobjc-arc -Wall -Wextra -Werror \
+	-install_name @rpath/IcliLeaseIndicator.dylib -framework Foundation -framework UIKit
+
 ifeq ($(DEBUG),1)
 CONFIGURATION := debug
 else
@@ -80,6 +88,9 @@ agent:
 	xcrun --sdk iphoneos clang $(AGENT_FLAGS) $(AGENT_SOURCES) -o $(AGENT)
 	$(LDID) -S $(AGENT)
 	python3 scripts/verify-binary.py --platform agent
+	xcrun --sdk iphoneos clang $(INDICATOR_FLAGS) Agent/IcliLeaseIndicator.m -o $(INDICATOR)
+	$(LDID) -S $(INDICATOR)
+	python3 scripts/verify-binary.py --platform indicator
 
 debug:
 	$(MAKE) DEBUG=1 all

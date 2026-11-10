@@ -54,6 +54,16 @@ public func deviceStatus() -> [String: Any] {
 /// after a runner crashed or lost its connection without releasing.
 public enum Lease {
     public static let path = "/var/mobile/Library/Caches/com.icli.icli/lease.json"
+    /// While this file exists the lease indicator in SpringBoard stays hidden.
+    public static let indicatorOffPath = "/var/mobile/Library/Caches/com.icli.icli/indicator-off"
+    /// Posted after every change to the lease file or the indicator switch;
+    /// the lease indicator in SpringBoard reads the file again when it fires.
+    static let changedNotification = "com.icli.icli.lease-changed"
+
+    static func announce() {
+        var delivered = false
+        _ = icli_notify_post(changedNotification, false, 0, &delivered)
+    }
     /// Set by the lease and status commands, which must run whoever holds it.
     public static var exempt = false
     public static let exitStatus = 75
@@ -114,6 +124,7 @@ public enum Lease {
             chown(path, 501, 501)
         }
         chmod(path, 0o600)
+        announce()
     }
 
     static func describe(_ lease: [String: Any]) -> [String: Any] {
@@ -169,7 +180,35 @@ public func releaseLease(force: Bool) throws -> [String: Any] {
         ]) { $1 })
     }
     try FileManager.default.removeItem(atPath: Lease.path)
+    Lease.announce()
     return ["released": true, "held": false, "owner": lease["owner"] ?? ""]
+}
+
+/// Whether the lease indicator in SpringBoard shows the holder's name.
+public func leaseIndicator() -> [String: Any] {
+    ["indicator": FileManager.default.fileExists(atPath: Lease.indicatorOffPath) ? "off" : "on"]
+}
+
+public func setLeaseIndicator(_ on: Bool) throws -> [String: Any] {
+    let before = leaseIndicator()["indicator"] as? String
+    if on {
+        if FileManager.default.fileExists(atPath: Lease.indicatorOffPath) {
+            try FileManager.default.removeItem(atPath: Lease.indicatorOffPath)
+        }
+    } else {
+        let directory = (Lease.indicatorOffPath as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(
+            atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700],
+        )
+        FileManager.default.createFile(atPath: Lease.indicatorOffPath, contents: Data())
+        if geteuid() == 0 {
+            chown(directory, 501, 501)
+            chown(Lease.indicatorOffPath, 501, 501)
+        }
+    }
+    Lease.announce()
+    let after = leaseIndicator()
+    return after.merging(["changed": before != after["indicator"] as? String]) { $1 }
 }
 
 /// What a failed command leaves behind when ICLI_FAILURE_ARTIFACTS names a

@@ -107,6 +107,26 @@ the same binary, signing tool and executable path, removing only that key
 passed the full-unlock preflight, restoring it reproduced the denial, and
 removing it again passed. No passcode was submitted in these comparisons.
 
+## Control Center toggles
+
+`icli cc` reaches each toggle through the service Control Center's module
+uses. Each key was measured on the iOS 17.1.1 phone: with it the change read
+back from a second process and showed in Control Center, without it the
+change failed. Cellular data and Personal Hotspot need nothing beyond the
+CommCenter and process keys above; the flashlight needs no key.
+
+| Key | CLI value | Intended role |
+| --- | --- | --- |
+| `com.apple.SystemConfiguration.SCPreferences-write-access` | `com.apple.radios.plist` | Writing Airplane Mode through RadiosPreferences. Without it the setter returns and nothing changes. |
+| `com.apple.wifi.manager-access` | `true` | Reading and setting Wi-Fi power through wifid's manager client. wifid keeps a power change only from a caller named SpringBoard, Preferences, mobilewifitool or sharingd, so icli sends it under the name Preferences; from any other name the radio drops for a few seconds and comes back on. |
+| `com.apple.bluetooth.system` | `true` | Attaching BluetoothManager to bluetoothd; without it the manager never becomes available. |
+| `com.apple.private.airdrop.settings` | `true` | Reading and setting AirDrop receiving through SharingUI's discovery controller. |
+| `com.apple.avfoundation.allow-system-wide-context` | `true` | Reading the system screen output context, the source of Control Center's screen mirroring state. |
+| `com.apple.private.donotdisturb.mode.assertion.client-identifiers` | `com.apple.donotdisturb.control-center.module` | Taking a Focus assertion as Control Center's module. donotdisturbd keeps an assertion after its process exits only for client identifiers listed with DNDAssertionsPersist in its user-toggles preload bundle; icli's own identifier lost its Focus when icli exited. |
+| `com.apple.private.donotdisturb.mode.assertion.user-requested.client-identifiers` | `com.apple.donotdisturb.control-center.module` | Taking and ending user-requested Focus assertions, as Control Center's toggle does. |
+| `com.apple.private.donotdisturb.state.request.client-identifiers` | `com.apple.donotdisturb.control-center.module` | Reading whether a Focus is on and which one. |
+| `com.apple.private.donotdisturb.settings.request.client-identifiers` | `com.apple.donotdisturb.control-center.module` | Listing the Focus modes `cc set focus <name>` accepts. |
+
 ## Privacy permissions
 
 | Key | CLI value | Intended role |

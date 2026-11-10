@@ -38,7 +38,7 @@ struct Icli: ParsableCommand {
         discussion: "Run 'icli <command> --help' to see its subcommands and 'icli <command> <subcommand> --help' for arguments and options.\n\nExamples:\n  icli device info\n  icli svc list --human\n  icli svc status com.example.service\n\nCommands return JSON by default. Add --human to an action command for readable text, or --compact to ui tree, ui at, ui wait, ui wait-gone and screen ocr for one line per element.",
         version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
         subcommands: [
-            LockScreenCommand.self, SavedUnlock.self, Device.self, Screen.self, Button.self, Input.self, App.self,
+            LockScreenCommand.self, SavedUnlock.self, Device.self, Cc.self, Screen.self, Button.self, Input.self, App.self,
             UI.self, Clipboard.self, FS.self, Log.self, URLCommand.self,
             Pkg.self, SB.self, Svc.self, Account.self, Env.self,
             Proc.self, Sec.self, Net.self, Prefs.self, Location.self, Notify.self, Probe.self, Flex.self, Tests.self, Batch.self,

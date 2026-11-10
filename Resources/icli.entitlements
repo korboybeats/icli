@@ -156,6 +156,34 @@
 	<true/>
 	<key>com.apple.powerd.lowpowermode.allow</key>
 	<true/>
+	<key>com.apple.SystemConfiguration.SCPreferences-write-access</key>
+	<array>
+		<string>com.apple.radios.plist</string>
+	</array>
+	<key>com.apple.wifi.manager-access</key>
+	<true/>
+	<key>com.apple.bluetooth.system</key>
+	<true/>
+	<key>com.apple.private.airdrop.settings</key>
+	<true/>
+	<key>com.apple.avfoundation.allow-system-wide-context</key>
+	<true/>
+	<key>com.apple.private.donotdisturb.mode.assertion.client-identifiers</key>
+	<array>
+		<string>com.apple.donotdisturb.control-center.module</string>
+	</array>
+	<key>com.apple.private.donotdisturb.mode.assertion.user-requested.client-identifiers</key>
+	<array>
+		<string>com.apple.donotdisturb.control-center.module</string>
+	</array>
+	<key>com.apple.private.donotdisturb.state.request.client-identifiers</key>
+	<array>
+		<string>com.apple.donotdisturb.control-center.module</string>
+	</array>
+	<key>com.apple.private.donotdisturb.settings.request.client-identifiers</key>
+	<array>
+		<string>com.apple.donotdisturb.control-center.module</string>
+	</array>
 	<key>com.apple.timed</key>
 	<true/>
 	<key>com.apple.tzlink.allow</key>

@@ -106,9 +106,9 @@ for kind, arch, prefix, digest in layouts:
         assert all(m.uid == 0 and m.gid == 0 for m in members)
         executables = [m for m in members if m.isfile() and m.mode & 0o111]
         names = sorted(m.name.rsplit('/', 1)[-1] for m in executables)
-        # iOS carries the agent and its lazily loaded private FLEX runtime.
-        # tvOS keeps the executable alone.
-        expected = ['icli'] if kind == 'tvos' else ['icli', 'icli-probe-agent.dylib', 'libFLEX.dylib', 'libicli-flexultra.dylib', 'libicli-reflex.dylib']
+        # iOS carries the agent, its lazily loaded private FLEX runtime and
+        # the SpringBoard lease indicator. tvOS keeps the executable alone.
+        expected = ['icli'] if kind == 'tvos' else ['IcliLeaseIndicator.dylib', 'icli', 'icli-probe-agent.dylib', 'libFLEX.dylib', 'libicli-flexultra.dylib', 'libicli-reflex.dylib']
         assert names == expected, names
     agent_sha = flex_sha = None
     runtimes = {}
@@ -128,6 +128,9 @@ for kind, arch, prefix, digest in layouts:
             assert digest_runtime == hashlib.sha256((root / '.build' / name).read_bytes()).hexdigest()
             verify_private_runtime(runtime, '@rpath/' + name)
             runtimes[name] = digest_runtime
+        indicator = folder / 'Library/MobileSubstrate/DynamicLibraries/IcliLeaseIndicator.dylib'
+        assert indicator.read_bytes() == (root / '.build/IcliLeaseIndicator.dylib').read_bytes()
+        assert indicator.with_suffix('.plist').read_bytes() == (root / 'Resources/IcliLeaseIndicator.plist').read_bytes()
         for license in (root / 'Resources/Licenses').glob('*.txt'):
             assert (folder / 'usr/share/doc/icli/licenses' / license.name).read_bytes() == license.read_bytes()
     report['packages'].append({'layout': kind, 'file': package.name,

@@ -23,6 +23,10 @@
 | `device accessibility set` | Change any of them; waits until they read the new values | `--text-size xs\|s\|m\|l\|xl\|xxl\|xxxl\|ax1…ax5`, `--reduce-motion on\|off`, `--increase-contrast on\|off`, `--reduce-transparency on\|off` | no | any |
 | `device low-power get` | Whether Low Power Mode is on (`method: powerd`) | | no | any |
 | `device low-power set <on\|off>` | Turn Low Power Mode on or off through powerd, like Control Center; waits up to 3 seconds for its reply, then checks the new state | | no | any |
+| `cc list` | Every Control Center toggle with its state; a toggle that cannot be read carries `error` | | yes (tested as root) | any |
+| `cc get <toggle>` | One toggle: `state`, `enabled`, and per toggle `level` (flashlight), `mode`/`mode_id`/`modes` (focus), `time_limited` (AirDrop Everyone), `device` (mirroring) | | yes (tested as root) | any |
+| `cc set <toggle> <value>` | Set a toggle and read it back; `changed` is false when it already had the value. Toggles: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop` (`off`/`contacts`/`everyone`), `focus` (`on`/`off`/a Focus name), `flashlight` (`on`/`off`/level 0–1), `rotation-lock`, `low-power`, `appearance` (`light`/`dark`); `mirroring` is read-only | | yes (tested as root) | any |
+| `cc toggle <toggle>` | Flip a toggle; AirDrop flips off↔contacts, focus off↔Do Not Disturb | | yes (tested as root) | any |
 | `device timezone get` | `identifier` (Olson name), `automatic` (Set Automatically), `seconds_from_gmt` | | no | any |
 | `device timezone set <identifier>` | Set the time zone to an Olson name such as `Asia/Shanghai` and turn Set Automatically off, as Settings does; running apps and SpringBoard switch at once. Returns `changed` | | no | any |
 | `device timezone automatic <on\|off>` | Turn Set Automatically on or off; `on` hands the zone back to timed | | no | any |
@@ -79,3 +83,11 @@ Notify notes:
 - A post reaches every process observing that name, including system daemons. Post only names whose observers you understand.
 - notifyd keeps a name's state only while some process is registered for it. `notify post --state` registers only while it runs, so on a name nothing else observes, a later `notify get` reads 0. Names a daemon holds, such as `com.apple.springboard.lockstate`, keep their state.
 - notifyd can reserve names for root, such as those under `com.apple.system.`. A post it refuses fails with `unavailable`; on iOS 26 it can instead accept mobile's post and never deliver it, which shows as `delivered: false`. Retry either with `sudo`.
+
+Control Center notes:
+
+- `cc set wifi off` and `cc set airplane on` cut Wi-Fi, so an SSH session over Wi-Fi drops before the answer arrives. Run them from a detached script that restores the state, or over USB.
+- `cc set focus off` ends every active Focus, including one a schedule started, like the Control Center button.
+- `cc set focus on` turns on Do Not Disturb; the Focus stays on after icli exits.
+- `cc set flashlight on` uses the level Control Center last used. The flashlight stays on after icli exits.
+- `cc set airdrop everyone` turns itself back to contacts after 10 minutes, as on the device.

@@ -12,7 +12,7 @@ The tables below mark each command with two properties:
 - **Root**: `required` means icli refuses to run without root (use `sudo icli …`). `usually` means the command runs, but the files or launchd domain it changes normally need root. `no` means it works as the mobile user.
 - **Screen**: `unlocked` means the command exits with code 2 (`device_locked`) while the device is locked or its screen is off. `any` means it also runs while the device is locked.
 
-Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, lock and unlock, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe, and session, batch, status and lease for test runs).
+Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, cc, lock and unlock, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe, and session, batch, status and lease for test runs).
 
 ## Quick index
 
@@ -68,6 +68,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Read the current location | `icli location get` (check `fresh` and `simulated`) |
 | Post a Darwin notification or read its state | `icli notify post <name> [--state N]` / `icli notify get <name>` |
 | Switch to light or dark mode | `icli device appearance set dark` |
+| Read or flip Control Center toggles (Wi-Fi, Bluetooth, Airplane Mode, cellular data, Hotspot, AirDrop, Focus, flashlight) | `sudo icli cc list` / `sudo icli cc set bluetooth off` / `sudo icli cc toggle flashlight` |
 | Change the text size, Reduce Motion, Increase Contrast or Reduce Transparency | `icli device accessibility set --text-size xxl --reduce-motion on` |
 | Open a Settings page | `icli url open 'prefs:root=General&path=About'` (table in [apps](reference/apps.md)) |
 | Open an app's page in Settings (its permissions, notifications) | `icli app settings <bundle-id or name>` |

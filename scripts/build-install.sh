@@ -16,6 +16,7 @@ scp "mac:$MAC_DIR/.build/icli-probe-agent.dylib" .build/icli-probe-agent.dylib
 scp "mac:$MAC_DIR/.build/libicli-flex.dylib" .build/libicli-flex.dylib
 scp "mac:$MAC_DIR/.build/libicli-flexultra.dylib" .build/libicli-flexultra.dylib
 scp "mac:$MAC_DIR/.build/libicli-reflex.dylib" .build/libicli-reflex.dylib
+scp "mac:$MAC_DIR/.build/IcliLeaseIndicator.dylib" .build/IcliLeaseIndicator.dylib
 scp "mac:$MAC_DIR/.build/$DEB" ".build/$DEB"
 scp "mac:$MAC_DIR/.build/automation-build.log" .build/
 scp-iphone ".build/$DEB" "/var/mobile/Documents/Downloads/$DEB"
@@ -29,11 +30,12 @@ local_sha=$(sha256sum .build/icli | cut -d' ' -f1)
 [ "$(sed -n 1p <<<"$installed")" = "$VERSION" ] || { echo "icli --version is not $VERSION" >&2; exit 1; }
 [ "$(sed -n 2p <<<"$installed")" = "$VERSION" ] || { echo "dpkg does not list $VERSION" >&2; exit 1; }
 [ "$(sed -n 3p <<<"$installed" | cut -d' ' -f1)" = "$local_sha" ] || { echo "installed binary differs from .build/icli" >&2; exit 1; }
-for artifact in icli-probe-agent.dylib libicli-flex.dylib libicli-flexultra.dylib libicli-reflex.dylib; do
+for artifact in icli-probe-agent.dylib libicli-flex.dylib libicli-flexultra.dylib libicli-reflex.dylib IcliLeaseIndicator.dylib; do
   remote="/var/jb/usr/lib/$artifact"
   [ "$artifact" != libicli-flex.dylib ] || remote=/var/jb/usr/lib/icli/libFLEX.dylib
   case "$artifact" in
     libicli-flexultra.dylib|libicli-reflex.dylib) remote="/var/jb/usr/lib/icli/$artifact" ;;
+    IcliLeaseIndicator.dylib) remote="/var/jb/Library/MobileSubstrate/DynamicLibraries/$artifact" ;;
   esac
   expected=$(sha256sum ".build/$artifact" | cut -d' ' -f1)
   actual=$(ssh-iphone "/var/jb/usr/bin/sha256sum $remote" | cut -d' ' -f1)

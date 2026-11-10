@@ -16,6 +16,20 @@ icli prefs write example.domain Enabled true --type bool
 icli prefs delete example.domain Enabled
 ```
 
+## Control Center Toggles
+
+```sh
+icli cc list
+icli cc get focus
+icli cc set bluetooth off
+icli cc set airdrop everyone
+icli cc set focus sleep
+icli cc set flashlight 0.5
+icli cc toggle hotspot
+```
+
+`icli cc` reads and sets the toggles in Control Center: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop`, `focus`, `flashlight`, `mirroring` (read-only), and the `rotation-lock`, `low-power` and `appearance` settings that `icli device` also reaches. Each command answers with the state read back after the change, plus `changed`. AirDrop takes `off`, `contacts` or `everyone`; Everyone reverts to contacts after 10 minutes. Focus takes `on` (Do Not Disturb), `off` (ends every active Focus, as the Control Center button does) or a Focus name from `cc get focus`. The flashlight takes `on` (Control Center's last level), `off` or a level from 0 to 1. Changes persist after icli exits and show in Control Center and Settings. Turning Wi-Fi off or Airplane Mode on drops an SSH session that runs over Wi-Fi; run those from a detached script that restores the state. The entitlements each toggle needs are listed in [entitlements](../entitlements.md#control-center-toggles).
+
 A simulated location applies to every app and stays on after icli exits, until `location clear`. `notify post` posts a Darwin notification to every observer, optionally storing a `--state` value first; names that notifyd reserves, such as those under `com.apple.system.`, need root. `device devmode enable` asks the system to turn Developer Mode on after the next restart and does nothing when it is already on. `device timezone set` turns Set Automatically off and switches the system time zone; running apps follow at once, and `device timezone automatic on` hands it back to the system. `prefs` commands use mobile's preferences by default, including under `sudo`; `--user root`, `current` or `any` choose another set, and a `.plist` path works as a domain. Writes go through cfprefsd, so running apps see them.
 
 ## Unlock with a Passcode

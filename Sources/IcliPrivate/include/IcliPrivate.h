@@ -262,6 +262,39 @@ char *icli_amfi_developer_mode_json(bool arm);
 int icli_low_power_mode_get(void);
 /// 0 on acceptance; -1 if unavailable, -2 on timeout, -3 on rejection.
 int icli_low_power_mode_set(bool enabled);
+
+/// Control Center toggles. Getters return 1 on, 0 off, -1 when the service is
+/// unavailable. Setters return 0 once the new state reads back, -1 when the
+/// service is unavailable, -2 when the state did not change in time and -3
+/// when the service refused the change.
+int icli_cc_airplane_get(void);
+int icli_cc_airplane_set(bool enabled);
+int icli_cc_wifi_get(void);
+int icli_cc_wifi_set(bool enabled);
+int icli_cc_bluetooth_get(void);
+int icli_cc_bluetooth_set(bool enabled);
+int icli_cc_cellular_get(void);
+int icli_cc_cellular_set(bool enabled);
+/// Netrb's raw global service state: 1023 on, 1022 off, lower when the
+/// hotspot is unavailable; -1 when Netrb is missing.
+int icli_cc_hotspot_state(void);
+int icli_cc_hotspot_get(void);
+int icli_cc_hotspot_set(bool enabled);
+/// AirDrop receiving: 0 off, 1 contacts only, 2 everyone; -1 unavailable.
+int icli_cc_airdrop_get(void);
+bool icli_cc_airdrop_time_limited(void);
+int icli_cc_airdrop_set(int mode);
+/// Flashlight level 0–1, or -1 when the device has no flashlight service.
+double icli_cc_flashlight_level(void);
+bool icli_cc_flashlight_overheated(void);
+int icli_cc_flashlight_set(double level);
+/// {active, mode_id, mode, modes: [{id, name}]} or {error}.
+char *icli_cc_focus_json(void);
+/// Turns the Focus `mode` on, or every active Focus off when mode is NULL.
+/// On -3, *message holds a malloc'd reason.
+int icli_cc_focus_set(const char *mode, char **message);
+/// {mirroring, device} or {error}.
+char *icli_cc_mirroring_json(void);
 /// MobileKeyBag's lock state and attempt counters as JSON: lock_state, and
 /// when the keybag reports them failed_attempts, backoff_seconds,
 /// permanently_blocked, should_wipe and recovery_countdown.

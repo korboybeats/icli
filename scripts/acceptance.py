@@ -1887,6 +1887,125 @@ def low_power_mode(d):
         assert d.cli('device', 'low-power', 'get')['enabled'] == original['enabled']
 
 
+@case('control_center', 'controls', ['cc list', 'cc get', 'cc set', 'cc toggle'])
+def control_center(d):
+    listed = {entry['toggle']: entry for entry in d.cli('cc', 'list', sudo=True)['toggles']}
+    assert list(listed) == ['airplane', 'wifi', 'bluetooth', 'cellular', 'hotspot', 'airdrop', 'focus',
+                            'flashlight', 'mirroring', 'rotation-lock', 'low-power', 'appearance'], listed
+    unreadable = {name: entry['error'] for name, entry in listed.items() if 'error' in entry}
+    assert not unreadable, unreadable
+    assert d.cli('cc', 'get', 'dnd', sudo=True)['toggle'] == 'focus'
+    d.cli('cc', 'get', 'teleporter', sudo=True, expected=1)
+    d.cli('cc', 'set', 'mirroring', 'off', sudo=True, expected=1)
+    d.cli('cc', 'set', 'bluetooth', 'maybe', sudo=True, expected=1)
+    d.cli('cc', 'set', 'airdrop', 'on', sudo=True, expected=1)
+    d.cli('cc', 'set', 'flashlight', '2', sudo=True, expected=1)
+    d.cli('cc', 'set', 'focus', 'no-such-focus', sudo=True, expected=1)
+
+    def restore(name, value):
+        back = d.cli('cc', 'set', name, value, sudo=True, expected=None)
+        assert back.get('state') == value or back.get('level') == value, back
+
+    # Each on/off toggle: flip, read back from a new process, flip with
+    # `toggle`, and set the original again, which must report no change.
+    for name in ['bluetooth', 'cellular', 'rotation-lock']:
+        original = listed[name]['state']
+        flipped = 'off' if original == 'on' else 'on'
+        try:
+            applied = d.cli('cc', 'set', name, flipped, sudo=True)
+            assert applied['state'] == flipped and applied['changed'], applied
+            assert d.cli('cc', 'get', name, sudo=True)['state'] == flipped
+            toggled = d.cli('cc', 'toggle', name, sudo=True)
+            assert toggled['state'] == original and toggled['changed'], toggled
+            again = d.cli('cc', 'set', name, original, sudo=True)
+            assert again['changed'] is False, again
+        finally:
+            restore(name, original)
+
+    hotspot = listed['hotspot']['state']
+    if hotspot == 'unavailable':
+        d.observations.append('Personal Hotspot is unavailable on this device, so cc set hotspot was not run.')
+    else:
+        try:
+            applied = d.cli('cc', 'set', 'hotspot', 'off' if hotspot == 'on' else 'on', sudo=True)
+            assert applied['changed'], applied
+            assert d.cli('cc', 'get', 'hotspot', sudo=True)['state'] == applied['state']
+        finally:
+            restore('hotspot', hotspot)
+
+    airdrop = listed['airdrop']['state']
+    try:
+        for value in ['everyone', 'off', 'contacts']:
+            applied = d.cli('cc', 'set', 'airdrop', value, sudo=True)
+            assert applied['state'] == value, applied
+            assert d.cli('cc', 'get', 'airdrop', sudo=True)['state'] == value
+        assert d.cli('cc', 'toggle', 'airdrop', sudo=True)['state'] == 'off'
+    finally:
+        restore('airdrop', airdrop)
+
+    torch = listed['flashlight']['level']
+    try:
+        lit = d.cli('cc', 'set', 'flashlight', '0.5', sudo=True)
+        assert lit['state'] == 'on' and lit['level'] == 0.5, lit
+        assert d.cli('cc', 'get', 'flashlight', sudo=True)['level'] == 0.5
+        assert d.cli('cc', 'set', 'flashlight', 'off', sudo=True)['level'] == 0
+        assert d.cli('cc', 'set', 'flashlight', 'on', sudo=True)['level'] in [0.25, 0.5, 0.85, 1.0]
+    finally:
+        back = d.cli('cc', 'set', 'flashlight', str(torch), sudo=True, expected=None)
+        assert back.get('level') == torch, back
+
+    focus = d.cli('cc', 'get', 'focus', sudo=True)
+    names = {mode['name'].lower(): mode['id'] for mode in focus['modes']}
+    other = next((name for name, mode in names.items() if mode != focus.get('mode_id')
+                  and mode != 'com.apple.donotdisturb.mode.default'), None)
+    try:
+        assert d.cli('cc', 'set', 'focus', 'off', sudo=True)['state'] == 'off'
+        on = d.cli('cc', 'set', 'focus', 'on', sudo=True)
+        assert on['mode_id'] == 'com.apple.donotdisturb.mode.default', on
+        # The Focus outlives the icli process that turned it on.
+        assert d.cli('cc', 'get', 'focus', sudo=True)['state'] == 'on'
+        if other:
+            assert d.cli('cc', 'set', 'focus', other, sudo=True)['mode_id'] == names[other]
+        assert d.cli('cc', 'toggle', 'focus', sudo=True)['state'] == 'off'
+    finally:
+        back = d.cli('cc', 'set', 'focus', focus['mode_id'] if focus['enabled'] else 'off', sudo=True, expected=None)
+        assert back.get('state') == focus['state'], back
+
+
+@case('control_center_network', 'controls', ['cc set'])
+def control_center_network(d):
+    """Wi-Fi off and Airplane Mode on cut a Wi-Fi SSH session, so each runs in
+    a detached script on the device that restores the toggle itself; the
+    results are read after it finishes."""
+    token = shlex.join(['env', 'ICLI_LEASE=' + d.lease]) + ' ' if d.lease else ''
+    icli = token + d.binary
+    log = '/tmp/icli-cc-network.log'
+    for name, flipped, original in [('wifi', 'off', 'on'), ('airplane', 'on', 'off')]:
+        start = d.cli('cc', 'get', name, sudo=True)
+        if start['state'] != original:
+            d.observations.append(f'{name} was {start["state"]} at the start, so its network check was not run.')
+            continue
+        script = (f'{icli} cc set {name} {flipped}; echo @@; sleep 3; {icli} cc get {name}; echo @@; '
+                  f'{icli} cc set {name} {original}; echo @@; echo DONE')
+        d.run(f'rm -f {log}; nohup sh -c {shlex.quote(script)} > {log} 2>&1 &', sudo=True)
+        deadline = time.monotonic() + 90
+        text = ''
+        while time.monotonic() < deadline:
+            time.sleep(3)
+            try:
+                text = d.run(['cat', log], timeout=15).stdout
+            except subprocess.TimeoutExpired:
+                continue
+            if 'DONE' in text:
+                break
+        assert 'DONE' in text, f'{name}: the detached check did not finish: {text[-1000:]}'
+        answers = [json.loads(chunk) for chunk in text.split('@@')[:3]]
+        assert [answer.get('state') for answer in answers] == [flipped, flipped, original], answers
+        assert answers[0]['changed'] and answers[2]['changed'], answers
+        assert d.cli('cc', 'get', name, sudo=True)['state'] == original
+        d.run(f'rm -f {log}', sudo=True)
+
+
 @case('time_zone', 'controls', ['device timezone get', 'device timezone set', 'device timezone automatic'])
 def time_zone(d):
     original = d.cli('device', 'timezone', 'get')

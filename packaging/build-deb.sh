@@ -23,7 +23,7 @@ FLEX="$ROOT/.build/libicli-flex.dylib"
 if [ "$PLATFORM" = iOS ]; then
   [ -f "$AGENT" ] || { echo 'build the probe agent first: make agent' >&2; exit 66; }
   [ -f "$FLEX" ] || { echo 'build the private FLEX runtime first: make agent' >&2; exit 66; }
-  for name in libicli-flexultra.dylib libicli-reflex.dylib; do
+  for name in libicli-flexultra.dylib libicli-reflex.dylib IcliLeaseIndicator.dylib; do
     [ -f "$ROOT/.build/$name" ] || { echo "build $name first: make agent" >&2; exit 66; }
   done
 fi
@@ -47,6 +47,13 @@ if [ "$PLATFORM" = iOS ]; then
     cp "$ROOT/.build/$name" "$STAGE$PREFIX/usr/lib/icli/$name"
     chmod 755 "$STAGE$PREFIX/usr/lib/icli/$name"
   done
+  # The lease indicator, which the tweak loader puts into SpringBoard.
+  TWEAKS="$STAGE$PREFIX/Library/MobileSubstrate/DynamicLibraries"
+  mkdir -p "$TWEAKS"
+  cp "$ROOT/.build/IcliLeaseIndicator.dylib" "$TWEAKS/IcliLeaseIndicator.dylib"
+  chmod 755 "$TWEAKS/IcliLeaseIndicator.dylib"
+  cp "$ROOT/Resources/IcliLeaseIndicator.plist" "$TWEAKS/IcliLeaseIndicator.plist"
+  chmod 644 "$TWEAKS/IcliLeaseIndicator.plist"
 fi
 cp "$ROOT/Resources/Licenses/"*.txt "$DOC/licenses/"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/LICENSE" "$DOC/"

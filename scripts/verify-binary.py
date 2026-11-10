@@ -84,7 +84,7 @@ def verify_floor_imports(binary, sdk_name='iphoneos', extra_frameworks=()):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--platform', choices=['ios', 'tvos', 'agent', 'flex', 'engine', 'reflex'], default='ios')
+    parser.add_argument('--platform', choices=['ios', 'tvos', 'agent', 'flex', 'engine', 'reflex', 'indicator'], default='ios')
     platform = parser.parse_args().platform
     if platform == 'tvos':
         # The tvOS build takes IOKit's headers from the stub it links against.
@@ -95,6 +95,9 @@ if __name__ == '__main__':
         binary, sdk_name, extra = ROOT / '.build/libicli-reflex.dylib', 'iphoneos', []
     elif platform == 'flex':
         binary, sdk_name, extra = ROOT / '.build/libicli-flex.dylib', 'iphoneos', []
+    elif platform == 'indicator':
+        # The lease indicator runs inside SpringBoard: the same rules as the agent.
+        binary, sdk_name, extra = ROOT / '.build/IcliLeaseIndicator.dylib', 'iphoneos', []
     elif platform == 'agent':
         # The probe agent runs inside somebody else's app, so it is held to the
         # same rules: it starts no process, names nothing iOS 15.0 may not

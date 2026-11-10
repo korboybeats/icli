@@ -109,8 +109,24 @@ struct LeaseCommand: ParsableCommand {
           ...
           icli lease release
         """,
-        subcommands: [Acquire.self, Release.self, StatusCommand.self],
+        subcommands: [Acquire.self, Release.self, StatusCommand.self, Indicator.self],
     )
+
+    struct Indicator: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Show or hide the holder's name on the device screen",
+            discussion: "While a lease is held, SpringBoard shows 'icli: <owner>' at the top of the screen. It passes touches through and stays out of screenshots and the accessibility tree. Without an argument this prints whether it is on.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "on or off.") var value: String?
+        func run() {
+            Lease.exempt = true
+            emit(allowWhenLocked: true, output) {
+                guard let value else { return leaseIndicator() }
+                return try setLeaseIndicator(parseOnOff(value))
+            }
+        }
+    }
 
     struct Acquire: ParsableCommand {
         @OptionGroup var output: OutputOptions
