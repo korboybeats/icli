@@ -9,6 +9,13 @@ FRAMEWORK="$OUT/IOKit.framework"
 rm -rf "$FRAMEWORK"
 mkdir -p "$FRAMEWORK"
 cp -R "$IOKIT/Headers" "$FRAMEWORK/Headers"
-sed -E 's/arm64e?-ios/arm64-tvos, arm64e-tvos/' "$IOKIT/IOKit.tbd" > "$FRAMEWORK/IOKit.tbd"
+sed -E 's/arm64(e?)-ios/arm64\1-tvos/g' "$IOKIT/IOKit.tbd" > "$FRAMEWORK/IOKit.tbd"
 grep -q 'arm64-tvos' "$FRAMEWORK/IOKit.tbd" || { echo 'IOKit.tbd has no iOS target to retarget' >&2; exit 65; }
 ! grep -q -- '-ios[] ,]' "$FRAMEWORK/IOKit.tbd" || { echo 'IOKit.tbd still names an iOS target' >&2; exit 65; }
+# The AppleTVOS 26 SDK also leaves out <xpc/xpc.h>, though tvOS exports libxpc
+# from libSystem as iOS does; the tvOS build takes the iPhoneOS SDK's headers.
+rm -rf "$OUT/include/xpc"
+mkdir -p "$OUT/include"
+if [ ! -d "$(xcrun --sdk appletvos --show-sdk-path)/usr/include/xpc" ]; then
+  cp -R "$(xcrun --sdk iphoneos --show-sdk-path)/usr/include/xpc" "$OUT/include/xpc"
+fi

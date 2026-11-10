@@ -55,7 +55,8 @@ TVOS_BIN         := $(BUILD)/icli-tvos
 TVOS_STUBS       := $(BUILD)/tvos-stubs
 TVOS_FLAGS := --configuration $(CONFIGURATION) --triple $(TVOS_TARGET) --sdk $(TVOS_SDK) \
 	--scratch-path $(BUILD)/swiftpm --product icli --force-resolved-versions \
-	-Xcc -F$(TVOS_STUBS) -Xswiftc -F$(TVOS_STUBS) -Xlinker -F$(TVOS_STUBS)
+	-Xcc -F$(TVOS_STUBS) -Xswiftc -F$(TVOS_STUBS) -Xlinker -F$(TVOS_STUBS) \
+	-Xcc -idirafter -Xcc $(TVOS_STUBS)/include
 
 .PHONY: all agent debug resolve install clean deb deb-rootless deb-roothide deb-rootful tvos deb-tvos
 
