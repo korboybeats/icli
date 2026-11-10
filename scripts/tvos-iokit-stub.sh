@@ -9,7 +9,10 @@ FRAMEWORK="$OUT/IOKit.framework"
 rm -rf "$FRAMEWORK"
 mkdir -p "$FRAMEWORK"
 cp -R "$IOKIT/Headers" "$FRAMEWORK/Headers"
-sed -E 's/arm64(e?)-ios/arm64\1-tvos/g' "$IOKIT/IOKit.tbd" > "$FRAMEWORK/IOKit.tbd"
+# Every target list becomes both tvOS slices, whichever iOS slices it names:
+# the iPhoneOS 26.2 SDK lists arm64-ios and arm64e-ios, Xcode 26.6's lists no
+# arm64-ios, and the tvOS build links arm64.
+sed -E 's/\[ *arm64e?-ios( *, *arm64e?-ios)* *\]/[ arm64-tvos, arm64e-tvos ]/g' "$IOKIT/IOKit.tbd" > "$FRAMEWORK/IOKit.tbd"
 grep -q 'arm64-tvos' "$FRAMEWORK/IOKit.tbd" || { echo 'IOKit.tbd has no iOS target to retarget' >&2; exit 65; }
 ! grep -q -- '-ios[] ,]' "$FRAMEWORK/IOKit.tbd" || { echo 'IOKit.tbd still names an iOS target' >&2; exit 65; }
 # The AppleTVOS 26 SDK also leaves out <xpc/xpc.h>, though tvOS exports libxpc
