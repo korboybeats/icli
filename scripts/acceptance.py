@@ -14,6 +14,7 @@ import hashlib
 import re
 from pathlib import Path
 import shlex
+import signal
 import struct
 import subprocess
 import sys
@@ -3804,6 +3805,66 @@ def observed_commands(cases, inventory):
                     observed.add(command)
     return observed
 
+FIXTURE_APPS = [
+    # (bundle id, how the suite installs it, local file)
+    (BUNDLE, 'deb', 'icli-testhost_1.0_{arch}.deb'),
+    ('dev.owngoal.icli.ContainerFixture', 'container', 'install-fixtures/icli-container-fixture.ipa'),
+]
+
+
+def install_fixture_apps(device):
+    """Installs the test apps the suite needs and are missing, under the run's lease.
+
+    TestHost's maintainer scripts call icli, which refuses them while a lease is held
+    unless they carry its token, so dpkg runs with ICLI_LEASE; without it the package is
+    left half-configured. Returns the bundle ids it installed, for removal at the end.
+    """
+    arch = {'rootless': 'iphoneos-arm64', 'roothide': 'iphoneos-arm64e', 'rootful': 'iphoneos-arm'}[device.layout]
+    installed = []
+    for bundle, kind, name in FIXTURE_APPS:
+        local = ROOT / '.build' / name.format(arch=arch)
+        info = device.cli('app', 'info', bundle, expected=None)
+        if kind == 'deb':
+            status = device.run(['dpkg-query', '-W', '-f=${Status}', 'dev.owngoal.icli.testhost']).stdout.strip()
+            if info.get('bundle_id') == bundle and status == 'install ok installed':
+                continue
+        elif info.get('data_path'):
+            continue
+        if not local.exists():
+            print(f'{bundle} is not installed and {local} is missing: build it on the Mac', flush=True)
+            continue
+        remote = '/tmp/icli-acceptance-' + local.name
+        device.upload(local, remote)
+        try:
+            if kind == 'deb':
+                result = device.run(['env', 'ICLI_LEASE=' + (device.lease or ''), 'dpkg', '-i', device.sh(remote)],
+                                    sudo=True, timeout=120)
+                assert result.returncode == 0, f'installing {local.name} failed: {result.stdout}{result.stderr}'
+            else:
+                device.cli('app', 'install', device.sh(remote), '--container', timeout=180)
+        finally:
+            device.run(['rm', '-f', device.sh(remote)], sudo=True)
+        assert device.cli('app', 'info', bundle, expected=None).get('bundle_id') == bundle, f'{bundle} did not register'
+        print(f'installed {bundle}', flush=True)
+        installed.append(bundle)
+    return installed
+
+
+def remove_fixture_apps(device, bundles):
+    """Removes the test apps this run installed, while the lease is still held."""
+    for bundle in bundles:
+        try:
+            if bundle == BUNDLE:
+                result = device.run(['env', 'ICLI_LEASE=' + (device.lease or ''), 'dpkg', '-r', 'dev.owngoal.icli.testhost'],
+                                    sudo=True, timeout=120)
+                ok = result.returncode == 0
+            else:
+                ok = device.run([device.binary, 'app', 'uninstall', bundle, '--force'], timeout=120).returncode == 0
+            print(('removed ' if ok else 'could not remove ') + bundle, flush=True)
+        except subprocess.TimeoutExpired:
+            print(f'could not remove {bundle}', flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--group', choices=['all', 'runtime', 'ax', 'gestures', 'input', 'screen', 'logs', 'apps', 'controls', 'install', 'packages', 'security', 'network', 'system', 'location', 'reboot'], default='all')
@@ -3815,7 +3876,14 @@ def main():
                         help='Bootstrap layout the device is expected to use.')
     parser.add_argument('--lease', action='store_true',
                         help='Hold an icli lease for the run, so other agents\' icli commands are refused until it ends.')
+    parser.add_argument('--keep-fixtures', action='store_true',
+                        help='Leave the test apps this run installed on the device afterwards.')
     args = parser.parse_args()
+    # A stopped run (SIGTERM from a task runner, SIGHUP from a closed terminal)
+    # unwinds through the finally below, so it still releases its lease and
+    # removes its test apps instead of leaving the device leased.
+    for stop in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(stop, lambda number, frame: sys.exit(128 + number))
     (ROOT / '.build').mkdir(exist_ok=True)
     device = Device(args.layout)
     if args.install:
@@ -3862,13 +3930,16 @@ def main():
                 and (not args.cases or c[0] in args.cases)
                 and not (args.skip_reboot and c[1] == 'reboot')]
     report['planned_cases'] = [c[0] for c in selected]
-    owner = f'acceptance {os.uname().nodename}:{os.getpid()}'
+    # The device shows the lease owner to whoever holds it.
+    owner = 'icli-acceptance'
     if args.lease:
         # Held for the whole run: every command carrying the token keeps it alive.
         held = json.loads(device.run([device.binary, 'lease', 'acquire', '--owner', owner]).stdout)
         assert held.get('token'), f'could not take the lease: {held}'
         device.lease = held['token']
+    fixture_apps = []
     try:
+        fixture_apps = install_fixture_apps(device)
         springboard = device.springboard_pid()
         for name, group, tools, test in selected:
             device.trace = []
@@ -3901,6 +3972,8 @@ def main():
     finally:
         # file_roundtrip and extended_files write here; it would outlive the run.
         device.trace = []
+        if fixture_apps and not args.keep_fixtures:
+            remove_fixture_apps(device, fixture_apps)
         if device.lease:
             device.run([device.binary, 'lease', 'release'])
             device.lease = None
