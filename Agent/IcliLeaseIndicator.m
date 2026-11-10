@@ -19,6 +19,18 @@ static NSString *const LeasePath = @"/var/mobile/Library/Caches/com.icli.icli/le
 static NSString *const HiddenPath = @"/var/mobile/Library/Caches/com.icli.icli/indicator-off";
 static const char *const LeaseChanged = "com.icli.icli.lease-changed";
 
+// A window SpringBoard draws on top of other apps still takes their touches
+// unless the system skips it when it routes them: UIKit asks the window's
+// _ignoresHitTest when it sets up its CAContext. userInteractionEnabled alone
+// only keeps touches from SpringBoard's own views (measured on iOS 17.1.1:
+// with it, a tap on Safari's address field under the label did nothing).
+@interface IcliPassThroughWindow : UIWindow
+@end
+
+@implementation IcliPassThroughWindow
+- (BOOL)_ignoresHitTest { return YES; }
+@end
+
 @interface IcliLeaseIndicator : NSObject
 @property (nonatomic, strong) UIWindow *window;
 @property (nonatomic, strong) UILabel *label;
@@ -44,7 +56,8 @@ static const char *const LeaseChanged = "com.icli.icli.lease-changed";
 
 - (void)makeWindow {
     UIWindowScene *scene = [self scene];
-    UIWindow *window = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    UIWindow *window = scene ? [[IcliPassThroughWindow alloc] initWithWindowScene:scene]
+                             : [[IcliPassThroughWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     window.frame = UIScreen.mainScreen.bounds;
     // Above the status bar, alerts and the lock screen.
     window.windowLevel = 10000002;
