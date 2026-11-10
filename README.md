@@ -16,7 +16,7 @@ Download a DEB from [GitHub Releases](https://github.com/korboybeats/icli/releas
 | --- | --- | --- |
 | Rootless (`/var/jb`) | `iphoneos-arm64` | Tested on an iPhone 15 Pro Max (iOS 17.1.1, Dopamine) and the project's rootless vphone |
 | RootHide | `iphoneos-arm64e` | Experimental; service inspection verified on iOS 18.5, full acceptance pending |
-| tvOS, rootful (`/usr/bin`, Procursus `appletvos-arm64`) | `appletvos-arm64` | Package checks only; the same executable passed the tvOS acceptance on a tvOS 26.6 vphone |
+| tvOS, rootful (`/usr/bin`, Procursus `appletvos-arm64`) | `appletvos-arm64` | Package checks only; not run on a tvOS device |
 
 ```sh
 sudo dpkg -i /tmp/icli.deb
@@ -33,12 +33,13 @@ See [Install](docs/install/install.md) for uploading over USB, rootless paths, a
 - **Screenshots and OCR**: Save JPEG or PNG screenshots, return images as Base64, record the screen to a movie, wait for the screen to change or settle, recognize text, or collect an image, OCR results, and accessibility elements together.
 - **Apps**: List, launch, relaunch, inspect, register, unregister, and refresh apps; grant, deny, or reset their privacy permissions, erase their data, and open their Settings page; inspect or repair their network policy. Install and remove local DEB packages and IPA files; an IPA installed with `--container` gets its own app and data containers and is re-signed ad-hoc inside icli, so decrypted App Store apps launch.
 - **Files and logs**: Read, write, copy, move, link, and remove files; change permissions and ownership; read and edit property lists; capture live logs and read crash reports.
+- **Control Center**: Read and set Airplane Mode, Wi-Fi, Bluetooth, cellular data, Personal Hotspot, AirDrop, Focus and Do Not Disturb, the flashlight and its level, rotation lock, Low Power Mode, and light or dark appearance, and read screen mirroring; each change is read back and stays after icli exits.
 - **Device controls**: Lock and unlock, keybag unlock with a supplied passcode, brightness, volume, rotation, appearance, accessibility text size and display settings, time zone, hardware buttons, the clipboard, Low Power Mode, Darwin notifications, Developer Mode, simulated location, reboots, and boot logos.
 - **System**: Manage launchd services, local DEB packages and repository sources, account passwords, system app visibility, SpringBoard restarts, packet capture, and test Keychain items; read jetsam bands and memory pressure.
 - **Preferences**: Read, write, and delete typed preference values like `defaults`.
 - **Inspect running apps**: `icli flex` brings FLEX's in-app inspection to the command line (ported from FlexUltra): live objects and the heap, views and view controllers, the app's files, defaults, keychain, SQLite and Realm databases, network history, its log, and method tracing. The agent is loaded only while a command runs.
 - **Scripting**: Run a JavaScriptCore script in-process with `icli probe`, or inside an app with `icli probe --app`, with an Objective-C reflection bridge and icli's own capabilities through `api()`.
-- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners wait instead of interfering.
+- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners wait instead of interfering; while a lease is held, the device shows its owner's name above the home indicator.
 
 ## Command Line
 
@@ -58,7 +59,7 @@ icli log syslog --seconds 3 --level error
 | Accessibility, touch, keyboard, pointer, screenshots, OCR | [Interaction and Screen Capture](docs/usage/interaction.md) |
 | Apps, packages, files, logs | [Apps, Files, and Logs](docs/usage/apps-files-logs.md) |
 | launchd services, registration, reboots | [Services and System Maintenance](docs/usage/services.md) |
-| Location, power, notifications, preferences | [Location, Power, and Preferences](docs/usage/device-settings.md) |
+| Control Center toggles, location, power, notifications, preferences | [Location, Power, and Preferences](docs/usage/device-settings.md) |
 | Full FlexUltra inspection, heap search, mutation, tracing and MCP | [Inspect Running Apps](docs/usage/flex.md) |
 | JavaScriptCore scripting with `icli probe` | [Script the Device](docs/usage/probe.md) |
 | JSON output, errors, lock state, RootHide paths | [Output and Device State](docs/usage/output.md) |
