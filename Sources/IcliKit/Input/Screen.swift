@@ -17,6 +17,7 @@ public func takeScreenshot(
     width: Double? = nil,
     png: Bool = false,
 ) throws -> [String: Any] {
+    try requireCaptureCoordinateSpace()
     icli_private_init()
     if let width {
         guard !nativeResolution else { throw IcliError.failed("give --width or --native-resolution, not both") }
@@ -57,6 +58,7 @@ public func takeScreenshot(
 
 /// One screenshot's JPEG bytes, for a caller that wants them and no file.
 public func screenshotJPEGData(nativeResolution: Bool = false) throws -> Data {
+    try requireCaptureCoordinateSpace()
     icli_private_init()
     let path = JailbreakRoot.current.scratchDirectory() + "/icli-\(UUID().uuidString).jpg"
     defer { try? FileManager.default.removeItem(atPath: path) }
@@ -276,6 +278,7 @@ public func openURL(_ url: String) throws -> [String: Any] {
 public func recognizeScreen(
     languages: [String], minConfidence: Float, locating: String? = nil, region: ScreenRegion? = nil, fast: Bool = false,
 ) throws -> [String: Any] {
+    try requireCaptureCoordinateSpace()
     guard !languages.isEmpty, minConfidence.isFinite, (0 ... 1).contains(minConfidence) else {
         throw IcliError.failed("provide languages and confidence between 0 and 1")
     }
@@ -495,6 +498,7 @@ public func screenElements(
 }
 
 public func describeScreen() throws -> [String: Any] {
+    try requireCaptureCoordinateSpace()
     let frontmost = frontmostApp()
     guard let original = icli_screen_cgimage(true) else { throw IcliError.failed("screen capture failed") }
     let image = UIImage(cgImage: original)

@@ -71,6 +71,7 @@ private struct ScreenSample {
 }
 
 private func captureScreenSample(region: ScreenRegion?) throws -> ScreenSample {
+    try requireCaptureCoordinateSpace()
     guard let image = icli_screen_cgimage(false) else { throw IcliError.failed("screenshot failed") }
     return try ScreenSample(image: image, region: region)
 }
