@@ -11,6 +11,7 @@ icli app launch example.bundle.id
 icli app launch Settings                # by name, when only one visible app has it
 icli fs write /tmp/example.txt 'Hello from icli'
 icli fs read /tmp/example.txt
+icli fs read /tmp/example.txt --offset 6 --limit 4096 --binary
 icli log syslog --seconds 3 --level error
 icli log syslog --seconds 10 --subsystem com.example.tweak --message-contains 'loaded' --max-lines 20
 icli log crashes --bundle-id example.bundle.id
@@ -25,6 +26,22 @@ icli log crashes --kind spin                   # also crash, diagnostic or log
 `log crashes --kind` sorts reports by file name: `spin` is a spin or hang report (`.spin`, `.hang`, `_hang`, or a name starting `stacks`); among `.ips` and `.crash` reports, `diagnostic` is a system report whose name contains `jetsamevent`, `excresource`, `_resource`, `panic`, `watchdog`, `lowbattery`, `analytics`, `sfa-`, `xp_amp_`, `sirisearchfeedback`, `applicationnotresponding` or `proactive_event_tracker`, and `crash` is the rest; `log` is any other file. Without `--kind` the list is every `.ips` and `.crash` report, as before. `log crash --bundle-id <id>` reads that app's newest `crash` report. `log crashes --limit N` lists the newest N (`count` stays the total and `truncated` is true). `log crash --summary` names the report's `bug_type` in `report_type`: 109 and 309 crash, 308 user fault (the process kept running), 298 jetsam (memory pressure), 288 stackshot, 202 resource (CPU), 145 resource (disk writes).
 
 `app list --user` keeps the apps LaunchServices types `User`, leaving out system and bootstrap apps. `app settings <app>` opens Settings at the app's own page with `prefs:root=<bundle id>` and confirms the page's title is the app's name; an app with nothing to set there has no page, and the command fails with `no_settings_page`. `url open --check-changed` captures the screen first, then waits frame by frame (up to `--timeout`, default 5 s) for it to change; `screen_changed: false` says the URL showed nothing new.
+
+### Reading Files in Chunks
+
+`fs read --offset <bytes>` starts at that byte position (default 0), and
+`--limit <bytes>` caps the returned chunk (default 524288, range 0–67108864).
+Negative offsets fail. At or past the end, content is empty and `truncated`
+is false. `size` reports the whole file size observed before reading;
+`truncated` says more bytes were available beyond the returned chunk.
+
+For repeated reads of an append-only log, use `--binary`, Base64-decode
+`content`, and advance the offset by the decoded byte count. Byte boundaries
+can split UTF-8 characters; character counts and Base64 string lengths are
+not byte offsets. If `size` becomes smaller than the saved offset, reset to 0.
+This detects shrinkage, but cannot reliably detect replacement by another
+file of the same or greater size. Each command reads one chunk; it does not
+keep watching the file.
 
 ### Permissions and Fresh Data
 

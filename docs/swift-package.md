@@ -205,6 +205,28 @@ let report = try readCrashLog("/var/mobile/Library/Logs/CrashReporter/example.ip
 
 `readCrashLog(_:maxBytes:)` reads at most `maxBytes` of the file without loading the rest, refuses anything but a regular file, and answers `content`, `bytes` (what `content` holds), `size` (the whole file) and `truncated`.
 
+## Reading files in chunks
+
+`readFile(_:binary:limit:offset:)` accepts an optional byte offset as its last
+parameter, defaulting to 0 when omitted or `nil`. Existing calls remain valid:
+
+```swift
+let chunk = try readFile("/tmp/example.log", binary: true, limit: 4096, offset: 8192)
+let bytes = Data(base64Encoded: chunk["content"] as? String ?? "")
+```
+
+The limit defaults to 524288 bytes and accepts 0–67108864. Negative offsets
+throw `IcliError.failed("offset must be 0 or greater")`. At or beyond EOF,
+content is empty and `truncated` is false. The result keeps the existing
+`path`, `encoding`, `content`, `size` and `truncated` fields; `size` is the
+whole file size observed before reading, and `truncated` indicates bytes
+beyond this chunk. With `binary: true`, `encoding` is `base64`.
+
+For incremental reads, advance the offset by the decoded byte count. Use
+binary replies because arbitrary byte boundaries can split UTF-8 characters.
+If the file size falls below the offset, reset to 0; size alone cannot
+reliably detect replacement by a file of the same or greater size.
+
 ## The IcliLaunch product
 
 `IcliLaunch` is what a host needs to bring an app to the front, and nothing else: a command-line tool that wakes its own app, for example. `IcliKit` depends on it and re-exports it, and it re-exports `IcliSystem`, whose `IcliError` it throws.

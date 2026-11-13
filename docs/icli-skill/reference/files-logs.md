@@ -7,7 +7,7 @@ All paths are physical device paths. On RootHide, the SSH shell's `/` is the boo
 | Command | Purpose | Key flags | Root | Screen |
 | --- | --- | --- | --- | --- |
 | `fs ls <path>` | Directory entries with name, path, directory and symlink flags, size, modified time | | no | unlocked |
-| `fs read <path>` | File content as UTF-8, or as Base64 when the content is binary | `--binary` (always Base64), `--limit <bytes>` (default 524288, max 64 MiB); `truncated` is reported | no | unlocked |
+| `fs read <path>` | File content as UTF-8, or as Base64 when the content is binary | `--binary` (always Base64), `--limit <bytes>` (default 524288, max 64 MiB), `--offset <bytes>` (start byte, default 0; past the end returns empty content); `truncated` is reported | no | unlocked |
 | `fs write <path> <content>` | Write a file, creating parent directories | `--encoding utf8\|base64` | no | unlocked |
 | `fs find <root> <pattern>` | Recursive search for relative paths containing `<pattern>` (ignores case, at most 500 results) | | no | unlocked |
 | `fs plist <path>` | Property list as JSON | | no | unlocked |
@@ -21,6 +21,14 @@ All paths are physical device paths. On RootHide, the SSH shell's `/` is the boo
 | `fs move <src> <dst>` | Move or rename | | no | any |
 
 "Root: no" means icli does not demand root. The file's own permissions still apply, so use `sudo` for system locations.
+
+For incremental `fs read` calls, pass `--binary` and advance `--offset` by the
+Base64-decoded byte count, not the text length. Offsets are nonnegative bytes;
+an offset at or beyond EOF returns empty content with `truncated: false`.
+`size` remains the whole file size observed before reading, and `truncated`
+reports bytes beyond the returned chunk. Reset the offset to 0 if `size`
+shrinks below it; this does not reliably detect a replacement file of the
+same or greater size. See [chunked reads](../../usage/apps-files-logs.md#reading-files-in-chunks).
 
 ## log
 
