@@ -1,5 +1,33 @@
 # Testing and Compatibility
 
+## Audio Route Host Tests
+
+On macOS, run `rtk test ./scripts/test-audio-routes.sh`. It compiles the production
+native audio bridge against a fake AVSystemController, checking exact UID
+matching, intact native dictionaries, asynchronous completion with and without
+notifications, both switch directions, already-selected routes, rejection,
+disappearance, accepted-but-unconfirmed timeouts, invalid native data and a
+worker thread without an existing run loop. It does not change host audio.
+The fake requires an explicit native notification subscription and checks that
+the temporary event client is released after success, failure and timeout.
+Device qualification additionally requires a testing lease, a fresh output
+list, switching in both directions and restoring the original selected UID.
+Inside the owned device shell, run `python3 test-audio-routes-device.py
+--alternate-uid '<uid-from-list>' --report /tmp/audio-routes.json` after copying
+the script from `scripts/`. It checks both directions twice, independent native
+reads, each output's saved volume, no-op/missing-UID behavior and unchanged cc
+toggle states, and restores the original route in `finally`. Release your lease
+after checking its report. It never changes volume or starts playback.
+
+On iOS 17.1.1, merely observing the exported route notification names receives
+no events. The native `setAttribute:forKey:error:` subscription with the exported
+`AVSystemController_SubscribeToNotificationsAttribute` key and an array of the
+exported route notification names was verified to deliver
+`ActiveAudioRouteDidChange`. A separate AVSystemController instance can own that
+subscription while the shared controller selects and reads routes; this keeps
+the host's shared subscriptions intact. Unselected routes may omit
+`RouteCurrentlyPicked`; the missing key means false.
+
 ## Self-Tests
 
 Run the built-in self-tests **on the target device** (or invoke them over SSH):

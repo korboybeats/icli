@@ -27,6 +27,8 @@
 | `cc get <toggle>` | One toggle: `state`, `enabled`, and per toggle `level` (flashlight), `mode`/`mode_id`/`modes` (focus), `time_limited` (AirDrop Everyone), `device` (mirroring) | | yes (tested as root) | any |
 | `cc set <toggle> <value>` | Set a toggle and read it back; `changed` is false when it already had the value. Toggles: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop` (`off`/`contacts`/`everyone`), `focus` (`on`/`off`/a Focus name), `flashlight` (`on`/`off`/level 0–1), `rotation-lock`, `low-power`, `appearance` (`light`/`dark`); `mirroring` is read-only | | yes (tested as root) | any |
 | `cc toggle <toggle>` | Flip a toggle; AirDrop flips off↔contacts, focus off↔Do Not Disturb | | yes (tested as root) | any |
+| `cc audio list` | Available Audio/Video outputs: `routes: [{name, uid, selected}]`, `selected_uid` | | tested as root | any |
+| `cc audio select <route-uid>` | Exact, case-sensitive UID from the list; waits for native selected-state confirmation, returns `changed`, `requested_uid`, `previous_uid` and fresh routes | `--timeout 8` (greater than 0 through 60 seconds) | tested as root | any |
 | `device timezone get` | `identifier` (Olson name), `automatic` (Set Automatically), `seconds_from_gmt` | | no | any |
 | `device timezone set <identifier>` | Set the time zone to an Olson name such as `Asia/Shanghai` and turn Set Automatically off, as Settings does; running apps and SpringBoard switch at once. Returns `changed` | | no | any |
 | `device timezone automatic <on\|off>` | Turn Set Automatically on or off; `on` hands the zone back to timed | | no | any |
@@ -91,3 +93,4 @@ Control Center notes:
 - `cc set focus on` turns on Do Not Disturb; the Focus stays on after icli exits.
 - `cc set flashlight on` uses the level Control Center last used. The flashlight stays on after icli exits.
 - `cc set airdrop everyone` turns itself back to contacts after 10 minutes, as on the device.
+- `cc audio select` succeeds only after a native read confirms the exact UID. Missing/disappearing routes return `route_unavailable`, rejection returns `route_rejected`, and unconfirmed acceptance returns `timed_out`; failures exit nonzero. It never writes volume settings, starts playback, invokes Siri or toggles Bluetooth. Native route-change events wake verification where available, with bounded rereads as a fallback. Password/PIN entry is unsupported. Save the original `selected_uid` to restore it after testing.

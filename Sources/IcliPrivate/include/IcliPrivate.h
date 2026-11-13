@@ -289,6 +289,11 @@ char *icli_cc_focus_json(void);
 int icli_cc_focus_set(const char *mode, char **message);
 /// {mirroring, device} or {error}.
 char *icli_cc_mirroring_json(void);
+/// Audio/Video outputs: {routes: [{name, uid, selected}], selected_uid}.
+/// Selection succeeds only after a native read confirms the exact UID. Errors
+/// carry {error, message} and the last route snapshot when available.
+char *icli_cc_audio_list_json(void);
+char *icli_cc_audio_select_json(const char *routeUID, double timeout);
 /// MobileKeyBag's lock state and attempt counters as JSON: lock_state, and
 /// when the keybag reports them failed_attempts, backoff_seconds,
 /// permanently_blocked, should_wipe and recovery_countdown.

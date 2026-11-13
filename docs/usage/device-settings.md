@@ -32,6 +32,41 @@ icli cc toggle hotspot
 
 A simulated location applies to every app and stays on after icli exits, until `location clear`. `notify post` posts a Darwin notification to every observer, optionally storing a `--state` value first; names that notifyd reserves, such as those under `com.apple.system.`, need root. `device devmode enable` asks the system to turn Developer Mode on after the next restart and does nothing when it is already on. `device timezone set` turns Set Automatically off and switches the system time zone; running apps follow at once, and `device timezone automatic on` hands it back to the system. `prefs` commands use mobile's preferences by default, including under `sudo`; `--user root`, `current` or `any` choose another set, and a `.plist` path works as a domain. Writes go through cfprefsd, so running apps see them.
 
+## Audio Output
+
+```sh
+icli cc audio list
+icli cc audio select '<route-uid>'
+icli cc audio select '<route-uid>' --timeout 15
+```
+
+Use an exact, case-sensitive UID from `audio list`, which returns
+`routes: [{name, uid, selected}]` and `selected_uid` (null if there is no single
+selected output). Names can be identical; selection uses only the UID. Outputs
+are discovered each time from the system's Audio/Video routes. Commands work
+with the screen locked and obey the normal testing lease.
+
+Selection passes the original native route dictionary with an empty password.
+It waits up to 8 seconds by default (`--timeout` accepts greater than 0 through
+60 seconds), waking on native route-change events when available and rereading
+the native state. An accepted request alone is never success. A successful
+response includes the fresh route list, `selected_uid`, `requested_uid`,
+`previous_uid`, and `changed`. Selecting the already selected UID returns
+`changed: false` without sending another request.
+
+Failures exit nonzero: `route_unavailable` means the exact UID is absent or
+disappeared, `route_rejected` means the native service refused it, `timed_out`
+means acceptance was not confirmed before the deadline, and `unavailable`
+means the native route API/state cannot be used. When available, failures
+include the last native route list and selected UID. A timed-out request may
+still complete later; use `audio list` to check. Password/PIN entry is not
+supported by these commands.
+
+These commands do not write volume settings, start playback, invoke Siri or
+toggle Bluetooth. iOS applies its existing per-output volume when routes change.
+To restore an output after testing, save its `selected_uid` before switching
+and select that UID afterward.
+
 ## Unlock with a Passcode
 
 To lock the phone and turn off the screen:
