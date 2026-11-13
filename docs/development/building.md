@@ -56,3 +56,7 @@ No live Swift values or mirror constructors are exposed. The engine and metadata
 libraries are loaded lazily, carry both architectures, and undergo the same
 import checks (`--platform engine` / `--platform reflex`). The iOS package has
 six Mach-O files (the CLI, probe agent, FLEX, FlexUltra, Swift metadata runtime and lease indicator); all dependency licenses are shipped beside its notices.
+
+## Complete release assets
+
+After building iOS and tvOS and running `scripts/check-packages.sh`, commit the release source and run `python3 scripts/prepare-release.py --tag <version> --repository korboybeats/icli`. It verifies the package report and hashes, stages every package plus standalone CLIs, and builds a complete ZIP with all iOS runtimes, documents, agent skill, signing profiles and licenses. It writes checksums, source provenance and GitHub-ready cumulative release notes without publishing or modifying device-acceptance reports. The release workflow uses the same preparation script.
