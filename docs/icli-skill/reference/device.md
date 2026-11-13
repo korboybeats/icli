@@ -25,7 +25,7 @@
 | `device low-power set <on\|off>` | Turn Low Power Mode on or off through powerd, like Control Center; waits up to 3 seconds for its reply, then checks the new state | | no | any |
 | `cc list` | Every Control Center toggle with its state; a toggle that cannot be read carries `error` | | yes (tested as root) | any |
 | `cc get <toggle>` | One toggle: `state`, `enabled`, and per toggle `level` (flashlight), `mode`/`mode_id`/`modes` (focus), `time_limited` (AirDrop Everyone), `device` (mirroring) | | yes (tested as root) | any |
-| `cc set <toggle> <value>` | Set a toggle and read it back; `changed` is false when it already had the value. Toggles: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop` (`off`/`contacts`/`everyone`), `focus` (`on`/`off`/a Focus name), `flashlight` (`on`/`off`/level 0–1), `rotation-lock`, `low-power`, `appearance` (`light`/`dark`); `mirroring` is read-only | | yes (tested as root) | any |
+| `cc set <toggle> <value>` | Set a toggle and read it back; `changed` is false when it already had the value. Toggles: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop` (`off`/`contacts`/`everyone`), `focus` (`on`/`off`/a Focus name), `silent` (`on` means ringer muted; `off` ringer unmuted), `flashlight` (`on`/`off`/level 0–1), `rotation-lock`, `low-power`, `appearance` (`light`/`dark`); `mirroring` is read-only | | yes (tested as root) | any |
 | `cc toggle <toggle>` | Flip a toggle; AirDrop flips off↔contacts, focus off↔Do Not Disturb | | yes (tested as root) | any |
 | `cc audio list` | Available Audio/Video outputs: `routes: [{name, uid, selected}]`, `selected_uid` | | tested as root | any |
 | `cc audio select <route-uid>` | Exact, case-sensitive UID from the list; waits for native selected-state confirmation, returns `changed`, `requested_uid`, `previous_uid` and fresh routes | `--timeout 8` (greater than 0 through 60 seconds) | tested as root | any |
@@ -87,6 +87,8 @@ Notify notes:
 - notifyd can reserve names for root, such as those under `com.apple.system.`. A post it refuses fails with `unavailable`; on iOS 26 it can instead accept mobile's post and never deliver it, which shows as `delivered: false`. Retry either with `sudo`.
 
 Control Center notes:
+
+- `cc get silent`, `cc set silent on|off` and `cc toggle silent` use native Silent mode state. They preserve Media, Ringtone, Alarm and Siri volumes, verify changes within three seconds, and work in batch/session. Repeated sets report `changed: false`.
 
 - `cc set wifi off` and `cc set airplane on` cut Wi-Fi, so an SSH session over Wi-Fi drops before the answer arrives. Run them from a detached script that restores the state, or over USB.
 - `cc set focus off` ends every active Focus, including one a schedule started, like the Control Center button.

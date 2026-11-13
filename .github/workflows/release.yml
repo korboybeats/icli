@@ -127,6 +127,7 @@ jobs:
       - name: Fork audio outputs, verified actions and saved-passcode guards
         run: |
           ./scripts/test-audio-routes.sh
+          ./scripts/test-silent-mode.sh
           ./scripts/test-verified-ui-actions.sh
           bash ./scripts/test-passcode-unlock.sh
           ./scripts/test-saved-passcode.sh
@@ -143,6 +144,7 @@ jobs:
           name: icli-debs-${{ env.RELEASE_TAG }}
           path: .build/publish-*/*
           if-no-files-found: error
+          include-hidden-files: true
 
       - name: Stage draft release for artifact validation
         env:

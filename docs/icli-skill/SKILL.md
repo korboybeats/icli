@@ -70,7 +70,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Read the current location | `icli location get` (check `fresh` and `simulated`) |
 | Post a Darwin notification or read its state | `icli notify post <name> [--state N]` / `icli notify get <name>` |
 | Switch to light or dark mode | `icli device appearance set dark` |
-| Read or flip Control Center toggles (Wi-Fi, Bluetooth, Airplane Mode, cellular data, Hotspot, AirDrop, Focus, flashlight) | `sudo icli cc list` / `sudo icli cc set bluetooth off` / `sudo icli cc toggle flashlight` |
+| Read or flip Control Center toggles (Wi-Fi, Bluetooth, Airplane Mode, cellular data, Hotspot, AirDrop, Focus, Silent mode, flashlight) | `sudo icli cc list` / `sudo icli cc set bluetooth off` / `sudo icli cc toggle flashlight` |
 | Change the text size, Reduce Motion, Increase Contrast or Reduce Transparency | `icli device accessibility set --text-size xxl --reduce-motion on` |
 | Open a Settings page | `icli url open 'prefs:root=General&path=About'` (table in [apps](reference/apps.md)) |
 | Open an app's page in Settings (its permissions, notifications) | `icli app settings <bundle-id or name>` |

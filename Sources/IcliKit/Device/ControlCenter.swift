@@ -7,7 +7,7 @@ import IcliSystem
 /// of the same names.
 public let controlCenterToggles = [
     "airplane", "wifi", "bluetooth", "cellular", "hotspot", "airdrop", "focus",
-    "flashlight", "mirroring", "rotation-lock", "low-power", "appearance",
+    "silent", "flashlight", "mirroring", "rotation-lock", "low-power", "appearance",
 ]
 
 private let toggleAliases = [
@@ -52,6 +52,7 @@ public func controlCenterGet(_ name: String) throws -> [String: Any] {
     case "hotspot": result = try hotspotState()
     case "airdrop": result = try airdropState()
     case "focus": result = try focusState()
+    case "silent": result = onOff(try read(icli_cc_silent_get(), "Silent mode"))
     case "flashlight": result = try flashlightState()
     case "mirroring": result = try mirroringState()
     case "rotation-lock":
@@ -81,6 +82,11 @@ public func controlCenterSet(_ name: String, _ value: String) throws -> [String:
             try check(icli_cc_airdrop_set(Int32(mode)), "AirDrop", seconds: 5)
         }
     case "focus": try setFocus(value, before: before)
+    case "silent":
+        let enabled = try parseOnOff(value)
+        if before["enabled"] as? Bool != enabled {
+            try check(icli_cc_silent_set(enabled), "Silent mode", seconds: 3)
+        }
     case "flashlight":
         let level = try flashlightLevel(value)
         if abs((before["level"] as? Double ?? -1) - level) >= 0.005 {
@@ -99,6 +105,9 @@ public func controlCenterSet(_ name: String, _ value: String) throws -> [String:
         if before["state"] as? String != style { _ = try setAppearance(style) }
     }
     var after = try controlCenterGet(toggle)
+    if toggle == "silent", after["enabled"] as? Bool != (try parseOnOff(value)) {
+        throw IcliError.failed("Silent mode did not reach the requested state.")
+    }
     after["changed"] = !sameState(before, after)
     return after
 }

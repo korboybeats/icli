@@ -213,5 +213,7 @@
 		<string>IOHIDUserDevice</string>
 		<string>IOHIDResourceDeviceUserClient</string>
 	</array>
+	<key>com.apple.private.mediaexperience.setsilentmode.allow</key>
+	<true/>
 </dict>
 </plist>

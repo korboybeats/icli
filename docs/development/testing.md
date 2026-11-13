@@ -1,5 +1,15 @@
 # Testing and Compatibility
 
+## Silent Mode Tests
+
+Run `rtk test ./scripts/test-silent-mode.sh` on macOS for the production native
+bridge tests. [Silent mode validation](silent-mode-validation.md) records the
+verified ABI, client constants, entitlement and device qualification scope.
+The physical test runner `scripts/test-silent-mode-device.py` requires its own
+lease and the native read-only helper; it verifies commands, batch/session,
+independent SpringBoard state and all four volume baselines, then restores the
+original Silent mode state in `finally`.
+
 ## Audio Route Host Tests
 
 On macOS, run `rtk test ./scripts/test-audio-routes.sh`. It compiles the production

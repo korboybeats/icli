@@ -10,6 +10,7 @@ struct Cc: ParsableCommand {
         Values: on or off; airdrop takes off, contacts or everyone (Everyone turns itself off after 10 minutes); \
         focus takes on (Do Not Disturb), off or a Focus name such as sleep or work; flashlight takes on, off or a \
         level from 0 to 1; appearance takes light or dark. mirroring is read-only.
+        silent on enables Silent mode (ringer muted); off disables it (ringer unmuted). It does not change volumes.
         Every command answers with the state read back after the change.
         Audio outputs: 'audio list' lists names and exact UIDs; 'audio select <route-uid>' waits for verified selection.
 
@@ -18,6 +19,7 @@ struct Cc: ParsableCommand {
           icli cc set wifi off
           icli cc set airdrop everyone
           icli cc set focus sleep
+          icli cc set silent on
           icli cc toggle flashlight
           icli cc audio list
         """,
