@@ -64,6 +64,8 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Get a screenshot, OCR and elements together | `icli screen describe` |
 | Get the model, iOS version, battery and bootstrap layout | `icli device info` |
 | Get brightness, volume and orientation | `icli device brightness get` / `volume get` / `rotation get` |
+| List audio outputs and see which is selected | `icli cc audio list` (`name`, exact `uid`, `selected`) |
+| Switch audio output and confirm it actually changed | `icli cc audio select '<route-uid>'` (exact UID from the list; `--timeout 8`; preserves volume settings) |
 | Simulate the GPS location, then stop | `icli location set 37.3349 -122.009` / `icli location clear` |
 | Read the current location | `icli location get` (check `fresh` and `simulated`) |
 | Post a Darwin notification or read its state | `icli notify post <name> [--state N]` / `icli notify get <name>` |

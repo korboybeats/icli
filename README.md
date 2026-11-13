@@ -4,7 +4,7 @@ Control your iPhone from the command line. Tap and swipe, enter text, inspect ac
 
 icli runs on the device itself. Use it in a device terminal or over SSH from your Mac. It requires an arm64 device running iOS 15 or later on custom firmware with a compatible bootstrap. A separate build runs on tvOS 15 or later; see [tvOS](docs/platforms/tvos.md).
 
-icli is a single, self-contained executable. It performs its work in-process using iOS frameworks and a statically linked archive library, without spawning subprocesses or invoking bootstrap tools. `icli env` reports `spawns_processes: false` and an empty `external_tools_used` object.
+The CLI performs device operations in-process using iOS frameworks and a statically linked archive library, without spawning subprocesses or invoking bootstrap tools. App inspection additionally uses the app agent and runtimes shipped in the iOS package. `icli env` reports `spawns_processes: false` and an empty `external_tools_used` object.
 
 For app integration, add this repository as a Swift Package dependency and select **IcliKit**, or the Foundation-only **IcliSystem** (read-only system state) and **IcliLaunch** (bring an app to the front, read the lock state and the frontmost app). See the [Swift Package integration guide](docs/swift-package.md) and the [entitlement inventory](docs/entitlements.md).
 
@@ -37,9 +37,9 @@ See [Install](docs/install/install.md) for uploading over USB, rootless paths, a
 - **Device controls**: Lock and unlock, keybag unlock with a supplied passcode, brightness, volume, rotation, appearance, accessibility text size and display settings, time zone, hardware buttons, the clipboard, Low Power Mode, Darwin notifications, Developer Mode, simulated location, reboots, and boot logos.
 - **System**: Manage launchd services, local DEB packages and repository sources, account passwords, system app visibility, SpringBoard restarts, packet capture, and test Keychain items; read jetsam bands and memory pressure.
 - **Preferences**: Read, write, and delete typed preference values like `defaults`.
-- **Inspect running apps**: `icli flex` brings FLEX's in-app inspection to the command line (ported from FlexUltra): live objects and the heap, views and view controllers, the app's files, defaults, keychain, SQLite and Realm databases, network history, its log, and method tracing. The agent is loaded only while a command runs.
+- **Inspect running apps**: `icli flex` brings FLEX's in-app inspection to the command line (ported from FlexUltra): live objects and the heap, views and view controllers, the app's files, defaults, keychain, SQLite and Realm databases, network history, its log, and method tracing. The agent attaches on demand and remains loaded in the target app until it exits.
 - **Scripting**: Run a JavaScriptCore script in-process with `icli probe`, or inside an app with `icli probe --app`, with an Objective-C reflection bridge and icli's own capabilities through `api()`.
-- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners wait instead of interfering; while a lease is held, the device shows its owner's name above the home indicator.
+- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners receive a clear refusal instead of interfering; while a lease is held, the device shows its owner's name above the home indicator.
 
 ## Command Line
 
@@ -59,7 +59,7 @@ icli log syslog --seconds 3 --level error
 | Accessibility, touch, keyboard, pointer, screenshots, OCR | [Interaction and Screen Capture](docs/usage/interaction.md) |
 | Apps, packages, files, logs | [Apps, Files, and Logs](docs/usage/apps-files-logs.md) |
 | launchd services, registration, reboots | [Services and System Maintenance](docs/usage/services.md) |
-| Control Center toggles, location, power, notifications, preferences | [Location, Power, and Preferences](docs/usage/device-settings.md) |
+| Control Center toggles, audio outputs, location, power, notifications, preferences | [Location, Power, and Preferences](docs/usage/device-settings.md) |
 | Full FlexUltra inspection, heap search, mutation, tracing and MCP | [Inspect Running Apps](docs/usage/flex.md) |
 | JavaScriptCore scripting with `icli probe` | [Script the Device](docs/usage/probe.md) |
 | JSON output, errors, lock state, RootHide paths | [Output and Device State](docs/usage/output.md) |
@@ -68,7 +68,7 @@ icli log syslog --seconds 3 --level error
 ## Development
 
 - [Build from Source](docs/development/building.md): toolchain, `make` targets, package outputs, and release CI.
-- [Testing and Compatibility](docs/development/testing.md): on-device self-tests, the acceptance suite, and tvOS acceptance. The last full acceptance report, for 0.3.0 on the rootless vphone, is in the [acceptance report](docs/rootless-acceptance.md); later device checks are listed in each release's notes under [docs/releases](docs/releases).
+- [Testing and Compatibility](docs/development/testing.md): on-device self-tests, the acceptance suite, and tvOS acceptance. The last full acceptance report, for 0.3.0 on the rootless vphone, is in the [acceptance report](docs/rootless-acceptance.md); later device checks are listed in [release notes](docs/releases) and the [audio-output validation summary](docs/development/audio-output-validation.md).
 
 ## License
 

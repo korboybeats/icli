@@ -105,7 +105,7 @@ struct LeaseCommand: ParsableCommand {
         every command carrying the token keeps it alive, however long the run. Only a lease no command has used \
         for --ttl seconds (default 600) lapses, so a runner that crashed or lost its connection frees the device.
 
-          export ICLI_LEASE=$(icli lease acquire --owner ci | jq -r .token)
+          export ICLI_LEASE=$(icli lease acquire --owner myapp-ui-tests | jq -r .token)
           ...
           icli lease release
         """,
@@ -115,7 +115,7 @@ struct LeaseCommand: ParsableCommand {
     struct Indicator: ParsableCommand {
         static var configuration = CommandConfiguration(
             abstract: "Show or hide the holder's name on the device screen",
-            discussion: "While a lease is held, SpringBoard shows 'icli: <owner>' at the top of the screen. It passes touches through and stays out of screenshots and the accessibility tree. Without an argument this prints whether it is on.",
+            discussion: "While a lease is held, SpringBoard shows 'icli: <owner>' near the bottom of the screen, just above the home indicator when present. It passes touches through and stays out of screenshots and the accessibility tree. Without an argument this prints whether it is on.",
         )
         @OptionGroup var output: OutputOptions
         @Argument(help: "on or off.") var value: String?

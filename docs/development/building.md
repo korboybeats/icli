@@ -3,7 +3,7 @@
 Requires macOS with Xcode and its iPhoneOS SDK, Swift, Clang, Make, `ldid`, `dpkg-deb`, and Python 3. Make these tools available on your `PATH`.
 
 ```sh
-git clone https://github.com/owngoal-dev/icli.git
+git clone https://github.com/korboybeats/icli.git
 cd icli
 make all CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=
 make deb-rootless
@@ -55,4 +55,4 @@ pinned Echo runtime symbol declarations with a ptr/i64 PHI mismatch at `-O`.
 No live Swift values or mirror constructors are exposed. The engine and metadata
 libraries are loaded lazily, carry both architectures, and undergo the same
 import checks (`--platform engine` / `--platform reflex`). The iOS package has
-five executable files; all dependency licenses are shipped beside its notices.
+six Mach-O files (the CLI, probe agent, FLEX, FlexUltra, Swift metadata runtime and lease indicator); all dependency licenses are shipped beside its notices.

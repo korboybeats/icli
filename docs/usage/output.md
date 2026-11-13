@@ -16,6 +16,8 @@ Audio buttons try hardware events first and fall back to the system audio contro
 
 `icli lease acquire --owner <name>` claims the device until `icli lease release`: meanwhile icli commands without its token fail with exit 75 and `error: leased`. Every command carrying the token keeps the lease alive, however long the run; it lapses only after `--ttl` seconds (default 600) with no such command, which frees the device when a runner crashes without releasing. `lease status` shows `last_used_at` and `seconds_left`. Pass the printed `token` as `ICLI_LEASE`. `lease` and `status` always run. While a lease is held, the phone shows `icli: <owner>` just above the home indicator (a SpringBoard tweak in the package, active after a respring). It passes touches through and stays out of screenshots, OCR and `ui tree`; `icli lease indicator off` hides it.
 
+Leases coordinate interactive testing. Install an authorized build through the SSH shell (`dpkg -i` or `trollinst`) without acquiring or taking over an existing testing lease.
+
 `ICLI_FAILURE_ARTIFACTS=<dir>` makes every failed command save `error.json`, `screen.jpg` and `tree.json` in a new folder under `<dir>`, named in the error's `artifacts`.
 
 ## Paths on RootHide

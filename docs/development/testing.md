@@ -12,12 +12,17 @@ The fake requires an explicit native notification subscription and checks that
 the temporary event client is released after success, failure and timeout.
 Device qualification additionally requires a testing lease, a fresh output
 list, switching in both directions and restoring the original selected UID.
-Inside the owned device shell, run `python3 test-audio-routes-device.py
---alternate-uid '<uid-from-list>' --report /tmp/audio-routes.json` after copying
-the script from `scripts/`. It checks both directions twice, independent native
+After copying `scripts/test-audio-routes-device.py` to the device, run inside the owned device shell:
+
+```sh
+python3 test-audio-routes-device.py --alternate-uid '<uid-from-list>' --report /tmp/audio-routes.json
+```
+
+It checks both directions twice, independent native
 reads, each output's saved volume, no-op/missing-UID behavior and unchanged cc
 toggle states, and restores the original route in `finally`. Release your lease
 after checking its report. It never changes volume or starts playback.
+The recorded phone results and their scope are in [Audio Output Validation](audio-output-validation.md).
 
 On iOS 17.1.1, merely observing the exported route notification names receives
 no events. The native `setAttribute:forKey:error:` subscription with the exported
@@ -47,7 +52,7 @@ These checks establish compatibility for the operations listed in the report. Th
 
 ## Device Acceptance
 
-The [acceptance report](../rootless-acceptance.md) is generated from the recorded test run and lists every case and every command entry point with its result; failed or untested entries stay visible. Acceptance covers rotation, package repositories, network capture, and Keychain operations on dedicated `icli.test` entries. Security.framework queries remain limited by the calling process's access groups. `sec keychain database` separately reads protected metadata across groups when the process can read the database; it never returns item values or encrypted blobs. RootHide service inspection has been checked on an iOS 18.5 iPad; the complete acceptance suite, privileged RootHide mutations, other iOS versions, and other physical hardware still require separate testing.
+The checked-in [historical acceptance report](../rootless-acceptance.md) records the 0.3.0 run on 2026-09-07. Its case and command counts apply to that version, not the current command inventory. Later focused checks are documented in [release notes](../releases) and [Audio Output Validation](audio-output-validation.md); they do not replace a full acceptance run for the current binary. The acceptance runner covers rotation, package repositories, network capture, and Keychain operations on dedicated `icli.test` entries. Security.framework queries remain limited by the calling process's access groups. `sec keychain database` separately reads protected metadata across groups when the process can read the database; it never returns item values or encrypted blobs. RootHide service inspection has been checked on an iOS 18.5 iPad; the complete acceptance suite, privileged RootHide mutations, other iOS versions, and other physical hardware still require separate testing.
 
 Device acceptance uses a separate TestHost app and installation fixtures, which are excluded from release packages. After building icli, prepare them on your Mac:
 

@@ -1,13 +1,13 @@
 # Using IcliKit from Swift Package Manager
 
-The package exports the `IcliKit`, `IcliSystem` and `IcliLaunch` libraries and the `icli` executable. An iOS app or package manager can link either library and call its functions in-process. It does not need to install or launch the CLI. The `IcliKit` product includes its private Objective-C bridge and statically linked ArchiveKit dependency; Argument Parser and the CLI's embedded Info.plist belong only to the executable target. Library targets declare no unsafe build flags.
+The package exports the `IcliKit`, `IcliSystem` and `IcliLaunch` libraries and the `icli` executable. An iOS app or package manager can link one of these libraries and call its functions in-process. It does not need to install or launch the CLI. The `IcliKit` product includes its private Objective-C bridge and statically linked ArchiveKit dependency; Argument Parser and the CLI's embedded Info.plist belong only to the executable target. Library targets declare no unsafe build flags.
 
 `IcliKit` requires an iOS 15 or later arm64 device and a compatible bootstrap for privileged device operations. This is an on-device library, not a macOS host SDK. Simulator runtime is not supported or tested. For read-only system state alone, [`IcliSystem`](#the-iclisystem-product) has an iOS 15 floor and compiles for the simulator and Mac Catalyst.
 
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/owngoal-dev/icli.git", from: "1.0.0"),
+    .package(url: "https://github.com/korboybeats/icli.git", branch: "main"),
 ],
 targets: [
     .target(
@@ -16,6 +16,8 @@ targets: [
     ),
 ]
 ```
+
+The example selects this fork, including its Control Center and audio-output APIs. Keep `Package.resolved` to record the resolved commit, or use a `revision:` dependency for an explicit commit. Upstream version tags do not include fork-only additions.
 
 For a development checkout, use `.package(path: "../icli")`. In Xcode, add the repository as a package dependency and select the **IcliKit** library product for your app target.
 
@@ -72,6 +74,10 @@ The scope uses one immutable snapshot for screen metrics, point validation, AX v
 
 Geometry alone does not identify the display captured by UIKit or establish how its pixels map to the supplied interface. `takeScreenshot`, `recognizeScreen` and `describeScreen` throw `IcliError.unavailable` inside any override scope, including when the dimensions happen to match. Call them outside the scope to retain their existing capture source, pixel dimensions, coordinate contract and resolution policy. This API does not bind those images or OCR coordinates to the supplied display. Explicitly normalized input keeps its existing meaning. Outside the scope, the existing main-screen and capture-derived behavior applies. The host is responsible for selecting a trusted display and refreshing its geometry before each operation.
 
+## Audio outputs
+
+`controlCenterAudioList()` returns the available native outputs and selected UID. `controlCenterAudioSelect(_:timeout:)` accepts an exact UID from that list and waits for verified selection (default 8 seconds, greater than 0 through 60). It leaves volume settings intact. Failures throw `IcliError.commandFailed` with the route error and last available state in `.payload`; an invalid UID containing a NUL byte is refused before native selection. See [Audio Output](usage/device-settings.md#audio-output) for result fields, failure codes and restoration.
+
 ## Device features
 
 Every `icli` command is a thin layer over a public IcliKit function, so a long-running host such as a daemon can call the same code in-process. These arrived in 0.6.0:
@@ -92,7 +98,7 @@ Every `icli` command is a thin layer over a public IcliKit function, so a long-r
 | Pointer | `pointerMove(x:y:normalized:buttons:)`, `pointerButtons(_:)`, `pointerScroll(_:dx:dy:)` with `ScrollPhase`, and the whole gestures `pointerClick(x:y:normalized:button:count:hold:hover:)` and `pointerScrollGesture(x:y:normalized:dx:dy:seconds:steps:)`. The pointer is a HID mouse with an absolute position that the process creates on first use and keeps until it exits, so a host that stays running moves one pointer: iPadOS shows it, hides it after a few seconds without movement, and answers a held `PointerButtons` button as a trackpad click, not a touch. A touch is the wrong input under a visible pointer: an alert ignores a touch on a button the pointer is hovering. `normalized` coordinates are 0…1 of the interface as it is shown, not the digitizer's portrait space. Calls from several threads are applied one at a time, in the order they arrive; a host that sends moves concurrently orders them itself. |
 | Container installs | `installIPAInContainer(_:registration:)` or `installPackage(_:container:registration:)`, with `AppRegistrationType`. `installIPAInContainer(_:registration:prepareApp:)` lets an integrator prepare the validated temporary app bundle before container installation. `uninstallApp(_:force:)` removes container apps icli installed. |
 
-A call a device can't support throws `IcliError.unavailable` and leaves the device as it was. For example, a device running custom firmware won't launch an app installed in a container unless the app is signed in a way CoreTrust accepts. The CLI refuses UI input while the device is locked. A library caller has to make that check itself.
+APIs report unavailable capabilities with `IcliError.unavailable`. A failed or timed-out mutation does not guarantee unchanged state; read the actual state before retrying. For example, a device running custom firmware won't launch an app installed in a container unless the app is signed in a way CoreTrust accepts. The CLI refuses UI input while the device is locked. A library caller has to make that check itself.
 
 `kickstartService(_:kill:)` starts a loaded launchd job immediately. With `kill: true` it replaces the running instance and returns the new `pid`, so a daemon can start using its updated executable. With `kill: false`, an existing process stays running and `unchanged` is true. The host executable needs `com.apple.private.xpc.service-attach` in its own signing profile as well as the usual service privileges; `com.apple.private.xpc.service-configure` alone was refused with launchd status 144 on iOS 27. Linking IcliKit does not add entitlements to the host.
 

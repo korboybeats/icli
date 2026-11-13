@@ -1,5 +1,7 @@
 # icli 0.3.0 rootless 验收
 
+> Historical report: this records the 0.3.0 run on 2026-09-07. It does not qualify the current fork or commands added later. See [Testing and Compatibility](development/testing.md) for current test procedures and [Audio Output Validation](development/audio-output-validation.md) for the focused iOS 17.1.1 route checks.
+
 本报告由 `scripts/assemble-release.py` 根据 `acceptance.json` 与 `package-verification.json` 生成，不含手工填写的结果。
 测试时间：2026-09-07T06:40:16.087052+00:00。用例 44/44 通过；命令入口 105/105 被实际执行。
 PASS 只表示所列用例在下述设备上通过，不代表其他 iOS 版本、参数组合或物理硬件已经认证。
