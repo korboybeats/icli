@@ -37,7 +37,7 @@ extension Cc {
             static var configuration = CommandConfiguration(abstract: "Available audio outputs with names, UIDs and selected state")
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try controlCenterAudioList() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try controlCenterAudioList() }
             }
         }
 
@@ -64,7 +64,7 @@ extension Cc {
         static var configuration = CommandConfiguration(abstract: "Every toggle with its state")
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { controlCenterList() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { controlCenterList() }
         }
     }
 
@@ -73,7 +73,7 @@ extension Cc {
         @OptionGroup var output: OutputOptions
         @Argument(help: "The toggle, for example wifi or focus.") var toggle: String
         func run() {
-            emit(allowWhenLocked: true, output) { try controlCenterGet(toggle) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try controlCenterGet(toggle) }
         }
     }
 

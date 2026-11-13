@@ -50,7 +50,7 @@ extension App {
             @OptionGroup var output: OutputOptions
             @Argument var bundleID: String
             func run() {
-                emit(allowWhenLocked: true, output) { try appNetworkPolicy(bundleID, repair: false) }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try appNetworkPolicy(bundleID, repair: false) }
             }
         }
 
@@ -71,7 +71,7 @@ extension App {
         @Flag(help: "Only apps whose LaunchServices type is User (installed by the user), not System or the bootstrap's.")
         var user = false
         func run() {
-            emit(output) {
+            emit(requiresLease: false, output) {
                 var result = try listApps()
                 if user {
                     let apps = (result["apps"] as? [[String: Any]] ?? []).filter { $0["type"] as? String == "User" }
@@ -87,21 +87,21 @@ extension App {
         @OptionGroup var output: OutputOptions
         @Argument var query: String
         func run() {
-            emit(output) { try searchApps(query) }
+            emit(requiresLease: false, output) { try searchApps(query) }
         }
     }
 
     struct Running: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(output) { try runningApps() }
+            emit(requiresLease: false, output) { try runningApps() }
         }
     }
 
     struct Frontmost: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(output) {
+            emit(requiresLease: false, output) {
                 var app = frontmostApp()
                 if let id = app["bundle_id"] as? String, let name = appDisplayName(id) { app["name"] = name }
                 return app
@@ -113,7 +113,7 @@ extension App {
         @OptionGroup var output: OutputOptions
         @Argument var bundleID: String
         func run() {
-            emit(output) { try appInfo(bundleID) }
+            emit(requiresLease: false, output) { try appInfo(bundleID) }
         }
     }
 
@@ -243,14 +243,14 @@ extension App {
         @OptionGroup var output: OutputOptions
         @Argument var urlOrScheme: String
         func run() {
-            emit(output) { try appHandlers(urlOrScheme) }
+            emit(requiresLease: false, output) { try appHandlers(urlOrScheme) }
         }
     }
 
     struct Schemes: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(output) { try appURLSchemes() }
+            emit(requiresLease: false, output) { try appURLSchemes() }
         }
     }
 
@@ -258,7 +258,7 @@ extension App {
         @OptionGroup var output: OutputOptions
         @Argument var bundleID: String
         func run() {
-            emit(output) { try appBinaryInfo(bundleID) }
+            emit(requiresLease: false, output) { try appBinaryInfo(bundleID) }
         }
     }
 
@@ -266,7 +266,7 @@ extension App {
         @OptionGroup var output: OutputOptions
         @Argument var bundleID: String
         func run() {
-            emit(output) { try appDataDir(bundleID) }
+            emit(requiresLease: false, output) { try appDataDir(bundleID) }
         }
     }
 }
@@ -358,7 +358,7 @@ extension App {
             @OptionGroup var output: OutputOptions
             @Argument(help: "Bundle ID, or an installed app's display name.") var app: String
             func run() {
-                emit(allowWhenLocked: true, output) { try appPermissions(resolveAppName(app)) }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try appPermissions(resolveAppName(app)) }
             }
         }
         struct Grant: ParsableCommand {

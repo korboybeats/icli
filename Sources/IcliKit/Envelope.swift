@@ -23,11 +23,11 @@ public enum Envelope {
     public static var argv = Array(CommandLine.arguments.dropFirst())
     private static var savingArtifacts = false
 
-    public static func applyLockPolicy(allowWhenLocked: Bool) throws {
+    public static func applyLockPolicy(allowWhenLocked: Bool, requiresLease: Bool = true) throws {
         warning = nil
         if Lease.exempt {
             Lease.exempt = false
-        } else {
+        } else if requiresLease {
             try Lease.check()
         }
         icli_private_init()
@@ -76,16 +76,16 @@ public enum Envelope {
         )
     }
 
-    public static func run(allowWhenLocked: Bool = false, _ body: () throws -> [String: Any]) {
+    public static func run(allowWhenLocked: Bool = false, requiresLease: Bool = true, _ body: () throws -> [String: Any]) {
         do {
-            try applyLockPolicy(allowWhenLocked: allowWhenLocked)
+            try applyLockPolicy(allowWhenLocked: allowWhenLocked, requiresLease: requiresLease)
             let result = try body()
             printJSON(result)
             if let status = result["status"] as? Int, status != 0 {
                 finish(exitCode(status))
             }
         } catch let error as IcliError {
-            printJSON(withArtifacts(error))
+            printJSON(withArtifacts(error, requiresLease: requiresLease))
             if case .locked = error {
                 finish(2)
             } else if case let .commandFailed(result) = error {
@@ -94,7 +94,7 @@ public enum Envelope {
                 finish(1)
             }
         } catch {
-            printJSON(withArtifacts(IcliError.failed(error.localizedDescription)))
+            printJSON(withArtifacts(IcliError.failed(error.localizedDescription), requiresLease: requiresLease))
             finish(1)
         }
     }
@@ -102,9 +102,9 @@ public enum Envelope {
     /// The error's payload, with where its artifacts went when
     /// ICLI_FAILURE_ARTIFACTS asks for them. A held lease is not the device's
     /// failure, so it leaves none.
-    private static func withArtifacts(_ error: IcliError) -> [String: Any] {
+    private static func withArtifacts(_ error: IcliError, requiresLease: Bool) -> [String: Any] {
         var payload = error.payload
-        guard let directory = ProcessInfo.processInfo.environment["ICLI_FAILURE_ARTIFACTS"], !directory.isEmpty,
+        guard requiresLease, let directory = ProcessInfo.processInfo.environment["ICLI_FAILURE_ARTIFACTS"], !directory.isEmpty,
               !savingArtifacts, payload["error"] as? String != "leased"
         else { return payload }
         savingArtifacts = true

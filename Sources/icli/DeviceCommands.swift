@@ -37,7 +37,7 @@ extension Device {
         @Option(help: "Canvas height in pixels (default: native screen)") var height: Int = 0
         @Option(help: "Maximum mark side length in points") var markPoints: Double = 128
         func run() {
-            emit(allowWhenLocked: true, output) {
+            emit(allowWhenLocked: true, requiresLease: false, output) {
                 try renderBootLogo(
                     mark: mark,
                     output: destination,
@@ -54,7 +54,7 @@ extension Device {
         static var configuration = CommandConfiguration(abstract: "Model, iOS, battery, storage, jailbreak")
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try collectDeviceSnapshot() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try collectDeviceSnapshot() }
         }
     }
 
@@ -65,7 +65,7 @@ extension Device {
         )
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try jetsamSnapshot() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try jetsamSnapshot() }
         }
     }
 
@@ -74,7 +74,7 @@ extension Device {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(output) { brightnessReport(brightness()) }
+                emit(requiresLease: false, output) { brightnessReport(brightness()) }
             }
         }
 
@@ -96,7 +96,7 @@ extension Device {
             @OptionGroup var output: OutputOptions
             @Option(help: "Audio category, as AVSystemController names it.") var category: String = "Audio/Video"
             func run() {
-                emit(output) {
+                emit(requiresLease: false, output) {
                     var state = try audioState()
                     state["volume"] = volume(category)
                     state["category"] = category
@@ -123,7 +123,7 @@ extension Device {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(output) { rotationInfo() }
+                emit(requiresLease: false, output) { rotationInfo() }
             }
         }
 
@@ -143,7 +143,7 @@ extension Device {
             struct Get: ParsableCommand {
                 @OptionGroup var output: OutputOptions
                 func run() {
-                    emit(output) { ["locked": rotationInfo()["locked"] ?? false] }
+                    emit(requiresLease: false, output) { ["locked": rotationInfo()["locked"] ?? false] }
                 }
             }
 
@@ -168,7 +168,7 @@ extension Device {
             )
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try developerModeStatus() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try developerModeStatus() }
             }
         }
 
@@ -192,7 +192,7 @@ extension Device {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try appearance() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try appearance() }
             }
         }
 
@@ -213,7 +213,7 @@ extension Device {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try accessibilitySettings() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try accessibilitySettings() }
             }
         }
 
@@ -245,7 +245,7 @@ extension Device {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try lowPowerMode() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try lowPowerMode() }
             }
         }
 
@@ -267,7 +267,7 @@ extension Device {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try timeZone() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try timeZone() }
             }
         }
 
@@ -298,7 +298,7 @@ extension Device {
     struct Network: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(output) { networkInfo() }
+            emit(requiresLease: false, output) { networkInfo() }
         }
     }
 
@@ -306,7 +306,7 @@ extension Device {
         @OptionGroup var output: OutputOptions
         @Option(help: "IORegistry plane, such as IOService or IODeviceTree.") var plane: String = "IOService"
         func run() {
-            emit(output) { try ioregistry(plane: plane) }
+            emit(requiresLease: false, output) { try ioregistry(plane: plane) }
         }
     }
 }

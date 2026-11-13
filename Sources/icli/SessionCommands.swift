@@ -100,9 +100,9 @@ struct LeaseCommand: ParsableCommand {
         commandName: "lease",
         abstract: "Claim the device for one runner, so other agents' commands are refused instead of landing mid-test.",
         discussion: """
-        While a lease is held, every icli command run without its token fails with error leased and exit status 75; \
-        lease and status still run. Pass the token as ICLI_LEASE=<token>. A lease is held until it is released: \
-        every command carrying the token keeps it alive, however long the run. Only a lease no command has used \
+        While a lease is held, interaction and shared-state changes without its token fail with error leased and exit status 75; \
+        background file work and inspection, lease and status still run. Pass the token as ICLI_LEASE=<token>. A lease is held until it is released: \
+        guarded commands carrying the token keep it alive, however long the run. Background commands never renew it. Only a lease no guarded command has used \
         for --ttl seconds (default 600) lapses, so a runner that crashed or lost its connection frees the device.
 
           export ICLI_LEASE=$(icli lease acquire --owner myapp-ui-tests | jq -r .token)
@@ -131,7 +131,7 @@ struct LeaseCommand: ParsableCommand {
     struct Acquire: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Option(help: "Who holds it, shown to anyone refused.") var owner: String
-        @Option(help: "Idle seconds, 1–86400: the lease lapses only after this long without a command carrying its token. Acquiring again with the token renews it.") var ttl: Double = Lease.defaultIdleSeconds
+        @Option(help: "Idle seconds, 1–86400: the lease lapses only after this long without a guarded command carrying its token. Background commands do not renew it. Acquiring again with the token renews it.") var ttl: Double = Lease.defaultIdleSeconds
         @Flag(help: "Take it over from another holder.") var force = false
         func run() {
             Lease.exempt = true

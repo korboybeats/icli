@@ -238,7 +238,7 @@ extension Screen {
                 writeShotToStdout()
                 return
             }
-            emit(allowWhenLocked: true, output) {
+            emit(allowWhenLocked: true, requiresLease: false, output) {
                 guard format == nil || ["jpeg", "jpg", "png"].contains(format!.lowercased()) else {
                     throw IcliError.failed("format must be jpeg or png")
                 }
@@ -263,7 +263,7 @@ extension Screen {
         @Option(help: "Frames per second, 1–60.") var fps: Int = 30
         @Option(help: "hevc or h264.") var codec: String = "hevc"
         func run() {
-            emit(allowWhenLocked: true, output) { try recordScreen(seconds: seconds, path: path, fps: fps, codec: codec) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try recordScreen(seconds: seconds, path: path, fps: fps, codec: codec) }
         }
     }
 
@@ -305,7 +305,7 @@ extension Screen {
         @Option(help: "Overall deadline in seconds, 0–60.") var timeout: Double = 10
         @Option(help: "Least seconds between captures while the screen keeps changing, 0–5.") var interval: Double = 0.05
         func run() {
-            emit(output) {
+            emit(requiresLease: false, output) {
                 try waitForScreen(
                     changed: changed, stable: stable, baseline: baseline, stableFor: stableFor,
                     region: ScreenRegion(text: region), threshold: threshold, timeout: timeout, interval: interval,
@@ -317,7 +317,7 @@ extension Screen {
     struct Info: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { screenInfo() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { screenInfo() }
         }
     }
 
@@ -329,7 +329,7 @@ extension Screen {
         @Flag(help: "Quicker, less accurate recognition, for short labels; reads fewer languages (not Chinese).") var fast = false
         @Flag(help: compactHelp) var compact = false
         func run() {
-            emit(output, compact: compact) {
+            emit(requiresLease: false, output, compact: compact) {
                 try recognizeScreen(languages: lang, minConfidence: minConfidence, region: ScreenRegion(text: region), fast: fast)
             }
         }
@@ -747,7 +747,7 @@ private func writeShotToStdout() {
     do {
         // JSON on stdout would corrupt the image a caller is piping to a file.
         guard !Envelope.capturing else { throw IcliError.failed("--stdout cannot run inside a batch or session") }
-        try Envelope.applyLockPolicy(allowWhenLocked: true)
+        try Envelope.applyLockPolicy(allowWhenLocked: true, requiresLease: false)
         try FileHandle.standardOutput.write(contentsOf: screenshotJPEGData())
     } catch {
         let payload = (error as? IcliError)?.payload ?? IcliError.failed(error.localizedDescription).payload

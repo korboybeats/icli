@@ -83,7 +83,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Find and read crash reports | `icli log crashes --bundle-id <id> [--since 5m] [--kind crash\|spin\|diagnostic\|log] [--limit 5]` then `icli log crash <path> --summary`, or `icli log crash --bundle-id <id> --summary` for its newest crash |
 | Run several commands in one process with checks | `echo '[["app","frontmost"],{"argv":["ui","wait","Ready"],"expect":{"found":true}}]' \| icli batch` |
 | Keep one icli process open and send it commands as you go | `icli session`, then one line per command: `{"id":1,"argv":["ui","tap","OK"]}` (one JSON line back each) |
-| Keep other agents' icli commands off the device during a run | `export ICLI_LEASE=$(icli lease acquire --owner myapp-build \| jq -r .token)`, then `icli lease release` |
+| Protect phone interaction from other runners during a run | `export ICLI_LEASE=$(icli lease acquire --owner myapp-build \| jq -r .token)`, then `icli lease release` |
 | Save the screen and element tree whenever a command fails | `export ICLI_FAILURE_ARTIFACTS=/var/tmp/icli-failures` (the error's `artifacts` names the folder) |
 | Install a .deb or .ipa | `sudo icli app install /tmp/x.deb` (or `.ipa`) |
 | Uninstall an app or package | `sudo icli app uninstall <bundle-id> --force` / `sudo icli pkg remove <pkg>` |
@@ -111,6 +111,7 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 - **Read the screen with `--compact`.** When you read `ui tree` or `screen ocr` to decide what to tap, add `--compact`. It prints one line per element instead of pretty JSON: on the Home Screen `ui tree` drops from 11.6 KB to 1.8 KB, and `screen ocr --fast` from 5.2 KB to 0.8 KB. Tap the `x,y` from a line straight with `screen tap`; it is the element's tap point. Inside `batch` and `session` a `--compact` step answers with its lines in `text` instead of `result`. Use the JSON instead when a script parses the output, or when you need what the lines leave out: a frame's origin (to pick a `--region`, or a `--x/--y` inside a scroll view), sub-point coordinates or raw `traits`. The line format is in [reference/interaction.md](reference/interaction.md).
 - **Use `ui perform` for one exact, verified tap** in an automated test. It needs a known identifier and app, and checks the change you expect.
 - **Device leases cover interactive testing, not installation.** An existing lease must not block an authorized build/install or trigger another approval request. Install through the SSH shell (`ssh-iphone`, `dpkg -i` for DEBs, `trollinst` for IPAs) without acquiring, waiting for, or taking over the lease. If the device is busy, skip optional UI testing and report installation separately. When the user says they will check it, leave testing to them.
+- **Background work.** File operations, logs and audited inspection commands run while another task holds a lease, without its token. Do not acquire, share or take over a lease for those commands. They do not renew a lease, even with its token; see [command policy](../usage/leases.md).
 - **Interactive testing.** Hold an `icli lease` while driving the UI and export `ICLI_LEASE` in shells running icli. Use a recognizable `<project>-<task>` owner, and release the lease when testing ends.
 
 ## Conventions

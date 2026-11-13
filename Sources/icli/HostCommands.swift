@@ -24,7 +24,7 @@ extension Log {
         @Option(help: "Minimum level: all, debug, info, default, notice, error or fault") var level: String = "all"
         @Option(help: "Most lines returned, 1–5000.") var maxLines: Int = 500
         func run() {
-            emit(allowWhenLocked: true, output) {
+            emit(allowWhenLocked: true, requiresLease: false, output) {
                 try captureSyslog(
                     seconds: seconds,
                     process: process,
@@ -48,7 +48,7 @@ extension Log {
         var kind: String?
         @Option(help: "List only the newest N; count still says how many there are, and truncated is true.") var limit: Int?
         func run() {
-            emit(output) {
+            emit(requiresLease: false, output) {
                 let kind = try kind.map { name -> CrashReportKind in
                     guard let kind = CrashReportKind(rawValue: name) else {
                         throw IcliError.failed("kind must be crash, spin, diagnostic or log")
@@ -68,7 +68,7 @@ extension Log {
         @Flag(help: "The process, exception, termination and crashed thread's stack instead of the whole report.")
         var summary = false
         func run() {
-            emit(output) {
+            emit(requiresLease: false, output) {
                 guard !summary || maxBytes == nil else { throw IcliError.failed("--summary reads the whole report; omit --max-bytes") }
                 guard (path == nil) != (bundleID == nil) else { throw IcliError.failed("give a path or --bundle-id, not both") }
                 var report = path
@@ -101,7 +101,7 @@ extension Pkg {
         @OptionGroup var output: OutputOptions
         @Argument var path: String
         func run() {
-            emit(allowWhenLocked: true, output) { try readDeb(path) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try readDeb(path) }
         }
     }
 
@@ -113,7 +113,7 @@ extension Pkg {
         @Argument var path: String
         @Argument var destination: String
         func run() {
-            emit(allowWhenLocked: true, output) { try extractDeb(path, to: destination) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try extractDeb(path, to: destination) }
         }
     }
 
@@ -122,7 +122,7 @@ extension Pkg {
         @OptionGroup var output: OutputOptions
         @Argument var name: String
         func run() {
-            emit(allowWhenLocked: true, output) { try packageStatus(name) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try packageStatus(name) }
         }
     }
 
@@ -132,7 +132,7 @@ extension Pkg {
         @Argument var left: String
         @Argument var right: String
         func run() {
-            emit(allowWhenLocked: true, output) { try compareDebianVersions(left, right) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try compareDebianVersions(left, right) }
         }
     }
 
@@ -140,7 +140,7 @@ extension Pkg {
         @OptionGroup var output: OutputOptions
         @Option(help: "Case-insensitive substring of the package identifier or name.") var filter: String?
         func run() {
-            emit(allowWhenLocked: true, output) { try listPackages(filter: filter) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try listPackages(filter: filter) }
         }
     }
 
@@ -171,7 +171,7 @@ extension Pkg {
     struct Repos: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try listRepos() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try listRepos() }
         }
     }
 
@@ -180,14 +180,14 @@ extension Pkg {
         @OptionGroup var output: OutputOptions
         @Argument var url: String
         func run() {
-            emit(allowWhenLocked: true, output) { try addRepo(url) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try addRepo(url) }
         }
     }
 
     struct Tweaks: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try listTweaks() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try listTweaks() }
         }
     }
 }
@@ -226,7 +226,7 @@ extension SB {
         struct Get: ParsableCommand {
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try systemAppsVisibility(set: nil) }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try systemAppsVisibility(set: nil) }
             }
         }
 
@@ -278,7 +278,7 @@ extension Env {
     struct Info: ParsableCommand {
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try environmentReport() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try environmentReport() }
         }
     }
 
@@ -289,7 +289,7 @@ extension Env {
         @OptionGroup var output: OutputOptions
         @Option(help: "Path to a basebin archive containing basebin/.version") var bundled: String?
         func run() {
-            emit(allowWhenLocked: true, output) { try compareBaseBin(bundled: bundled) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try compareBaseBin(bundled: bundled) }
         }
     }
 }
@@ -303,7 +303,7 @@ extension Proc {
         @OptionGroup var output: OutputOptions
         @Option(help: "Case-insensitive substring of the process name.") var filter: String?
         func run() {
-            emit(output) { try listProcesses(filter: filter) }
+            emit(requiresLease: false, output) { try listProcesses(filter: filter) }
         }
     }
 }
@@ -323,7 +323,7 @@ extension Net {
         @Option(help: "[tcp|udp|icmp] [src|dst] port N [src|dst] host A, joined with and") var filter: String?
         @Option(name: .customLong("output"), help: "pcap path (default: a temporary file)") var path: String?
         func run() {
-            emit(allowWhenLocked: true, output) {
+            emit(allowWhenLocked: true, requiresLease: false, output) {
                 try capturePackets(seconds: seconds, interface: interface, filter: filter, output: path)
             }
         }

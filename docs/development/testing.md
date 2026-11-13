@@ -90,3 +90,7 @@ python3 scripts/tvos-acceptance.py --vm <name> --respring
 ```
 
 It covers read-only commands, the `unavailable` answers, the launchd life cycle with kickstart replacement, registration and launch, container installation, files, preferences and Keychain, device controls, the screen saver, `icli probe` and a PineBoard restart, and writes `.build/tvos-acceptance.json`. `--case <name>` runs one case.
+
+## Interaction lease policy
+
+Run `rtk test ./scripts/test-lease-policy.sh` on macOS. It exercises the production lease and lock policy against a temporary lease file, with native lock/notification seams. Checks cover background calls without or with tokens, unchanged lease data, guarded refusal and renewal, expiration, and independent locked/screen-off behavior. The device runner is `scripts/test-lease-policy-device.py`; it can use an existing foreign lease without reading its token or changing its ownership.

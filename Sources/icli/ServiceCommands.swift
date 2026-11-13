@@ -140,7 +140,7 @@ extension Svc {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Service label without a domain prefix; omit to list all visible services.") var label: String?
         func run() {
-            emit(allowWhenLocked: true, output) { try label.map(serviceStatus) ?? listServices() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try label.map(serviceStatus) ?? listServices() }
         }
     }
 
@@ -149,7 +149,7 @@ extension Svc {
         @OptionGroup var output: OutputOptions
         @Argument(help: serviceLabelHelp) var label: String
         func run() {
-            emit(allowWhenLocked: true, output) { try printService(label) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try printService(label) }
         }
     }
 
@@ -160,7 +160,7 @@ extension Svc {
         )
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try disabledServiceOverrides() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try disabledServiceOverrides() }
         }
     }
 
@@ -171,7 +171,7 @@ extension Svc {
         )
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(allowWhenLocked: true, output) { try servicesDump() }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try servicesDump() }
         }
     }
 
@@ -183,7 +183,7 @@ extension Svc {
         @OptionGroup var output: OutputOptions
         @Argument(help: servicePathsHelp) var paths: [String]
         func run() {
-            emit(allowWhenLocked: true, output) { try servicePlistPaths(paths) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try servicePlistPaths(paths) }
         }
     }
 
@@ -192,7 +192,7 @@ extension Svc {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Launchd environment variable name, such as PATH.") var key: String
         func run() {
-            emit(allowWhenLocked: true, output) { try launchdEnvironment(key) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try launchdEnvironment(key) }
         }
     }
 
@@ -226,7 +226,7 @@ extension Svc {
         @OptionGroup var output: OutputOptions
         @Argument(help: serviceLabelHelp) var label: String
         func run() {
-            emit(allowWhenLocked: true, output) { try serviceStatus(label) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try serviceStatus(label) }
         }
     }
 }

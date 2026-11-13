@@ -21,13 +21,14 @@ let compactHelp = ArgumentHelp(
         + "strings are JSON string literals; empty fields are left out.",
 )
 
+// New commands are exclusive by default. Exempt only audited background work.
 func emit(
-    allowWhenLocked: Bool = false, _ output: OutputOptions, compact: Bool = false,
+    allowWhenLocked: Bool = false, requiresLease: Bool = true, _ output: OutputOptions, compact: Bool = false,
     _ body: () throws -> [String: Any],
 ) {
     output.apply()
     Envelope.compact = compact
-    Envelope.run(allowWhenLocked: allowWhenLocked, body)
+    Envelope.run(allowWhenLocked: allowWhenLocked, requiresLease: requiresLease, body)
 }
 
 @main

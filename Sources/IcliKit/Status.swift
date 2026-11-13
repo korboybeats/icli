@@ -46,9 +46,10 @@ public func deviceStatus() -> [String: Any] {
 
 /// An exclusive claim on the device for one runner, so another agent's input
 /// does not land in the middle of its test. Without a lease nothing changes;
-/// while one is held, commands without its token fail with `leased`.
+/// while one is held, interaction and state-changing commands without its token
+/// fail with `leased`. Explicit background commands do not check or renew it.
 ///
-/// A lease is held until its runner releases it. Every command that carries
+/// A lease is held until its runner releases it. Every guarded command that carries
 /// the token keeps it alive, so a run of any length never loses it; only a
 /// lease nothing has used for `idle_seconds` lapses, which frees the device
 /// after a runner crashed or lost its connection without releasing.

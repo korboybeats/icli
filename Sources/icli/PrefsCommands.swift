@@ -46,7 +46,7 @@ extension Prefs {
         @Option(help: appHelp) var app: String?
         @Argument(help: "<domain> [<key>], or with --app only [<key>].") var arguments: [String] = []
         func run() {
-            emit(allowWhenLocked: true, output) {
+            emit(allowWhenLocked: true, requiresLease: false, output) {
                 let parts = try splitDomain(arguments, app: app, keyRange: 0 ... 1, usage: "prefs read <domain> [<key>] | --app <bundle-id> [<key>]")
                 if let app { return try readAppPreference(bundleID: app, key: parts.rest.first) }
                 return try readPreference(domain: parts.domain, key: parts.rest.first, user: user.parsed())

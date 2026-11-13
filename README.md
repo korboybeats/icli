@@ -39,7 +39,7 @@ See [Install](docs/install/install.md) for uploading over USB, rootless paths, a
 - **Preferences**: Read, write, and delete typed preference values like `defaults`.
 - **Inspect running apps**: `icli flex` brings FLEX's in-app inspection to the command line (ported from FlexUltra): live objects and the heap, views and view controllers, the app's files, defaults, keychain, SQLite and Realm databases, network history, its log, and method tracing. The agent attaches on demand and remains loaded in the target app until it exits.
 - **Scripting**: Run a JavaScriptCore script in-process with `icli probe`, or inside an app with `icli probe --app`, with an Objective-C reflection bridge and icli's own capabilities through `api()`.
-- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners receive a clear refusal instead of interfering; while a lease is held, the device shows its owner's name above the home indicator.
+- **Automation runs**: Run many commands in one process with `batch` or a line-by-line `session`, read the device state in one call with `status`, and claim the device with a `lease` so other runners cannot interfere with interaction while background file work and inspection continue; while a lease is held, the device shows its owner's name above the home indicator.
 
 ## Command Line
 

@@ -75,6 +75,11 @@ struct Probe: ParsableCommand {
     var timeout: Double = 30
 
     func run() throws {
+        do { try Envelope.applyLockPolicy(allowWhenLocked: true) }
+        catch {
+            Envelope.run(allowWhenLocked: true) { throw error }
+            return
+        }
         if inspect != nil {
             guard app != nil, eval == nil, input == nil, !check else {
                 throw ValidationError("--inspect needs --app and cannot be combined with a script, repl or --check")

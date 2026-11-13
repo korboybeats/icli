@@ -24,7 +24,7 @@ extension FS {
         @Argument(help: "The new value as JSON, e.g. true, 3, \"text\" or {\"a\":1}.") var value: String?
         @Flag(help: "Remove the key instead of setting it.") var remove = false
         func run() {
-            emit(allowWhenLocked: true, output) {
+            emit(allowWhenLocked: true, requiresLease: false, output) {
                 guard remove != (value != nil) else { throw IcliError.failed("pass a JSON value or --remove") }
                 return try setPlistValue(path, key: key, json: value)
             }
@@ -36,7 +36,7 @@ extension FS {
         @Argument var path: String
         @Option(help: "Octal permissions, e.g. 755") var mode: String?
         func run() {
-            emit(allowWhenLocked: true, output) { try makeDirectory(path, mode: mode) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try makeDirectory(path, mode: mode) }
         }
     }
 
@@ -46,7 +46,7 @@ extension FS {
         @Flag(help: "Remove a directory and everything in it.") var recursive = false
         @Flag(help: "Confirm removal; required to run this command.") var force = false
         func run() {
-            emit(allowWhenLocked: true, output) { try removePath(path, recursive: recursive, force: force) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try removePath(path, recursive: recursive, force: force) }
         }
     }
 
@@ -59,7 +59,7 @@ extension FS {
         @Argument var link: String
         @Flag(help: "Replace an existing symbolic link at <link>.") var replace = false
         func run() {
-            emit(allowWhenLocked: true, output) { try createSymlink(target: target, link: link, replace: replace) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try createSymlink(target: target, link: link, replace: replace) }
         }
     }
 
@@ -68,7 +68,7 @@ extension FS {
         @Argument var path: String
         @Argument var mode: String
         func run() {
-            emit(allowWhenLocked: true, output) { try changeMode(path, mode: mode) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try changeMode(path, mode: mode) }
         }
     }
 
@@ -77,7 +77,7 @@ extension FS {
         @Argument var path: String
         @Argument(help: "uid:gid, numeric or by name") var owner: String
         func run() {
-            emit(allowWhenLocked: true, output) { try changeOwner(path, owner: owner) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try changeOwner(path, owner: owner) }
         }
     }
 
@@ -86,7 +86,7 @@ extension FS {
         @Argument var source: String
         @Argument var destination: String
         func run() {
-            emit(allowWhenLocked: true, output) { try copyPath(source, to: destination) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try copyPath(source, to: destination) }
         }
     }
 
@@ -95,7 +95,7 @@ extension FS {
         @Argument var source: String
         @Argument var destination: String
         func run() {
-            emit(allowWhenLocked: true, output) { try movePath(source, to: destination) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try movePath(source, to: destination) }
         }
     }
 
@@ -103,7 +103,7 @@ extension FS {
         @OptionGroup var output: OutputOptions
         @Argument var path: String
         func run() {
-            emit(output) { try listDirectory(path) }
+            emit(requiresLease: false, output) { try listDirectory(path) }
         }
     }
 
@@ -114,7 +114,7 @@ extension FS {
         @Option(help: "Maximum bytes to read, from 0 to 67108864; defaults to 524288.") var limit: Int?
         @Option(help: "Byte offset to start reading from; defaults to 0.") var offset: Int?
         func run() {
-            emit(output) { try readFile(path, binary: binary, limit: limit, offset: offset) }
+            emit(requiresLease: false, output) { try readFile(path, binary: binary, limit: limit, offset: offset) }
         }
     }
 
@@ -124,7 +124,7 @@ extension FS {
         @Argument var content: String
         @Option(help: "Content encoding: utf8 or base64.") var encoding: String = "utf8"
         func run() {
-            emit(output) { try writeFile(path, content: content, encoding: encoding) }
+            emit(requiresLease: false, output) { try writeFile(path, content: content, encoding: encoding) }
         }
     }
 
@@ -133,7 +133,7 @@ extension FS {
         @Argument var root: String
         @Argument var pattern: String
         func run() {
-            emit(output) { try findFiles(root: root, pattern: pattern) }
+            emit(requiresLease: false, output) { try findFiles(root: root, pattern: pattern) }
         }
     }
 
@@ -141,7 +141,7 @@ extension FS {
         @OptionGroup var output: OutputOptions
         @Argument var path: String
         func run() {
-            emit(output) { try readPlist(path) }
+            emit(requiresLease: false, output) { try readPlist(path) }
         }
     }
 }

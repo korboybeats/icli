@@ -3507,9 +3507,11 @@ def lease(d):
     if d.lease:
         mine = d.cli('lease', 'status')
         assert mine['held'] and mine['mine'], mine
-        refused = plain('app', 'frontmost', expected=75)
+        assert plain('app', 'frontmost')['bundle_id']
+        assert plain('device', 'info')['memory_bytes'] > 0
+        refused = plain('button', 'home', expected=75)
         assert refused['error'] == 'leased' and refused['owner'] == mine['owner'], refused
-        d.observations.append('The run holds its own lease, so only its token and a refusal without it were checked.')
+        d.observations.append('The run holds its own lease; background access and guarded refusal without the token were checked.')
         return
     current = plain('lease', 'status')
     assert not current['held'], f'another runner holds the device: {current}'
@@ -3517,13 +3519,13 @@ def lease(d):
         held = plain('lease', 'acquire', '--owner', 'acceptance-case', '--ttl', '60')
         token = held['token']
         assert held['held'] and held['owner'] == 'acceptance-case' and 55 <= held['seconds_left'] <= 60, held
-        # Without the token, commands are refused with 75 and the holder's name, and leave no failure artifacts.
-        refused = d.cli_env({'ICLI_FAILURE_ARTIFACTS': '/var/tmp/icli-acceptance/lease-artifacts'}, 'app', 'frontmost',
+        # Without the token, interaction commands are refused with 75 and the holder's name, and leave no failure artifacts.
+        refused = d.cli_env({'ICLI_FAILURE_ARTIFACTS': '/var/tmp/icli-acceptance/lease-artifacts'}, 'button', 'home',
                             expected=75, lease=False)
         assert refused['error'] == 'leased' and refused['owner'] == 'acceptance-case' and 'ICLI_LEASE' in refused['message'], refused
         assert 'artifacts' not in refused and d.run(['test', '-e', d.sh('/var/tmp/icli-acceptance/lease-artifacts')]).returncode == 1
         if d.can_drop_privileges:
-            assert d.run(['env', d.binary, 'app', 'frontmost'], unprivileged=True).returncode == 75, 'mobile ran a command under the lease'
+            assert d.run(['env', d.binary, 'button', 'home'], unprivileged=True).returncode == 75, 'mobile ran a command under the lease'
         assert holding(token, 'app', 'frontmost')['bundle_id']
         # status and lease commands run for anyone.
         assert plain('status')['springboard_pid']
@@ -3536,17 +3538,17 @@ def lease(d):
         # --force takes it over, and the old token stops working.
         taken = plain('lease', 'acquire', '--owner', 'taker', '--ttl', '60', '--force')
         assert taken['token'] != token and taken['owner'] == 'taker', taken
-        assert holding(token, 'app', 'frontmost', expected=75)['owner'] == 'taker'
+        assert holding(token, 'button', 'home', expected=75)['owner'] == 'taker'
         released = holding(taken['token'], 'lease', 'release')
         assert released['released'] and released['owner'] == 'taker', released
         assert not plain('lease', 'status')['held'] and plain('app', 'frontmost')['bundle_id']
         assert plain('lease', 'release') == {'released': False, 'held': False}
-        # Commands carrying the token keep the lease alive past its idle time;
+        # Explicit holder renewal keeps the lease alive past its idle time;
         # it lapses only once nothing has used it for that long.
         short = plain('lease', 'acquire', '--owner', 'short', '--ttl', '3')
         for _ in range(3):
             time.sleep(1.5)
-            assert holding(short['token'], 'app', 'frontmost')['bundle_id']
+            assert holding(short['token'], 'lease', 'acquire', '--owner', 'short', '--ttl', '3')['token'] == short['token']
         alive = plain('lease', 'status')
         assert alive['held'] and alive['owner'] == 'short' and alive['last_used_at'] > short['acquired_at'], alive
         time.sleep(3.5)

@@ -16,7 +16,7 @@ extension Device {
             )
             @OptionGroup var output: OutputOptions
             func run() {
-                emit(allowWhenLocked: true, output) { try passcodeStatus() }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try passcodeStatus() }
             }
         }
 

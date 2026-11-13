@@ -26,7 +26,7 @@ struct Batch: ParsableCommand {
     @OptionGroup var output: OutputOptions
 
     func run() {
-        emit(allowWhenLocked: true, output) {
+        emit(allowWhenLocked: true, requiresLease: false, output) {
             let input = FileHandle.standardInput.readDataToEndOfFile()
             guard let rows = try? JSONSerialization.jsonObject(with: input) as? [Any], !rows.isEmpty, rows.count <= 1000
             else {

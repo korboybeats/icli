@@ -83,6 +83,9 @@ jobs:
       - name: Active interface geometry and scope isolation
         run: ./scripts/test-interface-geometry.sh
 
+      - name: Background commands and interaction lease policy
+        run: ./scripts/test-lease-policy.sh
+
       - name: RootHide root names and the root on disk
         run: ./scripts/test-roothide-root.sh
 

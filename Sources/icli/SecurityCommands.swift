@@ -27,7 +27,7 @@ extension Sec {
             @Option var server: String?
             @Option var group: String?
             func run() {
-                emit(allowWhenLocked: true, output) {
+                emit(allowWhenLocked: true, requiresLease: false, output) {
                     try listKeychain(
                         className: `class`,
                         service: service,
@@ -48,7 +48,7 @@ extension Sec {
             @Option(name: .long, help: "genp, inet, cert, keys, or the full class name")
             var `class`: String?
             func run() {
-                emit(allowWhenLocked: true, output) { try listKeychainDatabaseMetadata(className: `class`) }
+                emit(allowWhenLocked: true, requiresLease: false, output) { try listKeychainDatabaseMetadata(className: `class`) }
             }
         }
 
@@ -148,7 +148,7 @@ extension Sec {
         )
         @OptionGroup var output: OutputOptions
         func run() {
-            emit(output) { sslKillswitchStatus() }
+            emit(requiresLease: false, output) { sslKillswitchStatus() }
         }
     }
 }

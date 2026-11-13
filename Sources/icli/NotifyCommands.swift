@@ -29,7 +29,7 @@ struct Notify: ParsableCommand {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Notification name.") var name: String
         func run() {
-            emit(allowWhenLocked: true, output) { try darwinNotificationState(name) }
+            emit(allowWhenLocked: true, requiresLease: false, output) { try darwinNotificationState(name) }
         }
     }
 }
