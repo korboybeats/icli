@@ -1,6 +1,6 @@
 ---
 name: icli
-description: Command map for icli, the on-device CLI that controls and inspects an iPhone or iPad running custom firmware. Use it when you drive or inspect such a device over SSH: tapping, typing, reading the accessibility tree, screenshots and OCR, launching or installing apps, files, logs, Debian packages, launchd services, reboots and device settings. It maps an intent to the exact `icli` command, with the sudo and screen-state rules for each command.
+description: "Command map for icli, the on-device CLI that controls and inspects an iPhone or iPad running custom firmware. Use it when you drive or inspect such a device over SSH: tapping, typing, reading the accessibility tree, screenshots and OCR, launching or installing apps, files, logs, Debian packages, launchd services, reboots and device settings. It maps an intent to the exact `icli` command, with the sudo and screen-state rules for each command."
 ---
 
 # icli command map
@@ -108,7 +108,8 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 - **Prefer the accessibility tree to OCR.** `--source ax` (the default) is much faster than `ocr`. Use `any` only when the text may be missing from the tree. Trim `ui tree` with `--clickable-only` and `--limit`.
 - **Read the screen with `--compact`.** When you read `ui tree` or `screen ocr` to decide what to tap, add `--compact`. It prints one line per element instead of pretty JSON: on the Home Screen `ui tree` drops from 11.6 KB to 1.8 KB, and `screen ocr --fast` from 5.2 KB to 0.8 KB. Tap the `x,y` from a line straight with `screen tap`; it is the element's tap point. Inside `batch` and `session` a `--compact` step answers with its lines in `text` instead of `result`. Use the JSON instead when a script parses the output, or when you need what the lines leave out: a frame's origin (to pick a `--region`, or a `--x/--y` inside a scroll view), sub-point coordinates or raw `traits`. The line format is in [reference/interaction.md](reference/interaction.md).
 - **Use `ui perform` for one exact, verified tap** in an automated test. It needs a known identifier and app, and checks the change you expect.
-- **Share the device safely.** When other agents may use the same device, hold `icli lease` and export `ICLI_LEASE` in every shell that runs icli. Name the lease after your project and task, `<project>-<task>` such as `myapp-build` or `myapp-ui-tests`: the phone shows `icli: <owner>` above the home indicator while you hold it, so the person holding the phone can tell which agent is driving it. Not `test`, `agent`, `ci` or `claude`. Release it as soon as the run ends; the label goes away with it.
+- **Device leases cover interactive testing, not installation.** An existing lease must not block an authorized build/install or trigger another approval request. Install through the SSH shell (`ssh-iphone`, `dpkg -i` for DEBs, `trollinst` for IPAs) without acquiring, waiting for, or taking over the lease. If the device is busy, skip optional UI testing and report installation separately. When the user says they will check it, leave testing to them.
+- **Interactive testing.** Hold an `icli lease` while driving the UI and export `ICLI_LEASE` in shells running icli. Use a recognizable `<project>-<task>` owner, and release the lease when testing ends.
 
 ## Conventions
 

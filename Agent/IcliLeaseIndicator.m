@@ -20,6 +20,14 @@ static NSString *const LeasePath = @"/var/mobile/Library/Caches/com.korboy.icli/
 static NSString *const HiddenPath = @"/var/mobile/Library/Caches/com.korboy.icli/indicator-off";
 static const char *const LeaseChanged = "com.korboy.icli.lease-changed";
 
+@interface IcliLeaseIndicator : NSObject
+@property (nonatomic, strong) UIWindow *window;
+@property (nonatomic, strong) UILabel *label;
+@property (nonatomic, strong) NSTimer *expiry;
++ (instancetype)shared;
+- (void)layoutLabel;
+@end
+
 // A window SpringBoard draws on top of other apps still takes their touches
 // unless the system skips it when it routes them: UIKit asks the window's
 // _ignoresHitTest when it sets up its CAContext. userInteractionEnabled alone
@@ -32,34 +40,45 @@ static const char *const LeaseChanged = "com.korboy.icli.lease-changed";
 - (BOOL)_ignoresHitTest { return YES; }
 @end
 
+@interface IcliIndicatorViewController : UIViewController
+@end
+
+@implementation IcliIndicatorViewController
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [[IcliLeaseIndicator shared] layoutLabel];
+}
+@end
+
 // Where the home indicator's top edge is, from the indicator view's own
 // geometry (MaterialKit's MTLumaDodgePillView: its height and its distance
 // from the bottom edge), so the label sits just above it on every device:
 // on the iPhone 15 Pro Max that is 5 points tall, 8 points up. 0 on a device
 // without one.
-static CGFloat homeIndicatorTop(void) {
-    if (UIScreen.mainScreen.bounds.size.height <= 0) return 0;
-    UIWindowScene *scene = nil;
-    for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes)
-        if ([candidate isKindOfClass:UIWindowScene.class]) scene = (UIWindowScene *)candidate;
+static CGFloat homeIndicatorTop(CGSize screen) {
+    if (screen.height <= 0) return 0;
+    CGFloat bottomInset = 0;
+    for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
+        if (![candidate isKindOfClass:UIWindowScene.class]) continue;
+        UIWindowScene *scene = (UIWindowScene *)candidate;
+        if (scene.screen != UIScreen.mainScreen) continue;
+        // SpringBoard's status-bar window has zero insets even on Face ID
+        // phones. Check all main-screen windows instead of an arbitrary first.
+        for (UIWindow *window in scene.windows)
+            bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom);
+    }
     // A device with a home button has no bottom safe area and no indicator.
-    if (scene.windows.firstObject.safeAreaInsets.bottom <= 0) return 0;
+    if (bottomInset <= 0) return 0;
     Class pill = NSClassFromString(@"MTLumaDodgePillView");
     SEL edge = sel_registerName("suggestedEdgeSpacing");
     SEL size = sel_registerName("suggestedSizeForContentWidth:");
     if (![pill instancesRespondToSelector:edge] || ![pill instancesRespondToSelector:size]) return 0;
     UIView *view = [[pill alloc] initWithFrame:CGRectMake(0, 0, 0, 0)];
     CGFloat spacing = ((CGFloat (*)(id, SEL))objc_msgSend)(view, edge);
-    CGSize bar = ((CGSize (*)(id, SEL, CGFloat))objc_msgSend)(view, size, UIScreen.mainScreen.bounds.size.width);
+    CGSize bar = ((CGSize (*)(id, SEL, CGFloat))objc_msgSend)(view, size, screen.width);
     if (spacing <= 0 || bar.height <= 0) return 0;
-    return UIScreen.mainScreen.bounds.size.height - spacing - bar.height;
+    return screen.height - spacing - bar.height;
 }
-
-@interface IcliLeaseIndicator : NSObject
-@property (nonatomic, strong) UIWindow *window;
-@property (nonatomic, strong) UILabel *label;
-@property (nonatomic, strong) NSTimer *expiry;
-@end
 
 @implementation IcliLeaseIndicator
 
@@ -88,7 +107,7 @@ static CGFloat homeIndicatorTop(void) {
     window.userInteractionEnabled = NO;
     window.backgroundColor = UIColor.clearColor;
     window.accessibilityElementsHidden = YES;
-    window.rootViewController = [UIViewController new];
+    window.rootViewController = [IcliIndicatorViewController new];
     window.rootViewController.view.backgroundColor = UIColor.clearColor;
     window.rootViewController.view.userInteractionEnabled = NO;
     // CALayer's disableUpdateMask bit 1 keeps the layer out of screenshots:
@@ -115,14 +134,19 @@ static CGFloat homeIndicatorTop(void) {
 }
 
 - (void)layoutLabel {
+    if (!self.label) return;
     [self.label sizeToFit];
     CGSize size = self.label.bounds.size;
-    CGFloat width = MIN(size.width + 18, UIScreen.mainScreen.bounds.size.width - 40);
-    CGSize screen = UIScreen.mainScreen.bounds.size;
+    // The label belongs to the controller's view. During rotation its bounds
+    // can differ from the window's, and layout runs after that view is sized.
+    CGRect bounds = self.label.superview.bounds;
+    CGSize screen = bounds.size;
+    CGFloat width = MIN(size.width + 18, screen.width - 40);
     CGFloat bottom = screen.height - 4;
-    CGFloat bar = homeIndicatorTop();
+    CGFloat bar = homeIndicatorTop(screen);
     if (bar > 0) bottom = bar - 3;
-    self.label.frame = CGRectMake((screen.width - width) / 2, bottom - 18, width, 18);
+    self.label.frame = CGRectMake(bounds.origin.x + (screen.width - width) / 2,
+                                 bounds.origin.y + bottom - 18, width, 18);
 }
 
 - (NSDictionary *)lease {
