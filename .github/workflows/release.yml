@@ -102,7 +102,7 @@ jobs:
         run: |
           ./scripts/test-audio-routes.sh
           ./scripts/test-verified-ui-actions.sh
-          ./scripts/test-passcode-unlock.sh
+          bash ./scripts/test-passcode-unlock.sh
           ./scripts/test-saved-passcode.sh
 
       - name: Build and verify the iOS and tvOS DEBs
