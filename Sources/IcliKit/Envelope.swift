@@ -32,7 +32,15 @@ public enum Envelope {
         }
         icli_private_init()
         let status = icli_lock_status()
-        guard status.locked || status.screen_off else { return }
+        guard status.locked || status.screen_off else {
+            // Not locked, though one source says so: run, and say why.
+            if status.sources_disagree {
+                let message = lockDisagreementMessage(status)
+                warning = message
+                FileHandle.standardError.write(Data("warning: \(message)\n".utf8))
+            }
+            return
+        }
         #if DEBUG
             let message = "device is locked or screen is off; debug build allowing execution"
             warning = message

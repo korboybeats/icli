@@ -12,10 +12,24 @@ extern "C" {
 #endif
 
 typedef struct {
+    /// Locked only when every source that answered says locked.
     bool locked;
     bool screen_off;
     bool passcode_enabled;
+    /// com.apple.springboard.lockstate's state: SpringBoard writes it on each
+    /// UI lock change, and notifyd keeps the last value across a respring.
+    bool notification_locked;
+    /// Whether SpringBoard answered SBGetScreenLockStatus, and its live
+    /// SBLockScreenManager isUILocked.
+    bool springboard_answered;
+    bool springboard_locked;
+    /// SpringBoard answered and the notification state says otherwise.
+    bool sources_disagree;
 } IcliLockStatus;
+
+/// Fills `locked` and `sources_disagree` from the source fields. Pure, so a
+/// host test can run it.
+IcliLockStatus icli_lock_resolve(IcliLockStatus sources);
 
 typedef enum {
     /// SpringBoard, LaunchServices or (on tvOS) FrontBoard accepted the request.

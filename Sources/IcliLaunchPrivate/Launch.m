@@ -2,6 +2,7 @@
 #import "IcliSystemPrivate.h"
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
+#import <mach/mach.h>
 #import <notify.h>
 #import <objc/message.h>
 #import <stdlib.h>
@@ -20,7 +21,9 @@ static NSString *const kSystemShell = @"com.apple.springboard";
 #endif
 
 static mach_port_t (*pSBSSpringBoardServerPort)(void);
-static void (*pSBGetScreenLockStatus)(mach_port_t, BOOL *, BOOL *);
+// SpringBoard's reply writes one byte to each, from SBLockScreenManager
+// isUILocked and the lockout controller's isLockedOut.
+static void (*pSBGetScreenLockStatus)(mach_port_t, uint8_t *, uint8_t *);
 // The Copy rule: the identifier comes back retained.
 static NSString *(*pSBSCopyFrontmostApplicationDisplayIdentifier)(void) NS_RETURNS_RETAINED;
 static int (*pSBSLaunchApplicationWithIdentifierAndLaunchOptions)(NSString *, NSDictionary *, NSDictionary *, BOOL);
@@ -58,23 +61,25 @@ static bool notifyFlag(const char *name) {
     return state != 0;
 }
 
-// SBSGetScreenLockStatus reads unlocked on a locked iOS 26 device, and
-// MobileKeyBag answers nothing useful without a passcode, so the lock comes
-// from SpringBoard's notification and SBGetScreenLockStatus together.
+// Each source alone can be wrong; icli_lock_resolve says how they combine.
 IcliLockStatus icli_lock_status(void) {
     icli_launch_init();
     IcliLockStatus st = {
-        .locked = notifyFlag("com.apple.springboard.lockstate"),
+        .notification_locked = notifyFlag("com.apple.springboard.lockstate"),
         .screen_off = notifyFlag("com.apple.springboard.hasBlankedScreen"),
     };
-    if (pSBSSpringBoardServerPort && pSBGetScreenLockStatus) {
-        BOOL locked = NO;
-        BOOL passcode = NO;
-        pSBGetScreenLockStatus(pSBSSpringBoardServerPort(), &locked, &passcode);
-        st.locked = st.locked || locked;
-        st.passcode_enabled = passcode;
+    mach_port_t port = pSBSSpringBoardServerPort ? pSBSSpringBoardServerPort() : MACH_PORT_NULL;
+    if (port != MACH_PORT_NULL && pSBGetScreenLockStatus) {
+        // A reply writes 0 or 1; a SpringBoard that is gone, as during a
+        // respring, leaves the sentinel.
+        uint8_t locked = 0xff;
+        uint8_t passcode = 0xff;
+        pSBGetScreenLockStatus(port, &locked, &passcode);
+        st.springboard_answered = locked <= 1;
+        st.springboard_locked = locked == 1;
+        st.passcode_enabled = passcode == 1;
     }
-    return st;
+    return icli_lock_resolve(st);
 }
 
 #if TARGET_OS_TV

@@ -233,7 +233,7 @@ private func attemptsRemaining(keybag: [String: Any], ledgerFailures: Int, limit
 
 private func lockScreenReport() -> [String: Any] {
     let status = icli_lock_status()
-    return ["locked": status.locked, "screen_off": status.screen_off]
+    return ["locked": status.locked, "screen_off": status.screen_off, "lock_sources": lockSources(status)]
 }
 
 private func wipe(_ bytes: inout [UInt8]) {

@@ -4,6 +4,21 @@ import IcliPrivate
 
 private func orNull(_ value: Any?) -> Any { value ?? NSNull() }
 
+/// What each lock source said: SpringBoard's live answer (null when it did not
+/// answer) and the com.apple.springboard.lockstate state, which a respring
+/// that leaves the UI unlocked does not rewrite.
+func lockSources(_ lock: IcliLockStatus) -> [String: Any] {
+    ["springboard": lock.springboard_answered ? lock.springboard_locked : NSNull(),
+     "notification": lock.notification_locked, "agree": !lock.sources_disagree]
+}
+
+/// The warning for commands that run while the sources disagree.
+func lockDisagreementMessage(_ lock: IcliLockStatus) -> String {
+    "lock sources disagree: SpringBoard reports \(lock.springboard_locked ? "locked" : "unlocked") but "
+        + "com.apple.springboard.lockstate reports \(lock.notification_locked ? "locked" : "unlocked"); "
+        + "treated as unlocked"
+}
+
 private func bootTime() -> Int? {
     var boot = timeval()
     var size = MemoryLayout<timeval>.size
@@ -20,8 +35,8 @@ public func deviceStatus() -> [String: Any] {
     let lock = icli_lock_status()
     let metrics = icli_screen_metrics()
     var result: [String: Any] = [
-        "locked": lock.locked, "screen_off": lock.screen_off, "orientation": Int(metrics.orientation),
-        "frontmost": frontmostApp(),
+        "locked": lock.locked, "screen_off": lock.screen_off, "lock_sources": lockSources(lock),
+        "orientation": Int(metrics.orientation), "frontmost": frontmostApp(),
     ]
     let shell = try? systemShellPID()
     result["springboard_pid"] = orNull(shell.map { Int($0) })

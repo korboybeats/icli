@@ -32,6 +32,7 @@ public func screenInfo() -> [String: Any] {
         "orientation": m.orientation,
         "locked": lock.locked,
         "screen_off": lock.screen_off,
+        "lock_sources": lockSources(lock),
     ]
 }
 

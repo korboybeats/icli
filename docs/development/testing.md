@@ -104,3 +104,14 @@ It covers read-only commands, the `unavailable` answers, the launchd life cycle 
 ## Interaction lease policy
 
 Run `rtk test ./scripts/test-lease-policy.sh` on macOS. It exercises the production lease and lock policy against a temporary lease file, with native lock/notification seams. Checks cover background calls without or with tokens, unchanged lease data, guarded refusal and renewal, bypass without renewal or ownership changes, expiration, and independent locked/screen-off behavior. The device runner is `scripts/test-lease-policy-device.py`; wait for the device to be free before running it. It acquires its own test lease and verifies terminal input with redirected stdout, explicit bypass, batch/session inheritance and per-step isolation after success and parse failures, forbidden nested runners, and the Silent mode setter reapplying the current state without changing it.
+
+## Lock State Host Test
+
+`./scripts/test-lock-state.sh` (Linux or macOS) runs the lock-source resolver
+against the measured cases, including the iOS 17.1.1 respring that left
+`com.apple.springboard.lockstate` at 1 on an unlocked SpringBoard. The device
+case `lock_state_after_respring` (`scripts/acceptance.py --lease --case
+lock_state_after_respring`, root) locks the phone, resprings it and checks
+that a stale state is reported, not enforced; it needs a SpringBoard that comes
+back unlocked, such as one with NoPassAfterRespring, and restores the lock with
+`icli unlock`.

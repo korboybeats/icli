@@ -109,6 +109,9 @@ jobs:
       - name: Active interface geometry and scope isolation
         run: ./scripts/test-interface-geometry.sh
 
+      - name: Lock sources, including lockstate left over from a respring
+        run: ./scripts/test-lock-state.sh
+
       - name: Background commands and interaction lease policy
         run: ./scripts/test-lease-policy.sh
 

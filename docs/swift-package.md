@@ -241,7 +241,7 @@ let launched = try launchApp("com.example.app") // launched, frontmost
 
 `launchApp` asks SpringBoardServices first and falls back to `LSApplicationWorkspace`, then waits up to five seconds for the app to be frontmost. It throws `IcliError.locked` at once when the system refuses because the device is locked or its screen is off, and `IcliError.failed` for an app LaunchServices does not know, any other refusal, or an app that never came to the front. Before 0.7.8 the LaunchServices fallback ignored the refusal, so a library caller on a locked device waited the five seconds and got "app did not become frontmost".
 
-The lock comes from SpringBoard's `com.apple.springboard.lockstate` notification and `SBGetScreenLockStatus` together: on iOS 26 `SBSGetScreenLockStatus` reads unlocked on a locked device, and MobileKeyBag answers nothing useful on a device without a passcode.
+The lock comes from SpringBoard's `com.apple.springboard.lockstate` notification state and `SBGetScreenLockStatus` together, and reads locked only when both say so. SpringBoard answers `SBGetScreenLockStatus` from `SBLockScreenManager`'s live `isUILocked` (iOS 17.1.1), but on iOS 26 it reads unlocked on a locked device. SpringBoard writes the notification state only when its UI lock changes, and notifyd keeps it across a respring, so a SpringBoard that comes back unlocked (`SBDontLockAfterCrash`, which tweaks such as NoPassAfterRespring set) leaves the old value behind. While SpringBoard is not answering, as during a respring, the notification state alone decides. MobileKeyBag answers nothing useful on a device without a passcode.
 
 | Property | Value |
 | --- | --- |

@@ -2998,6 +2998,56 @@ def springboard_restart(d):
     assert d.cli('screen', 'info')['locked'] is False
 
 
+@case('lock_state_after_respring', 'system', ['sb respring', 'lock', 'screen info', 'status'])
+def lock_state_after_respring(d):
+    # SpringBoard writes com.apple.springboard.lockstate only when its UI lock
+    # changes, and notifyd keeps the value across a respring. One that comes
+    # back unlocked (SBDontLockAfterCrash, as NoPassAfterRespring sets it)
+    # leaves the killed SpringBoard's 1 behind; icli must not read that as
+    # locked or block commands on it.
+    if d.user != 'root':
+        d.observations.append('not run: restoring the lock needs icli unlock, which needs root.')
+        return
+    d.fixture()
+    try:
+        locked = d.cli('lock')
+        assert locked['locked'] and locked['screen_off'], locked
+        assert d.cli('notify', 'get', 'com.apple.springboard.lockstate')['state'] == 1
+        restarted = d.cli('sb', 'respring', timeout=30)
+        assert restarted['restarted'] and restarted['pid'] != restarted['previous_pid'], restarted
+        # Allowed while locked; wait for the new SpringBoard to answer its port.
+        deadline = time.monotonic() + 30
+        while True:
+            d.cli('button', 'wake', expected=None)
+            info = d.cli('screen', 'info', expected=None)
+            if info.get('lock_sources', {}).get('springboard') is not None and not info.get('screen_off'):
+                break
+            assert time.monotonic() < deadline, f'SpringBoard did not answer after the respring: {info}'
+            time.sleep(1)
+        sources = info['lock_sources']
+        if sources['springboard']:
+            d.observations.append('SpringBoard restarted on the lock screen, so lockstate was rewritten '
+                                  'and there was no stale state to read.')
+            return
+        assert info['locked'] is False, info
+        if not sources['notification']:
+            d.observations.append('SpringBoard restarted unlocked and rewrote lockstate to 0.')
+            return
+        assert sources == {'springboard': False, 'notification': True, 'agree': False}, info
+        status = d.cli('status')
+        assert status['locked'] is False and status['lock_sources'] == sources, status
+        # The disagreement is reported, not enforced.
+        tree = d.cli('ui', 'tree')
+        assert tree['count'] > 0 and tree['warning'].startswith('lock sources disagree'), tree
+    finally:
+        # A failure above must not leave a locked device to every later case.
+        unlocked = d.cli('unlock', expected=None)
+    assert unlocked.get('status') == 0, unlocked
+    info = d.cli('screen', 'info')
+    assert not info['locked'] and not info['screen_off'], info
+    d.fixture()
+
+
 def run_binary(d, arguments, timeout=35):
     """Runs icli with stdout kept as bytes, for commands that write raw data."""
     command = shlex.join((['env', 'ICLI_LEASE=' + d.lease] if d.lease else []) + [d.binary] + list(arguments))
