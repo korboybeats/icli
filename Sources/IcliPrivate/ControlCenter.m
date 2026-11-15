@@ -469,3 +469,37 @@ char *icli_cc_mirroring_json(void) {
     }
     return icli_json_or_empty(result);
 }
+
+// MARK: Vibration
+
+// Settings > Accessibility > Touch > Vibration, which stops every vibration,
+// haptics included. libAccessibility's setter (iOS 17.1.1) writes
+// VibrationDisabled in com.apple.Accessibility for the mobile user and posts
+// com.apple.accessibility.cache.VibrationDisabled, which refreshes the value
+// every process caches. The getter reads the preference itself, since this
+// process's cache is the value it just set. Nothing is stored until the switch
+// is first turned off: vibration is on by default.
+static void *accessibilityLibrary(void) {
+    return loadFramework("/usr/lib/libAccessibility.dylib");
+}
+
+int icli_cc_vibration_get(void) {
+    void *library = accessibilityLibrary();
+    if (!library || !dlsym(library, "_AXSSetVibrationDisabled")) return -1;
+    __block int result = 1;
+    icli_as_mobile_user(^{
+        CFStringRef domain = CFSTR("com.apple.Accessibility");
+        CFPreferencesAppSynchronize(domain);
+        id value = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("VibrationDisabled"), domain));
+        if ([value respondsToSelector:@selector(boolValue)] && [value boolValue]) result = 0;
+    });
+    return result;
+}
+
+int icli_cc_vibration_set(bool enabled) {
+    void *library = accessibilityLibrary();
+    void (*setDisabled)(Boolean) = library ? dlsym(library, "_AXSSetVibrationDisabled") : NULL;
+    if (!setDisabled) return -1;
+    icli_as_mobile_user(^{ setDisabled(!enabled); });
+    return waitForState(3, enabled ? 1 : 0, icli_cc_vibration_get);
+}

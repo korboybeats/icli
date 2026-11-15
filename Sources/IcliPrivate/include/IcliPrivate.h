@@ -290,6 +290,10 @@ int icli_cc_focus_set(const char *mode, char **message);
 /// Silent mode: 1 means ringer muted, 0 means ringer unmuted. Does not set volumes.
 int icli_cc_silent_get(void);
 int icli_cc_silent_set(bool enabled);
+// Settings > Accessibility > Touch > Vibration: 1 on, 0 off (every vibration
+// and haptic stopped), -1 unavailable.
+int icli_cc_vibration_get(void);
+int icli_cc_vibration_set(bool enabled);
 /// {mirroring, device} or {error}.
 char *icli_cc_mirroring_json(void);
 /// Audio/Video outputs: {routes: [{name, uid, selected}], selected_uid}.

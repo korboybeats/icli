@@ -24,6 +24,7 @@ icli cc get focus
 icli cc get silent
 icli cc set silent on
 icli cc set silent off
+icli cc set haptics off
 icli cc toggle silent
 icli cc set bluetooth off
 icli cc set airdrop everyone
@@ -32,7 +33,7 @@ icli cc set flashlight 0.5
 icli cc toggle hotspot
 ```
 
-`icli cc` reads and sets the toggles in Control Center: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop`, `focus`, `silent`, `flashlight`, `mirroring` (read-only), and the `rotation-lock`, `low-power` and `appearance` settings that `icli device` also reaches. Each command answers with the state read back after the change, plus `changed`. AirDrop takes `off`, `contacts` or `everyone`; Everyone reverts to contacts after 10 minutes. Focus takes `on` (Do Not Disturb), `off` (ends every active Focus, as the Control Center button does) or a Focus name from `cc get focus`. The flashlight takes `on` (Control Center's last level), `off` or a level from 0 to 1. Changes persist after icli exits and show in Control Center and Settings. Turning Wi-Fi off or Airplane Mode on drops an SSH session that runs over Wi-Fi; run those from a detached script that restores the state. The entitlements each toggle needs are listed in [entitlements](../entitlements.md#control-center-toggles).
+`icli cc` reads and sets the toggles in Control Center: `airplane`, `wifi`, `bluetooth`, `cellular`, `hotspot`, `airdrop`, `focus`, `silent`, `flashlight`, `mirroring` (read-only), the `rotation-lock`, `low-power` and `appearance` settings that `icli device` also reaches, and `vibration` (alias `haptics`), Settings' Accessibility > Touch > Vibration: `off` stops every vibration and haptic, including ringtone vibration and system haptics. Each command answers with the state read back after the change, plus `changed`. AirDrop takes `off`, `contacts` or `everyone`; Everyone reverts to contacts after 10 minutes. Focus takes `on` (Do Not Disturb), `off` (ends every active Focus, as the Control Center button does) or a Focus name from `cc get focus`. The flashlight takes `on` (Control Center's last level), `off` or a level from 0 to 1. Changes persist after icli exits and show in Control Center and Settings. Turning Wi-Fi off or Airplane Mode on drops an SSH session that runs over Wi-Fi; run those from a detached script that restores the state. The entitlements each toggle needs are listed in [entitlements](../entitlements.md#control-center-toggles).
 
 `silent on` means Silent mode enabled (ringer muted); `silent off` disables Silent
 mode (ringer unmuted). These commands use native services without opening Control

@@ -4,10 +4,10 @@ import IcliSystem
 
 /// The Control Center toggles `icli cc` reads and sets, in Control Center's
 /// order. low-power, rotation-lock and appearance are the `device` settings
-/// of the same names.
+/// of the same names; vibration is Settings' Accessibility > Touch > Vibration.
 public let controlCenterToggles = [
     "airplane", "wifi", "bluetooth", "cellular", "hotspot", "airdrop", "focus",
-    "silent", "flashlight", "mirroring", "rotation-lock", "low-power", "appearance",
+    "silent", "flashlight", "mirroring", "rotation-lock", "low-power", "appearance", "vibration",
 ]
 
 private let toggleAliases = [
@@ -15,6 +15,7 @@ private let toggleAliases = [
     "data": "cellular", "personal-hotspot": "hotspot", "dnd": "focus", "do-not-disturb": "focus",
     "torch": "flashlight", "screen-mirroring": "mirroring", "rotation": "rotation-lock",
     "orientation-lock": "rotation-lock", "low-power-mode": "low-power", "dark-mode": "appearance",
+    "haptics": "vibration", "vibrations": "vibration",
 ]
 
 private func toggleName(_ name: String) throws -> String {
@@ -59,6 +60,7 @@ public func controlCenterGet(_ name: String) throws -> [String: Any] {
         try requireControlCenter()
         result = onOff(rotationInfo()["locked"] as? Bool == true ? 1 : 0)
     case "low-power": result = onOff(try lowPowerMode()["enabled"] as? Bool == true ? 1 : 0)
+    case "vibration": result = onOff(try read(icli_cc_vibration_get(), "Vibration"))
     default:
         let style = try appearance()["appearance"] as? String ?? "light"
         result = ["state": style, "enabled": style == "dark"]
@@ -100,6 +102,11 @@ public func controlCenterSet(_ name: String, _ value: String) throws -> [String:
     case "low-power":
         let enabled = try parseOnOff(value)
         if before["enabled"] as? Bool != enabled { _ = try setLowPowerMode(enabled) }
+    case "vibration":
+        let enabled = try parseOnOff(value)
+        if before["enabled"] as? Bool != enabled {
+            try check(icli_cc_vibration_set(enabled), "Vibration", seconds: 3)
+        }
     default:
         let style = value.lowercased()
         if before["state"] as? String != style { _ = try setAppearance(style) }
