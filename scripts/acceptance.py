@@ -1899,7 +1899,8 @@ def low_power_mode(d):
 def control_center(d):
     listed = {entry['toggle']: entry for entry in d.cli('cc', 'list', sudo=True)['toggles']}
     assert list(listed) == ['airplane', 'wifi', 'bluetooth', 'cellular', 'hotspot', 'airdrop', 'focus', 'silent',
-                            'flashlight', 'mirroring', 'rotation-lock', 'low-power', 'appearance', 'vibration'], listed
+                            'flashlight', 'mirroring', 'rotation-lock', 'low-power', 'appearance', 'vibration',
+                            'system-haptics', 'ring-haptics', 'silent-haptics'], listed
     unreadable = {name: entry['error'] for name, entry in listed.items() if 'error' in entry}
     assert not unreadable, unreadable
     assert d.cli('cc', 'get', 'dnd', sudo=True)['toggle'] == 'focus'
@@ -1917,7 +1918,7 @@ def control_center(d):
 
     # Each on/off toggle: flip, read back from a new process, flip with
     # `toggle`, and set the original again, which must report no change.
-    for name in ['bluetooth', 'cellular', 'rotation-lock', 'vibration']:
+    for name in ['bluetooth', 'cellular', 'rotation-lock', 'vibration', 'system-haptics', 'ring-haptics', 'silent-haptics']:
         original = listed[name]['state']
         flipped = 'off' if original == 'on' else 'on'
         try:

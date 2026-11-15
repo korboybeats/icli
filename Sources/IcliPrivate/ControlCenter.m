@@ -5,6 +5,7 @@
 #import <objc/runtime.h>
 #import <dlfcn.h>
 #include <math.h>
+#include <notify.h>
 #include <stdlib.h>
 
 // The Control Center toggles, through the same private services Control
@@ -502,4 +503,46 @@ int icli_cc_vibration_set(bool enabled) {
     if (!setDisabled) return -1;
     icli_as_mobile_user(^{ setDisabled(!enabled); });
     return waitForState(3, enabled ? 1 : 0, icli_cc_vibration_get);
+}
+
+// MARK: Haptics
+
+// Settings > Sounds & Haptics on iOS 17.1.1. System Haptics is effects-haptic
+// in com.apple.preferences.sounds: Settings only writes it, and SpringBoard
+// follows it as a bound user default. Haptics in ring and silent mode are
+// ring-vibrate and silent-vibrate in com.apple.springboard: Settings writes,
+// synchronizes and posts com.apple.springboard.<key>.changed, which ToneLibrary
+// and MediaExperience listen for. All three are on until first written.
+typedef struct { CFStringRef domain, key; const char *notification; } HapticSetting;
+
+static const HapticSetting hapticSettings[] = {
+    {CFSTR("com.apple.preferences.sounds"), CFSTR("effects-haptic"), NULL},
+    {CFSTR("com.apple.springboard"), CFSTR("ring-vibrate"), "com.apple.springboard.ring-vibrate.changed"},
+    {CFSTR("com.apple.springboard"), CFSTR("silent-vibrate"), "com.apple.springboard.silent-vibrate.changed"},
+};
+
+static int hapticRead(HapticSetting setting) {
+    __block int result = 1;
+    icli_as_mobile_user(^{
+        CFPreferencesAppSynchronize(setting.domain);
+        id value = CFBridgingRelease(CFPreferencesCopyAppValue(setting.key, setting.domain));
+        if ([value respondsToSelector:@selector(boolValue)] && ![value boolValue]) result = 0;
+    });
+    return result;
+}
+
+int icli_cc_haptics_get(int which) {
+    if (which < 0 || which > 2) return -1;
+    return hapticRead(hapticSettings[which]);
+}
+
+int icli_cc_haptics_set(int which, bool enabled) {
+    if (which < 0 || which > 2) return -1;
+    HapticSetting setting = hapticSettings[which];
+    icli_as_mobile_user(^{
+        CFPreferencesSetAppValue(setting.key, enabled ? kCFBooleanTrue : kCFBooleanFalse, setting.domain);
+        CFPreferencesAppSynchronize(setting.domain);
+    });
+    if (setting.notification) notify_post(setting.notification);
+    return hapticRead(setting) == (enabled ? 1 : 0) ? 0 : -2;
 }

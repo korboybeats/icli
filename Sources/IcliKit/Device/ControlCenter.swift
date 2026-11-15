@@ -4,10 +4,12 @@ import IcliSystem
 
 /// The Control Center toggles `icli cc` reads and sets, in Control Center's
 /// order. low-power, rotation-lock and appearance are the `device` settings
-/// of the same names; vibration is Settings' Accessibility > Touch > Vibration.
+/// of the same names; vibration is Settings' Accessibility > Touch > Vibration,
+/// and the three haptics toggles are Settings' Sounds & Haptics switches.
 public let controlCenterToggles = [
     "airplane", "wifi", "bluetooth", "cellular", "hotspot", "airdrop", "focus",
     "silent", "flashlight", "mirroring", "rotation-lock", "low-power", "appearance", "vibration",
+    "system-haptics", "ring-haptics", "silent-haptics",
 ]
 
 private let toggleAliases = [
@@ -61,6 +63,8 @@ public func controlCenterGet(_ name: String) throws -> [String: Any] {
         result = onOff(rotationInfo()["locked"] as? Bool == true ? 1 : 0)
     case "low-power": result = onOff(try lowPowerMode()["enabled"] as? Bool == true ? 1 : 0)
     case "vibration": result = onOff(try read(icli_cc_vibration_get(), "Vibration"))
+    case "system-haptics", "ring-haptics", "silent-haptics":
+        result = onOff(try read(icli_cc_haptics_get(hapticsIndex(toggle)), "Haptics"))
     default:
         let style = try appearance()["appearance"] as? String ?? "light"
         result = ["state": style, "enabled": style == "dark"]
@@ -107,6 +111,13 @@ public func controlCenterSet(_ name: String, _ value: String) throws -> [String:
         if before["enabled"] as? Bool != enabled {
             try check(icli_cc_vibration_set(enabled), "Vibration", seconds: 3)
         }
+    case "system-haptics", "ring-haptics", "silent-haptics":
+        let enabled = try parseOnOff(value)
+        if before["enabled"] as? Bool != enabled {
+            guard icli_cc_haptics_set(hapticsIndex(toggle), enabled) == 0 else {
+                throw IcliError.failed("\(toggle) did not read back as \(enabled ? "on" : "off") after the write.")
+            }
+        }
     default:
         let style = value.lowercased()
         if before["state"] as? String != style { _ = try setAppearance(style) }
@@ -134,6 +145,10 @@ public func controlCenterToggle(_ name: String) throws -> [String: Any] {
 }
 
 // MARK: Shared
+
+private func hapticsIndex(_ toggle: String) -> Int32 {
+    ["system-haptics": 0, "ring-haptics": 1, "silent-haptics": 2][toggle] ?? -1
+}
 
 private func requireControlCenter() throws {
     #if os(tvOS)

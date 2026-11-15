@@ -294,6 +294,10 @@ int icli_cc_silent_set(bool enabled);
 // and haptic stopped), -1 unavailable.
 int icli_cc_vibration_get(void);
 int icli_cc_vibration_set(bool enabled);
+// Settings > Sounds & Haptics: 0 System Haptics, 1 haptics in ring mode,
+// 2 haptics in silent mode. Get: 1 on, 0 off, -1 unknown setting.
+int icli_cc_haptics_get(int which);
+int icli_cc_haptics_set(int which, bool enabled);
 /// {mirroring, device} or {error}.
 char *icli_cc_mirroring_json(void);
 /// Audio/Video outputs: {routes: [{name, uid, selected}], selected_uid}.

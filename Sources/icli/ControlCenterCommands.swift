@@ -12,6 +12,8 @@ struct Cc: ParsableCommand {
         level from 0 to 1; appearance takes light or dark. mirroring is read-only.
         silent on enables Silent mode (ringer muted); off disables it (ringer unmuted). It does not change volumes.
         vibration (alias haptics) is Settings > Accessibility > Touch > Vibration: off stops every vibration and haptic.
+        system-haptics, ring-haptics and silent-haptics are the Sounds & Haptics switches: haptics for system \
+        controls, and haptics in ring mode and in Silent mode (ringtones, alerts and calls).
         Every command answers with the state read back after the change.
         Audio outputs: 'audio list' lists names and exact UIDs; 'audio select <route-uid>' waits for verified selection.
 
