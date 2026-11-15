@@ -10,7 +10,7 @@ tvOS reports unavailable.
 ## Native evidence
 
 IDA analysis used the iOS 17.1.1 arm64e cache at
-`/home/korboy-wsl/mac-files/dsc-17.1.1/dyld_shared_cache_arm64e`.
+`/home/korboy-wsl/re/ios/17.1.1/dsc/dyld_shared_cache_arm64e`.
 MediaExperience UUID is `D4237346-F8C0-3642-8B9A-E553BAD2510C`; the reused
 analysis input and a fresh extraction from this cache have the same UUID.
 Raw analysis snapshots are in `.build/silent-research/ida-native-evidence.json`.
