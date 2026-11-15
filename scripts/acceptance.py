@@ -2998,7 +2998,7 @@ def springboard_restart(d):
     assert d.cli('screen', 'info')['locked'] is False
 
 
-@case('lock_state_after_respring', 'system', ['sb respring', 'lock', 'screen info', 'status'])
+@case('lock_state_after_respring', 'system', ['lock', 'screen info', 'status'])
 def lock_state_after_respring(d):
     # SpringBoard writes com.apple.springboard.lockstate only when its UI lock
     # changes, and notifyd keeps the value across a respring. One that comes
@@ -3013,22 +3013,31 @@ def lock_state_after_respring(d):
         locked = d.cli('lock')
         assert locked['locked'] and locked['screen_off'], locked
         assert d.cli('notify', 'get', 'com.apple.springboard.lockstate')['state'] == 1
-        restarted = d.cli('sb', 'respring', timeout=30)
-        assert restarted['restarted'] and restarted['pid'] != restarted['previous_pid'], restarted
+        # Killed, as when the stale state was first seen, not relaunched
+        # through FrontBoard (sb respring).
+        before = d.cli('status')['springboard_pid']
+        killed = d.run('/var/jb/usr/bin/killall SpringBoard')
+        assert killed.returncode == 0, killed.stderr
         # Allowed while locked; wait for the new SpringBoard to answer its port.
         deadline = time.monotonic() + 30
         while True:
             d.cli('button', 'wake', expected=None)
             info = d.cli('screen', 'info', expected=None)
-            if info.get('lock_sources', {}).get('springboard') is not None and not info.get('screen_off'):
+            pid = d.cli('status', expected=None).get('springboard_pid')
+            # A starting SpringBoard answers locked before it has decided; one
+            # that skips the boot lock turns unlocked without writing lockstate.
+            # Only one still locked at the deadline is on the lock screen.
+            if (pid and pid != before and info.get('lock_sources', {}).get('springboard') is False
+                    and not info.get('screen_off')):
                 break
-            assert time.monotonic() < deadline, f'SpringBoard did not answer after the respring: {info}'
+            if time.monotonic() > deadline:
+                assert pid and pid != before and info.get('lock_sources', {}).get('springboard'), \
+                    f'SpringBoard did not answer after the respring: {info}'
+                d.observations.append('SpringBoard restarted on the lock screen, so lockstate was rewritten '
+                                      'and there was no stale state to read.')
+                return
             time.sleep(1)
         sources = info['lock_sources']
-        if sources['springboard']:
-            d.observations.append('SpringBoard restarted on the lock screen, so lockstate was rewritten '
-                                  'and there was no stale state to read.')
-            return
         assert info['locked'] is False, info
         if not sources['notification']:
             d.observations.append('SpringBoard restarted unlocked and rewrote lockstate to 0.')

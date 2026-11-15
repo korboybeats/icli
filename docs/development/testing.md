@@ -111,7 +111,7 @@ Run `rtk test ./scripts/test-lease-policy.sh` on macOS. It exercises the product
 against the measured cases, including the iOS 17.1.1 respring that left
 `com.apple.springboard.lockstate` at 1 on an unlocked SpringBoard. The device
 case `lock_state_after_respring` (`scripts/acceptance.py --lease --case
-lock_state_after_respring`, root) locks the phone, resprings it and checks
+lock_state_after_respring`, root) locks the phone, kills SpringBoard and checks
 that a stale state is reported, not enforced; it needs a SpringBoard that comes
 back unlocked, such as one with NoPassAfterRespring, and restores the lock with
 `icli unlock`.
