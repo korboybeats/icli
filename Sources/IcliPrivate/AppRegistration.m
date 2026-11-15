@@ -10,7 +10,7 @@
 - (BOOL)unregisterApplication:(NSURL *)url;
 - (BOOL)registerApplicationDictionary:(NSDictionary *)info;
 + (id)enumeratorWithOptions:(NSUInteger)options;
-- (BOOL)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)infos
+- (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)infos
                                                operationUUID:(NSUUID *)uuid
                                               requestContext:(id)context
                                                 saveObserver:(id)observer
@@ -22,7 +22,7 @@ BOOL icli_ls_register_containerized(id workspace, NSDictionary *info, NSError **
     registerContainerizedApplicationWithInfoDictionaries:operationUUID:requestContext:saveObserver:registrationError:);
     if (!info) return NO;
     if (![workspace respondsToSelector:containerized]) {
-        // iOS 14 CoreServices takes the original dictionary, with nested
+        // iOS 14-15 CoreServices takes the original dictionary, with nested
         // _LSBundlePlugins, and returns BOOL (B24@0:8@16). Newer systems
         // deprecate this path; prefer their containerized interface above.
         if (![workspace respondsToSelector:@selector(registerApplicationDictionary:)]) {
@@ -129,15 +129,17 @@ static NSDictionary<NSString *, id> *registeredAppsByPath(void) {
 }
 
 /// Every registered app as {bundle_id, path, type, signer}, from
-/// LaunchServices' application records: iOS 14 and later enumerate them from
+/// LaunchServices' application records: iOS 15 and later enumerate them from
 /// lsd's database in milliseconds, where listing the proxies costs about as
 /// much as reading every app's plug-ins. Proxies where the records are not
-/// available. nil when LaunchServices cannot be asked.
+/// available or, on iOS 14, lack the signer that distinguishes rootful
+/// bootstrap apps from system apps. nil when LaunchServices cannot be asked.
 static NSArray<NSDictionary *> *appIndex(void) {
     id ws = icli_ls_workspace();
     NSMutableArray *index = [NSMutableArray array];
     Class recordClass = NSClassFromString(@"LSApplicationRecord");
-    if ([recordClass respondsToSelector:@selector(enumeratorWithOptions:)]) {
+    if ([recordClass respondsToSelector:@selector(enumeratorWithOptions:)] &&
+        [recordClass instancesRespondToSelector:NSSelectorFromString(@"signerIdentity")]) {
         @try {
             for (id record in [recordClass enumeratorWithOptions:0]) {
                 NSString *bundleID = icli_ls_string(icli_ls_value(record, @"bundleIdentifier"));

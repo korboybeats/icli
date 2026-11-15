@@ -272,6 +272,9 @@ static NSString *bulkFocalApplication(NSMutableDictionary<NSString *, NSNumber *
         Class descriptorClass = NSClassFromString(@"RBSProcessStateDescriptor");
         SEL shared = NSSelectorFromString(@"sharedInstance");
         SEL applications = NSSelectorFromString(@"predicateMatchingProcessTypeApplication");
+        // iOS 14's LaunchServices predicate also matches identity.isApplication.
+        if (![predicateClass respondsToSelector:applications])
+            applications = NSSelectorFromString(@"predicateMatchingLaunchServicesProcesses");
         SEL make = NSSelectorFromString(@"descriptor");
         SEL setValues = NSSelectorFromString(@"setValues:");
         statesSelector = NSSelectorFromString(@"statesForPredicate:withDescriptor:error:");

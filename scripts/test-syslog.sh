@@ -11,6 +11,9 @@ xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Wno-unused-parameter -Werror \
   -ISources/IcliPrivate -ISources/IcliPrivate/include -ISources/IcliSystemPrivate/include -ISources/IcliLaunchPrivate/include \
   Sources/IcliPrivate/Logging.m Tests/Syslog/main.m -framework Foundation -o "$work/syslog-tests"
 "$work/syslog-tests"
+xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -fsanitize=undefined \
+  Tests/Syslog/activity-layout.m -framework Foundation -o "$work/log-layout-tests"
+"$work/log-layout-tests"
 xcrun swiftc -swift-version 6 -module-cache-path "$work/modules" \
   Tests/Syslog/main.swift Sources/IcliKit/Host/SyslogFilter.swift Sources/IcliKit/Host/FilePrefix.swift \
   -o "$work/syslog-swift-tests"

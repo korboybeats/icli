@@ -487,18 +487,60 @@ static id axSpringBoardServer(void) {
     return server;
 }
 
-// AXSpringBoardServer -setOrientation: is the AssistiveTouch "Rotate Screen"
-// path; SpringBoard applies it to the foreground app. The caller reads back.
-static bool setCompositorOrientation(int degrees) {
-    id server = axSpringBoardServer();
-    if (![server respondsToSelector:@selector(setOrientation:)]) {
+// iOS 14 AssistiveTouch uses these named actions. Its underlying device
+// orientation values differ from UIInterfaceOrientation for landscape.
+static bool setLegacyCompositorOrientation(int degrees) {
+    SEL action;
+    switch (degrees) {
+    case 0:
+        action = @selector(rotatePortrait);
+        break;
+    case 90:
+        action = @selector(rotateLeft);
+        break;
+    case 180:
+        action = @selector(rotateUpsideDown);
+        break;
+    case 270:
+        action = @selector(rotateRight);
+        break;
+    default:
         return false;
     }
-    ((void (*)(id, SEL, long))objc_msgSend)(
-        server,
-        @selector(setOrientation:),
-        uiInterfaceOrientationForDegrees(degrees)
-    );
+
+    dlopen("/System/Library/PrivateFrameworks/AccessibilityPhysicalInteraction.framework/AccessibilityPhysicalInteraction", RTLD_NOW);
+    Class cls = NSClassFromString(@"AXPISystemActionHelper");
+    NSMethodSignature *factory = [cls methodSignatureForSelector:@selector(sharedInstance)];
+    if (![cls respondsToSelector:@selector(sharedInstance)] || factory.numberOfArguments != 2
+        || strcmp(factory.methodReturnType, @encode(id)) != 0) {
+        return false;
+    }
+    id helper = ((id (*)(id, SEL))objc_msgSend)(cls, @selector(sharedInstance));
+    NSMethodSignature *signature = [helper methodSignatureForSelector:action];
+    if (![helper respondsToSelector:action] || signature.numberOfArguments != 2
+        || strcmp(signature.methodReturnType, @encode(void)) != 0) {
+        return false;
+    }
+    ((void (*)(id, SEL))objc_msgSend)(helper, action);
+    return true;
+}
+
+// Prefer the newer AssistiveTouch "Rotate Screen" path. The caller reads back
+// the foreground app's orientation after either system action.
+static bool setCompositorOrientation(int degrees) {
+    id server = axSpringBoardServer();
+    NSMethodSignature *signature = [server methodSignatureForSelector:@selector(setOrientation:)];
+    if ([server respondsToSelector:@selector(setOrientation:)] && signature.numberOfArguments == 3
+        && strcmp(signature.methodReturnType, @encode(void)) == 0
+        && strcmp([signature getArgumentTypeAtIndex:2], @encode(long)) == 0) {
+        ((void (*)(id, SEL, long))objc_msgSend)(
+            server,
+            @selector(setOrientation:),
+            uiInterfaceOrientationForDegrees(degrees)
+        );
+    } else if (!setLegacyCompositorOrientation(degrees)) {
+        return false;
+    }
     icli_settle(0.3);
     invalidateInterfaceGeometry();
     return true;

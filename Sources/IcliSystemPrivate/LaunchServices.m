@@ -98,6 +98,7 @@ NSDictionary *icli_ls_app_dictionary(id proxy) {
 
 bool icli_app_is_installed(const char *bundle_id) {
     if (!bundle_id) return false;
+    icli_ls_workspace();
     Class proxyClass = NSClassFromString(@"LSApplicationProxy");
     SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
     if (![proxyClass respondsToSelector:lookup]) return false;
@@ -107,6 +108,7 @@ bool icli_app_is_installed(const char *bundle_id) {
 
 char *icli_app_name(const char *bundle_id) {
     if (!bundle_id) return NULL;
+    icli_ls_workspace();
     Class proxyClass = NSClassFromString(@"LSApplicationProxy");
     SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
     if (![proxyClass respondsToSelector:lookup]) return NULL;

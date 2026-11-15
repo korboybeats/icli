@@ -10,11 +10,18 @@
 // This is the system Silent mode property, independent of category volumes.
 enum { SilentModeClientControlCenter = 2 };
 
+// iOS 14-16 AXSpringBoardServer isRingerMuted sends this native read request.
+// AXIPCMessage's key is a signed 32-bit int, not NSInteger.
+enum { SilentModeRingerMutedMessage = 4020 };
+@protocol IcliSilentModeMessage <NSObject>
+- (instancetype)initWithKey:(int)key payload:(id)payload;
+@end
+
 static id silentController(void) {
 #if TARGET_OS_TV
     return nil;
 #else
-    // Only the iOS 17+ path has been qualified. Older systems fail closed.
+    // The standalone native setter was introduced in iOS 17.
     if (@available(iOS 17.0, *)) {
         Class cls = NSClassFromString(@"AVSystemController");
         if (!cls) {
@@ -57,8 +64,39 @@ static int silentState(id controller) {
     } @catch (NSException *exception) { return -1; }
 }
 
+static int legacySilentState(void) {
+#if TARGET_OS_TV
+    return -1;
+#else
+    dlopen("/System/Library/PrivateFrameworks/AccessibilityUtilities.framework/AccessibilityUtilities", RTLD_NOW);
+    Class cls = NSClassFromString(@"AXSpringBoardServer");
+    SEL shared = @selector(server);
+    if (!signature(cls, shared, "@", @[])) return -1;
+    id server = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL get = @selector(sendSimpleMessageWithObjectResult:);
+    if (!signature(server, @selector(isRingerMuted), @encode(BOOL), @[]) ||
+        !signature(server, get, "@", @[@"@"])) return -1;
+
+    Class messageClass = NSClassFromString(@"AXIPCMessage");
+    id<IcliSilentModeMessage> allocated = [messageClass alloc];
+    if (!signature(allocated, @selector(initWithKey:payload:), "@", @[@"i", @"@"])) return -1;
+    id message = [allocated initWithKey:SilentModeRingerMutedMessage payload:nil];
+    if (!message) return -1;
+    // The BOOL wrapper sends this same request, but boolValue turns a missing
+    // server reply into NO. Preserve the native NSNumber result so an absent
+    // service, missing result or malformed reply cannot be reported as off.
+    id result = ((id (*)(id, SEL, id))objc_msgSend)(server, get, message);
+    if (![result isKindOfClass:NSNumber.class] ||
+        (![result isEqual:@NO] && ![result isEqual:@YES])) return -1;
+    return [result boolValue] ? 1 : 0;
+#endif
+}
+
 int icli_cc_silent_get(void) {
-    @try { return silentState(silentController()); }
+    @try {
+        id controller = silentController();
+        return controller ? silentState(controller) : legacySilentState();
+    }
     @catch (NSException *exception) { return -1; }
 }
 

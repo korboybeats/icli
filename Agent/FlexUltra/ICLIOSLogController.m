@@ -1,18 +1,17 @@
 // Records this process's unified log for logs.messages, in place of FLEX's
 // FLEXOSLogController, with the same four selectors the original handler calls.
 //
-// FLEX reads os_activity_stream entries with a layout older than iOS 17. On
-// 17.1.1 an entry has 8 more bytes after proc_id, so its log message starts at
-// entry+56, not +48; at +48 os_log_copy_formatted_message answers "<compose
-// failure [corrupt log]>" for every message and the dates are garbage
-// (measured with a dump injected into the ContainerFixture). The offset is
-// chosen per entry by the one whose wall-clock time is near now, not by iOS
-// version, since only 17.1.1 was measured. A FLEX tweak such as FLEXing loads
-// its own FLEX into every app, so this has to live in the agent, not in FLEX.
+// LoggingSupport's entry decoder uses log_message at +48 on iOS 14-16,
+// +56 on 17/18, and +52 in the packed entry on 26/27. Its formatter still
+// takes log_message, whose tv_gmt is at +40, on all of those layouts. Select
+// only a qualified OS layout; copying the date also handles the packed
+// entry's unaligned timeval. A FLEX tweak such as FLEXing loads its
+// own FLEX into every app, so this lives in the agent, not in FLEX.
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 #import <objc/message.h>
 #import <malloc/malloc.h>
+#import <string.h>
 #import <sys/time.h>
 #import <unistd.h>
 
@@ -51,19 +50,32 @@ static const NSUInteger ICLIOSLogLimit = 10000;
     return self;
 }
 
-// The log message inside an entry: the candidate whose tv_gmt (40 bytes in)
-// is within a day of now. NULL when neither is, so nothing corrupt is kept.
-static char *ICLILogMessage(void *entry, time_t now) {
-    for (size_t offset = 56; offset >= 48; offset -= 8) {
-        char *message = (char *)entry + offset;
-        time_t seconds = ((struct timeval *)(message + 40))->tv_sec;
-        if (seconds > now - 86400 && seconds < now + 86400) return message;
+// The first and last supplied cache in each OS family were checked against
+// _os_activity_stream_entry_decode. Unknown schemas must not be decoded.
+static size_t ICLILogMessageOffset(NSInteger majorVersion) {
+    switch (majorVersion) {
+        case 14: case 15: case 16: return 48;
+        case 17: case 18: return 56;
+        case 26: case 27: return 52;
+        default: return 0;
     }
-    return NULL;
+}
+
+// Validate only the selected layout's date; never use it to choose a layout.
+static char *ICLILogMessage(void *entry, size_t offset, time_t now, struct timeval *gmt) {
+    if (!offset) return NULL;
+    char *message = (char *)entry + offset;
+    struct timeval date;
+    memcpy(&date, message + 40, sizeof(date));
+    if (date.tv_sec <= now - 86400 || date.tv_sec >= now + 86400) return NULL;
+    *gmt = date;
+    return message;
 }
 
 - (BOOL)startMonitoring {
     if (_stream) return YES;
+    size_t messageOffset = ICLILogMessageOffset(NSProcessInfo.processInfo.operatingSystemVersion.majorVersion);
+    if (!messageOffset) return NO;
     void *handle = dlopen("/System/Library/PrivateFrameworks/LoggingSupport.framework/LoggingSupport", RTLD_NOW);
     ICLIActivityStream (*forPID)(pid_t, uint32_t, ICLIActivityEntryBlock) = handle ? dlsym(handle, "os_activity_stream_for_pid") : NULL;
     void (*resume)(ICLIActivityStream) = handle ? dlsym(handle, "os_activity_stream_resume") : NULL;
@@ -78,9 +90,9 @@ static char *ICLILogMessage(void *entry, time_t now) {
         if (type != ICLIEntryLogMessage && type != ICLIEntryLegacyLogMessage) return true;
         struct timeval now;
         gettimeofday(&now, NULL);
-        char *message = ICLILogMessage(entry, now.tv_sec);
+        struct timeval gmt;
+        char *message = ICLILogMessage(entry, messageOffset, now.tv_sec, &gmt);
         if (!message) return true;
-        struct timeval gmt = *(struct timeval *)(message + 40);
         char *text = format(message);
         NSString *string = text ? [[NSString alloc] initWithBytes:text length:strlen(text) encoding:NSUTF8StringEncoding] : nil;
         // Freed only when it came from malloc, which a "copy" result should.
