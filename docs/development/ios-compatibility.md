@@ -119,6 +119,31 @@ supplemental image scope; `N` means it was not queried. None of these codes is
 a command pass. In particular, stripped Objective-C method names can be absent
 from symbol results while their runtime method metadata still exists.
 
+The [receiver-specific method matrix](ios-compatibility-methods.tsv) records
+53 selected private receiver/selector pairs across the same 40 caches. These
+are reviewed calls used by the compatibility fallbacks and adjacent device,
+registration, audio and logging paths. Each resolved cell contains the actual
+declaring class and native Objective-C encoding, including superclass methods.
+Its [input summary](ios-compatibility-methods.summary.json) retains the raw
+metadata and reader hashes. This establishes receiver and method encoding for
+those rows; it is not exhaustive private-API qualification. In particular,
+an `@?` argument alone does not establish the block's callback prototype.
+
+`scripts/compatibility-objc.py` reads cache method metadata directly, handles
+the recorded slide/relative-list formats, and retains unparseable encodings.
+Separate category lists are not all merged, so `class_unresolved` and
+`method_unresolved` never prove absence. Source guards and native caller
+inspection establish the fallback decisions described below. To regenerate
+the selected matrix after saving each version's metadata:
+
+```sh
+python3 scripts/compatibility-methods.py \
+  --metadata .build/compatibility/objc-korboy7 \
+  --inventory .build/compatibility/inventory-korboy7.json \
+  --index docs/development/ios-compatibility-methods.tsv \
+  --output docs/development/ios-compatibility-methods.tsv
+```
+
 Resolver exports require special handling: go-macho's `TrieExport.Type()`
 prints `resolver=0x...` for stub/resolver entries instead of `regular`. This
 occurs for 38 required dispatch/lock functions in the 16.7.16 and 17.2 caches.
