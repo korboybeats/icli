@@ -3033,7 +3033,7 @@ def lock_state_after_respring(d):
         if not sources['notification']:
             d.observations.append('SpringBoard restarted unlocked and rewrote lockstate to 0.')
             return
-        assert sources == {'springboard': False, 'notification': True, 'agree': False}, info
+        assert sources == {'springboard': False, 'notification': True, 'agree': False, 'keybag': False}, info
         status = d.cli('status')
         assert status['locked'] is False and status['lock_sources'] == sources, status
         # The disagreement is reported, not enforced.

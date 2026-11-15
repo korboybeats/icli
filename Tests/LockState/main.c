@@ -43,7 +43,22 @@ int main(void) {
     expect("SpringBoard not answering, lockstate 0",
            (IcliLockStatus){0},
            false, false);
+    // The stale case with the keybag read: unlocked, so still unlocked.
+    expect("after respring, keybag unlocked",
+           (IcliLockStatus){.notification_locked = true, .springboard_answered = true, .springboard_locked = false,
+                            .keybag_checked = true},
+           false, true);
+    // iOS 26.6.2: another unlocked window scene makes SpringBoard answer
+    // unlocked on a locked phone; the locked keybag settles it.
+    expect("iOS 26 unlocked scene, keybag locked",
+           (IcliLockStatus){.notification_locked = true, .springboard_answered = true, .springboard_locked = false,
+                            .keybag_checked = true, .keybag_locked = true},
+           true, true);
+    // Without a disagreement the keybag is never consulted.
+    expect("agree unlocked, keybag value ignored",
+           (IcliLockStatus){.springboard_answered = true, .keybag_checked = true, .keybag_locked = true},
+           false, false);
     if (failures) return EXIT_FAILURE;
-    puts("lock state: 6 cases passed");
+    puts("lock state: 9 cases passed");
     return EXIT_SUCCESS;
 }

@@ -79,7 +79,24 @@ IcliLockStatus icli_lock_status(void) {
         st.springboard_locked = locked == 1;
         st.passcode_enabled = passcode == 1;
     }
-    return icli_lock_resolve(st);
+    st = icli_lock_resolve(st);
+    if (st.sources_disagree) {
+        static int (*getLockState)(CFDictionaryRef);
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            void *mkb = dlopen("/System/Library/PrivateFrameworks/MobileKeyBag.framework/MobileKeyBag", RTLD_NOW);
+            if (mkb) getLockState = (typeof(getLockState))dlsym(mkb, "MKBGetDeviceLockState");
+        });
+        if (getLockState) {
+            // 0 unlocked, 3 no passcode, 1 and 2 locked; anything else, such
+            // as an error, settles nothing.
+            int state = getLockState(NULL);
+            st.keybag_checked = true;
+            st.keybag_locked = state == 1 || state == 2;
+            st = icli_lock_resolve(st);
+        }
+    }
+    return st;
 }
 
 #if TARGET_OS_TV

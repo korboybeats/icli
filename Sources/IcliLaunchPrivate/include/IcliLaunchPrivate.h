@@ -12,7 +12,8 @@ extern "C" {
 #endif
 
 typedef struct {
-    /// Locked only when every source that answered says locked.
+    /// Locked when SpringBoard and the notification agree it is, or, when they
+    /// disagree, when the keybag is locked.
     bool locked;
     bool screen_off;
     bool passcode_enabled;
@@ -25,6 +26,10 @@ typedef struct {
     bool springboard_locked;
     /// SpringBoard answered and the notification state says otherwise.
     bool sources_disagree;
+    /// Read only on a disagreement: MKBGetDeviceLockState said locked (1 or
+    /// 2). A locked keybag means a locked UI; any other answer settles nothing.
+    bool keybag_checked;
+    bool keybag_locked;
 } IcliLockStatus;
 
 /// Fills `locked` and `sources_disagree` from the source fields. Pure, so a

@@ -5,11 +5,13 @@ import IcliPrivate
 private func orNull(_ value: Any?) -> Any { value ?? NSNull() }
 
 /// What each lock source said: SpringBoard's live answer (null when it did not
-/// answer) and the com.apple.springboard.lockstate state, which a respring
-/// that leaves the UI unlocked does not rewrite.
+/// answer), the com.apple.springboard.lockstate state, which a respring that
+/// leaves the UI unlocked does not rewrite, and, only when those disagree,
+/// whether the keybag is locked (null when it was not read).
 func lockSources(_ lock: IcliLockStatus) -> [String: Any] {
     ["springboard": lock.springboard_answered ? lock.springboard_locked : NSNull(),
-     "notification": lock.notification_locked, "agree": !lock.sources_disagree]
+     "notification": lock.notification_locked, "agree": !lock.sources_disagree,
+     "keybag": lock.keybag_checked ? lock.keybag_locked : NSNull()]
 }
 
 /// The warning for commands that run while the sources disagree.
