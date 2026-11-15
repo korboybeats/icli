@@ -561,9 +561,33 @@ static bool setup(FullUnlock *s, bool checkOnly) {
     return prepareContext(s, checkOnly);
 }
 
+static bool unlockTypeMatches(FullUnlock *s, uint64_t address, char expected, bool allowBlock) {
+    if (!address) return false;
+    for (unsigned i = 0; i < 16; i++) {
+        char code = 0;
+        if (!readTask(s, address + i, &code, 1) || !code) return false;
+        if (strchr("rnNoORV", code)) continue;
+        if (expected == 'B') return code == 'B' || code == 'c';
+        if (code != expected) return false;
+        if (expected == '@' && !allowBlock) {
+            char next = 0;
+            return readTask(s, address + i + 1, &next, 1) && next != '?';
+        }
+        return true;
+    }
+    return false;
+}
+
 static bool invokeUnlock(FullUnlock *s, const uint8_t *passcode, size_t length) {
     uint64_t managerClass = klass(s, "SBLockScreenManager");
     if (!managerClass) return fail(s, "SBLockScreenManager was not found in SpringBoard.");
+    uint64_t shared = sel(s, "sharedInstance");
+    if (!message(s, managerClass, "respondsToSelector:", shared,0,0))
+        return fail(s, "The lock-screen manager factory is unavailable on this iOS version.");
+    uint64_t factorySignature = message(s, managerClass, "methodSignatureForSelector:", shared,0,0);
+    if (message(s, factorySignature, "numberOfArguments",0,0,0) != 2 ||
+        !unlockTypeMatches(s, message(s, factorySignature, "methodReturnType",0,0,0), '@', false))
+        return fail(s, "The lock-screen manager factory signature differs on this iOS version.");
     uint64_t manager = message(s, managerClass, "sharedInstance", 0,0,0);
     if (!manager) return fail(s, "SBLockScreenManager sharedInstance returned nil.");
     uint64_t unlock = sel(s, "attemptUnlockWithPasscode:mesa:finishUIUnlock:completion:");
@@ -577,6 +601,12 @@ static bool invokeUnlock(FullUnlock *s, const uint8_t *passcode, size_t length) 
     uint64_t signature = message(s, manager, "methodSignatureForSelector:", unlock,0,0);
     if (message(s, signature, "numberOfArguments",0,0,0) != argumentCount + 2)
         return fail(s, "The lock-screen unlock method signature differs on this iOS version.");
+    if (!unlockTypeMatches(s, message(s, signature, "getArgumentTypeAtIndex:",2,0,0), '@', false) ||
+        (argumentCount == 4 &&
+         (!unlockTypeMatches(s, message(s, signature, "getArgumentTypeAtIndex:",3,0,0), 'B', false) ||
+          !unlockTypeMatches(s, message(s, signature, "getArgumentTypeAtIndex:",4,0,0), 'B', false) ||
+          !unlockTypeMatches(s, message(s, signature, "getArgumentTypeAtIndex:",5,0,0), '@', true))))
+        return fail(s, "The lock-screen unlock argument types differ on this iOS version.");
     uint64_t invocation = message(s, klass(s, "NSInvocation"), "invocationWithMethodSignature:", signature,0,0);
     message(s, invocation, "setTarget:", manager,0,0);
     message(s, invocation, "setSelector:", unlock,0,0);

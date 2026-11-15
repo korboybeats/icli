@@ -113,10 +113,8 @@ static BOOL prepareAX(void) {
             setAutomationEnabled = dlsym(accessibility, "_AXSSetAutomationEnabled");
         }
         if (!ax) return;
-        void (*client)(uint32_t) = dlsym(ax, "__AXSetRequestingClient");
-        if (client) client(2);
-        uint64_t (*override)(uint64_t) = dlsym(ax, "_AXOverrideRequestingClientType");
-        if (override) override(2);
+        // Keep AXRuntime's native caller detection and any context an IcliKit
+        // host already selected. Automation is enabled by enableSwitches.
         createApp = dlsym(ax, "_AXUIElementCreateAppElementWithPid");
         copyAttribute = dlsym(ax, "AXUIElementCopyAttributeValue");
         setTimeout = dlsym(ax, "AXUIElementSetMessagingTimeout");
