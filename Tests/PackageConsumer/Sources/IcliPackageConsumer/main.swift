@@ -47,9 +47,9 @@ let deviceFeatureAPIs: [Any] = [
     touchSequence as ([TouchEvent], Bool) throws -> [String: Any],
     hidEvent as (Int, Int, Bool) throws -> [String: Any],
     hidPress as (Int, Int) throws -> [String: Any],
-    installIPAInContainer as (String, AppRegistrationType) throws -> [String: Any],
+    installIPAInContainer as (String, AppRegistrationType, Bool) throws -> [String: Any],
     installIPAInContainer as (String, AppRegistrationType, (String) throws -> Void) throws -> [String: Any],
-    installPackage as (String, Bool, AppRegistrationType) throws -> [String: Any],
+    installPackage as (String, Bool, AppRegistrationType, Bool) throws -> [String: Any],
     uninstallApp as (String, Bool) throws -> [String: Any],
 ]
 precondition(deviceFeatureAPIs.count == 24)

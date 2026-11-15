@@ -11,14 +11,14 @@ OBJSEE_SOURCES := $(shell find $(OBJSEE)/src/libobjsee -type f \( -name '*.c' -o
 SOURCES := $(AGENT_SOURCES) $(OBJSEE_SOURCES)
 OBJECTS := $(addprefix $(BUILD)/,$(addsuffix .o,$(notdir $(SOURCES))))
 INCLUDES := -I. -I$(GENERATED) -I$(GENERATED)/Agent -I$(GENERATED)/Shared -I$(OBJSEE) -I$(OBJSEE)/dependencies/yyjson/src $(addprefix -I,$(shell find $(OBJSEE)/src/libobjsee -type d))
-FLAGS := -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 -Os $(INCLUDES) -DFU_AGENT_BUILD_ID='@ICLI_FULL_FLEX_BUILD' -include $(GENERATED)/ICLIFlexBuild.h -Wno-deprecated-declarations -Wno-unused-function -Wno-unused-variable -Wno-incompatible-pointer-types-discards-qualifiers
+FLAGS := -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=14.0 -Os $(INCLUDES) -DFU_AGENT_BUILD_ID='@ICLI_FULL_FLEX_BUILD' -include $(GENERATED)/ICLIFlexBuild.h -Wno-deprecated-declarations -Wno-unused-function -Wno-unused-variable -Wno-incompatible-pointer-types-discards-qualifiers
 
 .PHONY: all
 all: $(OUTPUT)
 
 # Basenames are unique in the pinned source. Check this during preparation.
 define compile
-$(BUILD)/$(notdir $(1)).o: $(1) $(GENERATED)/ICLIFlexBuild.h
+$(BUILD)/$(notdir $(1)).o: $(1) $(GENERATED)/ICLIFlexBuild.h Makefile
 	@mkdir -p $(BUILD)
 	xcrun --sdk iphoneos clang $(FLAGS) $(if $(filter %.m,$(1)),-fobjc-arc -fobjc-weak,) $(if $(filter %.s,$(1)),,-include ICLIFlexCompat.h -include ICLIFlexLog.h -DNSLog=ICLIFlexFileLog) -MMD -MP -c $$< -o $$@
 endef

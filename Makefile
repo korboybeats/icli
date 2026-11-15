@@ -2,8 +2,8 @@
 SHELL    := /bin/sh
 SDK      ?= $(shell xcrun --sdk iphoneos --show-sdk-path)
 SDK_VERSION ?= $(shell xcrun --sdk iphoneos --show-sdk-version)
-TARGET   ?= arm64-apple-ios15.0
-ARM64E_TARGET ?= arm64e-apple-ios15.0
+TARGET   ?= arm64-apple-ios14.0
+ARM64E_TARGET ?= arm64e-apple-ios14.0
 SWIFT    ?= swift
 LDID     ?= ldid
 INSTALL  ?= /var/jb/usr/bin/icli
@@ -19,7 +19,7 @@ ENT      := Resources/icli.entitlements
 # built: dyld picks arm64e where the app runs it.
 AGENT         := $(BUILD)/icli-probe-agent.dylib
 AGENT_SOURCES := Agent/IcliProbeAgent.m Agent/IcliObjectInspection.m Agent/ICLIFlexBridge.m Sources/IcliProbe/IcliProbeContext.m Sources/IcliProbe/IcliProbeBridge.m
-AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
+AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=14.0 \
 	-Os -std=gnu11 -fobjc-arc -fobjc-weak -Wall -Wextra -Werror \
 	-ISources/IcliProbe -ISources/IcliProbe/include -I.build/flexultra-src \
 	-install_name @rpath/icli-probe-agent.dylib -framework Foundation -framework UIKit
@@ -28,7 +28,7 @@ AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneo
 # Resources/IcliLeaseIndicator.plist, it shows which runner holds the lease.
 # SpringBoard is arm64e on every device that has it as arm64e, so both slices.
 INDICATOR       := $(BUILD)/IcliLeaseIndicator.dylib
-INDICATOR_FLAGS := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
+INDICATOR_FLAGS := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=14.0 \
 	-Os -std=gnu11 -fobjc-arc -Wall -Wextra -Werror \
 	-install_name @rpath/IcliLeaseIndicator.dylib -framework Foundation -framework UIKit -framework CoreGraphics
 
@@ -73,7 +73,7 @@ endif
 	# SwiftPM can stamp the triple's version as the SDK too. Frameworks branch
 	# on the linked SDK (NSURL's parser, UIKit and Swift runtime behaviour), so
 	# the binary says the SDK it was really built with, as 0.8.0 did (sdk 26.5).
-	xcrun vtool -set-build-version ios 15.0 $(SDK_VERSION) -replace -output $(BIN) $(BIN)
+	xcrun vtool -set-build-version ios 14.0 $(SDK_VERSION) -replace -output $(BIN) $(BIN)
 	$(LDID) -S$(ENT) $(BIN)
 	python3 scripts/verify-binary.py
 

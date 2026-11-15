@@ -363,15 +363,16 @@ icli	arm64,arm64e	_$sSbMn	strong	libswiftCore
 icli	arm64,arm64e	_$sSbN	strong	libswiftCore
 icli	arm64,arm64e	_$sSbSesWP	strong	libswiftCore
 icli	arm64,arm64e	_$sScS10makeStream2of15bufferingPolicyScSyxG6stream_ScS12ContinuationVyx_G12continuationtxm_AG09BufferingE0Oyx__GtFZ	weak	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV11YieldResultO10terminatedyADyx__GAFmlFWC	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV11YieldResultOMn	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV13onTerminationyAB0C0Oyx__GYbcSgvs	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV15BufferingPolicyO15bufferingOldestyADyx__GSicAFmlFWC	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV15BufferingPolicyOMn	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV5yieldyAB11YieldResultOyx__GxnF	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationV6finishyyF	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS12ContinuationVMn	strong	libswift_Concurrency
-icli	arm64,arm64e	_$sScS_15bufferingPolicy_ScSyxGxm_ScS12ContinuationV09BufferingB0Oyx__GyADyx_GXEtcfC	strong	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV11YieldResultO10terminatedyADyx__GAFmlFWC	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV11YieldResultOMn	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV13onTerminationyAB0C0Oyx__GYbcSgvs	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV15BufferingPolicyO15bufferingOldestyADyx__GSicAFmlFWC	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV15BufferingPolicyOMn	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV5yieldyAB11YieldResultOyx__GxnF	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationV6finishyyF	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS12ContinuationVMn	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScSMn	weak	libswift_Concurrency
+icli	arm64,arm64e	_$sScS_15bufferingPolicy_ScSyxGxm_ScS12ContinuationV09BufferingB0Oyx__GyADyx_GXEtcfC	weak	libswift_Concurrency
 icli	arm64,arm64e	_$sSd5write2toyxz_ts16TextOutputStreamRzlF	strong	libswiftCore
 icli	arm64,arm64e	_$sSdMn	strong	libswiftCore
 icli	arm64,arm64e	_$sSdN	strong	libswiftCore
@@ -923,6 +924,7 @@ icli	arm64,arm64e	_$ss9OptionSetPs0B7AlgebraTb	strong	libswiftCore
 icli	arm64,arm64e	_$ss9_typeName_9qualifiedSSypXp_SbtF	strong	libswiftCore
 icli	arm64,arm64e	_$syXlN	strong	libswiftCore
 icli	arm64,arm64e	_$sypN	strong	libswiftCore
+icli	arm64,arm64e	_$sytN	strong	libswiftCore
 icli	arm64,arm64e	_$sytWV	strong	libswiftCore
 icli	arm64,arm64e	_$syycWV	strong	libswiftCore
 icli	arm64,arm64e	_AVFileTypeQuickTimeMovie	strong	AVFoundation
@@ -1053,6 +1055,7 @@ icli	arm64,arm64e	_IORegistryGetRootEntry	strong	IOKit
 icli	arm64,arm64e	_MTLCreateSystemDefaultDevice	strong	Metal
 icli	arm64,arm64e	_NDR_record	strong	libSystem
 icli	arm64,arm64e	_NSClassFromString	strong	Foundation
+icli	arm64,arm64e	_NSCocoaErrorDomain	strong	Foundation
 icli	arm64,arm64e	_NSDefaultRunLoopMode	strong	CoreFoundation
 icli	arm64,arm64e	_NSFileGroupOwnerAccountID	strong	Foundation
 icli	arm64,arm64e	_NSFileModificationDate	strong	Foundation
@@ -1061,6 +1064,7 @@ icli	arm64,arm64e	_NSFilePosixPermissions	strong	Foundation
 icli	arm64,arm64e	_NSFileSize	strong	Foundation
 icli	arm64,arm64e	_NSFileType	strong	Foundation
 icli	arm64,arm64e	_NSFileTypeDirectory	strong	Foundation
+icli	arm64,arm64e	_NSLocalizedDescriptionKey	strong	Foundation
 icli	arm64,arm64e	_NSLog	strong	Foundation
 icli	arm64,arm64e	_NSSelectorFromString	strong	Foundation
 icli	arm64,arm64e	_NSStringFromClass	strong	Foundation
@@ -1218,7 +1222,6 @@ icli	arm64,arm64e	__swift_stdlib_operatingSystemVersion	strong	libswiftCore
 icli	arm64,arm64e	__swift_stdlib_strtod_clocale	strong	libswiftCore
 icli	arm64,arm64e	__swift_stdlib_strtof_clocale	strong	libswiftCore
 icli	arm64,arm64e	__tlv_bootstrap	strong	libSystem
-icli	arm64,arm64e	__xpc_pipe_interface_routine	strong	libSystem
 icli	arm64,arm64e	__xpc_type_array	strong	libSystem
 icli	arm64,arm64e	__xpc_type_bool	strong	libSystem
 icli	arm64,arm64e	__xpc_type_dictionary	strong	libSystem
@@ -1249,7 +1252,11 @@ icli	arm64,arm64e	_csops	strong	libSystem
 icli	arm64,arm64e	_dbopen	strong	libSystem
 icli	arm64,arm64e	_dispatch_after	strong	libSystem
 icli	arm64,arm64e	_dispatch_async	strong	libSystem
+icli	arm64,arm64e	_dispatch_data_apply	strong	libSystem
 icli	arm64,arm64e	_dispatch_get_global_queue	strong	libSystem
+icli	arm64,arm64e	_dispatch_io_close	strong	libSystem
+icli	arm64,arm64e	_dispatch_io_create	strong	libSystem
+icli	arm64,arm64e	_dispatch_io_read	strong	libSystem
 icli	arm64,arm64e	_dispatch_once	strong	libSystem
 icli	arm64,arm64e	_dispatch_once_f	strong	libSystem
 icli	arm64,arm64e	_dispatch_queue_attr_make_with_qos_class	strong	libSystem
@@ -1334,7 +1341,6 @@ icli	arm64,arm64e	_kCVPixelBufferHeightKey	strong	CoreVideo
 icli	arm64,arm64e	_kCVPixelBufferIOSurfacePropertiesKey	strong	CoreVideo
 icli	arm64,arm64e	_kCVPixelBufferPixelFormatTypeKey	strong	CoreVideo
 icli	arm64,arm64e	_kCVPixelBufferWidthKey	strong	CoreVideo
-icli	arm64,arm64e	_kIOMainPortDefault	strong	IOKit
 icli	arm64,arm64e	_kSecAttrAccessGroup	strong	Security
 icli	arm64,arm64e	_kSecAttrAccessible	strong	Security
 icli	arm64,arm64e	_kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly	strong	Security
@@ -1442,6 +1448,7 @@ icli	arm64,arm64e	_opendir	strong	libSystem
 icli	arm64,arm64e	_os_release	weak	libSystem
 icli	arm64,arm64e	_os_unfair_lock_lock	strong	libSystem
 icli	arm64,arm64e	_os_unfair_lock_unlock	strong	libSystem
+icli	arm64,arm64e	_pipe	strong	libSystem
 icli	arm64,arm64e	_poll	strong	libSystem
 icli	arm64,arm64e	_posix_memalign	strong	libSystem
 icli	arm64,arm64e	_printf	strong	libSystem
@@ -1643,6 +1650,7 @@ icli	arm64,arm64e	_xpc_dictionary_get_string	strong	libSystem
 icli	arm64,arm64e	_xpc_dictionary_get_uint64	strong	libSystem
 icli	arm64,arm64e	_xpc_dictionary_get_value	strong	libSystem
 icli	arm64,arm64e	_xpc_dictionary_set_bool	strong	libSystem
+icli	arm64,arm64e	_xpc_dictionary_set_fd	strong	libSystem
 icli	arm64,arm64e	_xpc_dictionary_set_int64	strong	libSystem
 icli	arm64,arm64e	_xpc_dictionary_set_string	strong	libSystem
 icli	arm64,arm64e	_xpc_dictionary_set_uint64	strong	libSystem
@@ -2725,6 +2733,7 @@ libicli-reflex.dylib	arm64,arm64e	_OBJC_CLASS_$_NSDictionary	strong	CoreFoundati
 libicli-reflex.dylib	arm64,arm64e	_OBJC_CLASS_$_NSLock	strong	Foundation
 libicli-reflex.dylib	arm64,arm64e	_OBJC_CLASS_$_NSObject	strong	libobjc
 libicli-reflex.dylib	arm64,arm64e	_OBJC_METACLASS_$_NSObject	strong	libobjc
+libicli-reflex.dylib	arm64,arm64e	__NSConcreteGlobalBlock	strong	libSystem
 libicli-reflex.dylib	arm64,arm64e	__ZdlPv	strong	libc++
 libicli-reflex.dylib	arm64,arm64e	__Znwm	strong	libc++
 libicli-reflex.dylib	arm64,arm64e	___chkstk_darwin	strong	libSystem
@@ -2743,6 +2752,7 @@ libicli-reflex.dylib	arm64,arm64e	__swift_FORCE_LOAD_$_swiftXPC	weak	libswiftXPC
 libicli-reflex.dylib	arm64,arm64e	__swift_FORCE_LOAD_$_swift_Builtin_float	weak	libswiftDarwin
 libicli-reflex.dylib	arm64,arm64e	__swift_stdlib_operatingSystemVersion	strong	libswiftCore
 libicli-reflex.dylib	arm64,arm64e	_abort	strong	libSystem
+libicli-reflex.dylib	arm64,arm64e	_dispatch_once	strong	libSystem
 libicli-reflex.dylib	arm64,arm64e	_dispatch_once_f	strong	libSystem
 libicli-reflex.dylib	arm64,arm64e	_dlsym	strong	libSystem
 libicli-reflex.dylib	arm64,arm64e	_free	strong	libSystem

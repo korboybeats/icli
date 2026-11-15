@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Reject process-launch imports, strong imports iOS 15.0 may not export, and a linked JavaScriptCore, in the shipped Mach-O."""
+"""Reject process-launch imports, imports beyond the deployment floor, and a linked JavaScriptCore."""
 from pathlib import Path
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -51,35 +52,46 @@ def sdk_declared_names(sdk_name='iphoneos', extra_frameworks=()):
 
 
 def verify_floor_imports(binary, sdk_name='iphoneos', extra_frameworks=()):
-    """Strong imports must be SDK-declared (the 15.0 triple weak-links newer
-    ones) or listed in floor-imports.txt as exported by iOS 15.0. Mangled
-    Swift symbols are left to the compiler, which weak-links them from their
-    availability; the runtime's C entry points are not, so they are listed."""
+    """Check all iOS strong imports, including mangled Swift, against measured
+    iOS 14.0 exports. Retain the private-import review list as well. tvOS keeps
+    its SDK availability check and its separate 15.0 concurrency boundary."""
     allowed = set()
     for line in (ROOT / 'scripts/floor-imports.txt').read_text().splitlines():
         line = line.split('#', 1)[0].strip()
         if line:
             allowed.add(line)
     output = subprocess.check_output(['nm', '-m', '-u', str(binary)], text=True)
-    strong = set()
+    strong, raw_strong = set(), set()
+    if sdk_name == 'appletvos':
+        allowed.update(['swift_task_alloc', 'swift_task_dealloc', 'swift_task_switch'])
     for line in output.splitlines():
         if '(undefined)' not in line or ' weak ' in line:
             continue
         symbol = line.split()[2]
+        raw_strong.add(symbol)
         name = symbol[1:] if symbol.startswith('_') else symbol
         # A class reference is checked by the class name its header spells.
         name = re.sub(r'^OBJC_(?:META)?CLASS_\$_', '', name)
         if name.startswith(('$s', '_Tt')):
             continue
         strong.add(name)
+    floor_report = {}
+    if sdk_name == 'iphoneos':
+        floor = json.loads((ROOT / 'scripts/floor-exports-ios14.json').read_text())
+        missing = sorted(raw_strong - floor['exports'].keys())
+        if missing:
+            raise SystemExit('Strong imports without a measured iOS 14.0 export: ' + ', '.join(missing)
+                             + '\nResolve newer optional APIs at runtime or regenerate the floor evidence from the cache.')
+        floor_report = {'floor_symbols_checked': len(raw_strong), 'missing_floor_exports': missing,
+                        'floor_version': floor['version'], 'floor_cache': floor['cache']}
     declared = sdk_declared_names(sdk_name, extra_frameworks)
     unknown = sorted(name for name in strong if name not in declared and name not in allowed)
     if unknown:
         raise SystemExit(
             'Strong imports no SDK header declares and floor-imports.txt does not list: ' + ', '.join(unknown)
-            + '\nConfirm iOS 15.0 exports each one and list it, or resolve it with dlsym.'
+            + '\nConfirm the deployment floor exports each one and list it, or resolve it with dlsym.'
         )
-    return {'strong_imports_checked': len(strong), 'unlisted_private_imports': unknown}
+    return {'strong_imports_checked': len(strong), 'unlisted_private_imports': unknown, **floor_report}
 
 
 if __name__ == '__main__':
@@ -100,7 +112,7 @@ if __name__ == '__main__':
         binary, sdk_name, extra = ROOT / '.build/IcliLeaseIndicator.dylib', 'iphoneos', []
     elif platform == 'agent':
         # The probe agent runs inside somebody else's app, so it is held to the
-        # same rules: it starts no process, names nothing iOS 15.0 may not
+        # same rules: it starts no process, names nothing iOS 14.0 may not
         # export, and still reaches JavaScriptCore with dlopen rather than
         # forcing the framework into an app that never asked for it.
         binary, sdk_name, extra = ROOT / '.build/icli-probe-agent.dylib', 'iphoneos', []
@@ -110,6 +122,6 @@ if __name__ == '__main__':
     verify_no_process_imports(binary)
     print('PASS no process-launch imports')
     verify_floor_imports(binary, sdk_name, extra)
-    print(f'PASS no strong import beyond the {label} 15.0 floor')
+    print(f'PASS no strong import beyond the {label} {"15.0" if platform == "tvos" else "14.0"} floor')
     verify_javascriptcore_not_linked(binary)
     print('PASS JavaScriptCore is loaded at runtime, not linked')

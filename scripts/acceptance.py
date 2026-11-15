@@ -53,6 +53,7 @@ class Device:
         self.host = self.env.get('ICLI_SSH_HOST', '127.0.0.1')
         self.port = self.env.get('ICLI_SSH_PORT', '2333')
         self.user = self.env.get('ICLI_SSH_USER', 'mobile')
+        self.root_only = self.env.get('ICLI_TEST_ROOT_ONLY') == '1'
         self.binary = self.env.get('ICLI_BINARY') or BINARIES[layout]
         self.options = ['-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=accept-new',
                         '-o', 'UserKnownHostsFile=' + str(ROOT / '.build/acceptance-known-hosts')]
@@ -82,7 +83,7 @@ class Device:
         self.jbroot = self.cli('env')['jbroot'].rstrip('/') or '/'
         # Cases that check a command fails without privileges run it as mobile;
         # a root login drops to mobile through the bootstrap's sudo or su.
-        if self.user == 'root':
+        if self.user == 'root' and not self.root_only:
             for demote in ['sudo -n -H -u mobile', 'su mobile -c']:
                 self.demote = demote
                 if self.run('id -u', unprivileged=True).stdout.strip() == '501':
@@ -91,7 +92,7 @@ class Device:
 
     @property
     def can_drop_privileges(self):
-        return self.user != 'root' or self.demote is not None
+        return not self.root_only and (self.user != 'root' or self.demote is not None)
 
     def jb(self, path):
         """Physical path of a path inside the bootstrap."""
@@ -144,6 +145,20 @@ class Device:
         trace = {'command': command, 'exit': result.returncode,
                            'seconds': round(time.monotonic()-start, 3),
                            'stdout': result.stdout[:12000], 'stderr': result.stderr[:2000]}
+        # Direct env/CLI calls (for example lease operations) bypass cli().
+        # Record their actual argv too, without treating shell scripts as an
+        # executed command just because their text contains the binary name.
+        try:
+            words = shlex.split(command)
+            if words[:1] == ['env']:
+                words = words[1:]
+                while words and re.match(r'^[A-Za-z_][A-Za-z_0-9]*=', words[0]):
+                    words = words[1:]
+            if words[:1] == [self.binary] and not any(
+                    w in {';', '&&', '||', '|', '&'} or w.startswith(('>', '<')) for w in words[1:]):
+                trace['cli_arguments'] = words[1:]
+        except ValueError:
+            pass
         self.trace.append(trace)
         result.icli_trace = trace
         return result
@@ -261,8 +276,10 @@ def refused_unprivileged(d, *arguments, input=None):
     """Checks that mobile cannot run a privileged command. A root login runs it
     as mobile, and skips the check when it has no way to drop privileges."""
     if not d.can_drop_privileges:
+        reason = 'the root-only test profile was requested.' if d.root_only else (
+            'the root login has neither sudo nor su to run it as mobile.')
         d.observations.append(f'icli {" ".join(arguments[:3])} was not checked unprivileged: '
-                              'the root login has neither sudo nor su to run it as mobile.')
+                              + reason)
         return None
     return d.cli(*arguments, expected=1, unprivileged=True, input=input)
 
@@ -1649,7 +1666,7 @@ def siri_button(d):
         return any(e.get('identifier') == 'Listening' for e in d.cli('ui', 'tree')['elements'])
 
     d.cli('button', 'home')
-    time.sleep(1)
+    d.cli('ui', 'wait-gone', '--identifier', 'Listening', '--timeout', '10')
     assert not listening() and 'Turn On Siri' not in ocr_text()
     assert d.cli('button', 'siri')['button'] == 'siri'
     shown = None
@@ -1671,8 +1688,9 @@ def siri_button(d):
                   '--to-x', x, '--to-y', str(screen['height'] * 0.86))
         else:
             d.cli('button', 'home')
-        time.sleep(1.5)
-    assert not listening() and 'Turn On Siri' not in ocr_text()
+        d.cli('ui', 'wait-gone', '--identifier', 'Listening', '--timeout', '10')
+        d.cli('ui', 'wait-gone', 'Turn On Siri', '--source', 'ocr', '--timeout', '10')
+    assert not listening() and 'Turn On Siri' not in ocr_text(), 'Siri UI remained after dismissal'
 
 
 @case('screenshot_coordinates', 'screen', ['screen shot', 'screen info'])
@@ -2599,7 +2617,10 @@ def account_password(d):
     asks = d.user != 'root' and d.run('sudo -n -k true').returncode != 0
 
     def change(current, new):
-        command = shlex.join([d.binary, 'account', 'set-password', 'mobile'])
+        argv = [d.binary, 'account', 'set-password', 'mobile']
+        if d.lease:
+            argv = ['env', 'ICLI_LEASE=' + d.lease] + argv
+        command = shlex.join(argv)
         if d.user != 'root':
             command = 'sudo -S -k -p "" ' + command
         # A mobile login authenticates with mobile's password as it is now.
@@ -3922,6 +3943,9 @@ def install_fixture_apps(device):
 
 def remove_fixture_apps(device, bundles):
     """Removes the test apps this run installed, while the lease is still held."""
+    apps = device.cli('app', 'list', expected=None).get('apps', [])
+    bundles = sorted(set(bundles) | {a['bundle_id'] for a in apps
+                                   if a.get('bundle_id', '').startswith('dev.owngoal.icli.')})
     # Removing the app in front leaves SpringBoard showing its emptied window,
     # a black screen that stays until someone presses Home: go home first.
     front = device.cli('app', 'frontmost', expected=None).get('bundle_id')
@@ -3994,7 +4018,8 @@ def main():
     help_output = device.run([device.binary, '--experimental-dump-help'])
     assert help_output.returncode == 0, help_output.stderr
     inventory = command_inventory(json.loads(help_output.stdout)['command'])
-    report = {'environment': args.layout, 'binary_sha256': local_hash, 'installed_binary_sha256': device_hash,
+    report = {'environment': args.layout, 'root_only': device.root_only,
+              'binary_sha256': local_hash, 'installed_binary_sha256': device_hash,
               'runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'version': version.stdout.strip(), 'device': device.cli('device', 'info'), 'cases': []}
     if args.cases:
@@ -4053,7 +4078,7 @@ def main():
     finally:
         # file_roundtrip and extended_files write here; it would outlive the run.
         device.trace = []
-        if fixture_apps and not args.keep_fixtures:
+        if not args.keep_fixtures:
             remove_fixture_apps(device, fixture_apps)
         if device.lease:
             device.run([device.binary, 'lease', 'release'])

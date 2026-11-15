@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import plistlib
 import runpy
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -15,7 +16,7 @@ root = Path(__file__).resolve().parents[1]
 version = plistlib.loads((root / 'Resources/Info.plist').read_bytes())['CFBundleShortVersionString']
 verifier = runpy.run_path(str(root / 'scripts/verify-binary.py'))
 parser = argparse.ArgumentParser()
-parser.add_argument('--ios-only', action='store_true', help='Verify the two iOS packages without a tvOS build')
+parser.add_argument('--ios-only', action='store_true', help='Verify all three iOS layouts without a tvOS build')
 options = parser.parse_args()
 
 
@@ -30,10 +31,16 @@ def verify_slice(binary, platform, sdk_name, architecture, extra_frameworks=()):
     # down their old-SDK compatibility paths.
     sdk = subprocess.check_output(['xcrun', '--sdk', sdk_name, '--show-sdk-version'], text=True).strip()
     fields = [line.split() for line in build.splitlines()]
-    assert ['platform', platform] in fields and ['minos', '15.0'] in fields and ['sdk', sdk] in fields, build
+    minimum = '14.0' if platform == 'IOS' else '15.0'
+    assert ['platform', platform] in fields and ['minos', minimum] in fields and ['sdk', sdk] in fields, build
     loads = subprocess.check_output(['otool', '-L', str(binary)], text=True).splitlines()[1:]
     for load in loads:
         name = load.strip().split(' (')[0]
+        # Swift's iOS 14 build emits this optional load for the 15+ async API.
+        # Strong concurrency imports still fail the measured floor check.
+        if name == '@rpath/libswift_Concurrency.dylib':
+            assert load.rstrip().endswith(', weak)'), load
+            continue
         assert name.startswith(('/System/Library/', '/usr/lib/')), name
         assert 'libarchive' not in name, 'libarchive must be statically linked'
     verifier['verify_javascriptcore_not_linked'](binary)
@@ -69,11 +76,14 @@ def verify_private_runtime(binary, install_name):
             subprocess.run(['lipo', str(binary), '-thin', architecture, '-output', str(thin)], check=True)
             build = subprocess.check_output(['xcrun', 'vtool', '-show-build', str(thin)], text=True)
             fields = [line.split() for line in build.splitlines()]
-            assert ['platform', 'IOS'] in fields and ['minos', '15.0'] in fields, build
+            assert ['platform', 'IOS'] in fields and ['minos', '14.0'] in fields, build
             loads = subprocess.check_output(['otool', '-L', str(thin)], text=True).splitlines()[1:]
             assert loads[0].strip().split(' (')[0] == install_name
             for load in loads[1:]:
                 name = load.strip().split(' (')[0]
+                if name == '@rpath/libswift_Concurrency.dylib':
+                    assert load.rstrip().endswith(', weak)'), load
+                    continue
                 assert name.startswith(('/System/Library/', '/usr/lib/')), name
             verifier['verify_no_process_imports'](thin)
             verifier['verify_floor_imports'](thin)
@@ -81,25 +91,29 @@ def verify_private_runtime(binary, install_name):
 
 
 ios = verify_binary(root / '.build/icli', 'IOS', 'iphoneos')
-report = {'version': version, **ios, 'minimum_ios': '15.0', 'packages': []}
+report = {'version': version, **ios, 'minimum_ios': '14.0', 'packages': []}
 # tvOS is its own executable: the same sources built against the AppleTVOS
 # SDK, with IOKit's headers from the stub the tvOS build links against.
 layouts = [('rootless', 'iphoneos-arm64', 'var/jb', ios['binary_sha256']),
-           ('roothide', 'iphoneos-arm64e', '', ios['binary_sha256'])]
+           ('roothide', 'iphoneos-arm64e', '', ios['binary_sha256']),
+           ('rootful', 'iphoneos-arm', '', ios['binary_sha256'])]
 if not options.ios_only:
     tvos = verify_binary(root / '.build/icli-tvos', 'TVOS', 'appletvos', [root / '.build/tvos-stubs'])
     report['tvos'] = {'binary': 'icli-tvos', **tvos, 'minimum_tvos': '15.0'}
     layouts.append(('tvos', 'appletvos-arm64', '', tvos['binary_sha256']))
 for kind, arch, prefix, digest in layouts:
     package = root / f'.build/com.korboy.icli_{version}_{arch}.deb'
-    folder = root / '.build/package-check' / kind / prefix
+    stage = root / '.build/package-check' / kind
+    shutil.rmtree(stage, ignore_errors=True)
+    subprocess.run(['dpkg-deb', '-x', str(package), str(stage)], check=True)
+    folder = stage / prefix
     cli = folder / 'usr/bin/icli'
     assert hashlib.sha256(cli.read_bytes()).hexdigest() == digest
     assert not (folder / 'Applications').exists(), 'CLI package must not contain an app'
     assert subprocess.check_output(['dpkg-deb', '-f', str(package), 'Architecture'], text=True).strip() == arch
     assert subprocess.check_output(['dpkg-deb', '-f', str(package), 'Version'], text=True).strip() == version
     dependencies = subprocess.check_output(['dpkg-deb', '-f', str(package), 'Depends'], text=True).strip()
-    assert dependencies == 'firmware (>= 15.0)', dependencies
+    assert dependencies == ('firmware (>= 15.0)' if kind == 'tvos' else 'firmware (>= 14.0)'), dependencies
     archive = subprocess.check_output(['dpkg-deb', '--fsys-tarfile', str(package)])
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         members = tar.getmembers()
@@ -116,6 +130,7 @@ for kind, arch, prefix, digest in layouts:
         agent = folder / 'usr/lib/icli-probe-agent.dylib'
         agent_sha = hashlib.sha256(agent.read_bytes()).hexdigest()
         assert agent_sha == hashlib.sha256((root / '.build/icli-probe-agent.dylib').read_bytes()).hexdigest()
+        verify_private_runtime(agent, '@rpath/icli-probe-agent.dylib')
         flex = folder / 'usr/lib/icli/libFLEX.dylib'
         flex_sha = hashlib.sha256(flex.read_bytes()).hexdigest()
         assert flex_sha == hashlib.sha256((root / '.build/libicli-flex.dylib').read_bytes()).hexdigest()
@@ -131,6 +146,7 @@ for kind, arch, prefix, digest in layouts:
         indicator = folder / 'Library/MobileSubstrate/DynamicLibraries/IcliLeaseIndicator.dylib'
         assert indicator.read_bytes() == (root / '.build/IcliLeaseIndicator.dylib').read_bytes()
         assert indicator.with_suffix('.plist').read_bytes() == (root / 'Resources/IcliLeaseIndicator.plist').read_bytes()
+        verify_private_runtime(indicator, '@rpath/IcliLeaseIndicator.dylib')
         for license in (root / 'Resources/Licenses').glob('*.txt'):
             assert (folder / 'usr/share/doc/icli/licenses' / license.name).read_bytes() == license.read_bytes()
     report['packages'].append({'layout': kind, 'file': package.name,

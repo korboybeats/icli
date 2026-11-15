@@ -7,7 +7,7 @@ import IcliLaunch
 let launchAPIs: [Any] = [
     lockState as () -> [String: Any],
     frontmostApp as () -> [String: Any],
-    launchApp as (String) throws -> [String: Any],
+    launchApp as (String, [String], [String: String]) throws -> [String: Any],
 ]
 precondition(launchAPIs.count == 3)
 var report: [String: Any] = [

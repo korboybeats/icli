@@ -6,12 +6,13 @@ VERSION=$(python3 -c 'import plistlib, sys; print(plistlib.load(open(sys.argv[1]
 STAGE="$ROOT/.build/deb-$KIND"
 BIN="$ROOT/.build/icli"
 PLATFORM=iOS
+MINIMUM=14.0
 case "$KIND" in
   rootless) ARCH=iphoneos-arm64; PREFIX=/var/jb ;;
   roothide) ARCH=iphoneos-arm64e; PREFIX= ;;
   rootful) ARCH=iphoneos-arm; PREFIX= ;;
   # Procursus's appletvos-arm64 bootstrap is rootful: everything under /.
-  tvos) ARCH=appletvos-arm64; PREFIX=; BIN="$ROOT/.build/icli-tvos"; PLATFORM=tvOS ;;
+  tvos) ARCH=appletvos-arm64; PREFIX=; BIN="$ROOT/.build/icli-tvos"; PLATFORM=tvOS; MINIMUM=15.0 ;;
   *) echo "unknown package layout: $KIND" >&2; exit 64 ;;
 esac
 [ -f "$BIN" ] || { echo "build $(basename "$BIN") first" >&2; exit 66; }
@@ -63,7 +64,7 @@ Name: icli
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: icli
-Depends: firmware (>= 15.0)
+Depends: firmware (>= $MINIMUM)
 Provides: com.icli.icli (= $VERSION)
 Conflicts: com.icli.icli
 Replaces: com.icli.icli

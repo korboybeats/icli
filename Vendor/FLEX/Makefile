@@ -5,7 +5,7 @@ OUTPUT := ../../.build/libicli-flex.dylib
 SOURCES := $(shell find Classes -type f \( -name '*.m' -o -name '*.mm' -o -name '*.c' \))
 OBJECTS := $(addprefix $(BUILD)/,$(addsuffix .o,$(SOURCES)))
 INCLUDES := $(addprefix -I,$(shell find Classes -type d))
-FLAGS := -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
+FLAGS := -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=14.0 \
 	-Os -fobjc-arc -fobjc-weak $(INCLUDES) \
 	-Wno-unsupported-availability-guard -Wno-deprecated-declarations \
 	-Wno-gnu-folding-constant -Wno-unused-but-set-variable -Wno-duplicate-protocol
@@ -13,7 +13,7 @@ FLAGS := -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
 .PHONY: all
 all: $(OUTPUT)
 
-$(BUILD)/%.o: %
+$(BUILD)/%.o: % Makefile
 	@mkdir -p $(dir $@)
 	xcrun --sdk iphoneos clang $(FLAGS) $(if $(filter %.mm,$<),-std=gnu++11,) -MMD -MP -c $< -o $@
 

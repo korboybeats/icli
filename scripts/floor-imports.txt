@@ -1,12 +1,11 @@
-# Strong imports the iOS 15.0 floor allows although no SDK header declares them.
+# Private strong imports reviewed for the iOS 14.0 floor.
 #
 # The linker resolves every symbol against the newest SDK's .tbd files, which
 # export what later systems added, and dyld refuses a binary at launch when a
-# strong import is missing from the running OS: xpc_user_sessions_get_foreground_uid
-# (iOS 16) shipped that way and stopped Xrash on iOS 15.8.6. SDK-declared APIs
-# are covered by building at the 15.0 triple, which weak-links anything newer;
-# a private symbol has no availability, so it is listed here only once it is
-# known to be exported by iOS 15.0. Anything later is resolved with dlsym.
+# strong import is missing from the running OS. All iOS strong imports,
+# including public and mangled Swift symbols, must also occur in the measured
+# scripts/floor-exports-ios14.json manifest. An SDK declaration alone is not
+# evidence of a floor export. Anything later is resolved at runtime.
 
 # Emitted by the compiler: Objective-C ARC and runtime entry points, all in
 # libobjc by iOS 14, and C/C++ runtime support.
@@ -39,14 +38,14 @@ _objc_empty_cache
 __objc_personality_v0
 OBJC_EHTYPE_$_NSException
 # Additional compiler-emitted FLEX support, exported in the iPhoneOS14.5 SDK's
-# usr/lib/libobjc.A.tbd and libc++abi.tbd (before the 15.0 deployment floor).
+# usr/lib/libobjc.A.tbd and libc++abi.tbd; also measured in the 14.0 cache.
 OBJC_EHTYPE_id
 __gxx_personality_v0
 objc_getProperty
 objc_setProperty_atomic
 objc_setProperty_nonatomic_copy
 # FlexUltra/ObjSee and Echo support, exported by iPhoneOS14.5's libobjc,
-# libsystem_blocks, libsystem_c and libswiftCore stubs before the 15.0 floor.
+# libsystem_blocks, libsystem_c and libswiftCore stubs and the 14.0 cache.
 _Block_signature
 objc_debug_class_getNameRaw
 __cxa_atexit
@@ -80,10 +79,9 @@ csops
 memorystatus_control
 proc_name
 proc_pidpath
-# Private libxpc: launchctl's bootstrap pipe. _xpc_pipe_interface_routine is the
-# iOS 15.0 / macOS 12 entry point Procursus launchctl gates at exactly 15.0.
+# Private libxpc: launchctl's bootstrap data and error strings. The newer
+# interface routine is resolved with dlsym; iOS 14 uses the older pipe routine.
 _os_alloc_once_table
-_xpc_pipe_interface_routine
 xpc_strerror
 # Private libdispatch, exported since iOS 8 and tvOS 9. Swift's
 # Compatibility56 library calls it; the tvOS link imports it strong.
@@ -93,8 +91,7 @@ _UICreateScreenUIImage
 
 # The Swift runtime's C entry points, which the compiler emits by name and does
 # not weak-link from availability: all in the libswiftCore iOS 12.2 began
-# shipping and the libswift_Concurrency iOS 15.0 added. A new one fails here
-# until someone checks it predates 15.0 (Xcode 27's swift_initBorrow is iOS 27).
+# shipping. A new entry needs a measured iOS 14.0 export before being allowed.
 _swift_stdlib_operatingSystemVersion
 _swift_stdlib_strtod_clocale
 _swift_stdlib_strtof_clocale
@@ -173,9 +170,6 @@ swift_slowAlloc
 swift_slowDealloc
 swift_storeEnumTagMultiPayload
 swift_storeEnumTagSinglePayloadGeneric
-swift_task_alloc
-swift_task_dealloc
-swift_task_switch
 swift_unknownObjectRelease
 swift_unknownObjectRelease_n
 swift_unknownObjectRetain

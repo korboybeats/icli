@@ -21,6 +21,15 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def is_exported(item):
+    # go-macho TrieExport.Type emits a resolver address instead of "regular"
+    # for stub/resolver exports, and "from <image>" for unnamed re-exports.
+    kind = item['type']
+    return bool({'regular', 'weak_def', 'per-thread', 'absolute'} & set(kind.split('|'))
+                or 're-export' in kind or kind.startswith('from ')
+                or re.fullmatch(r'resolver=0x[0-9a-fA-F]+', kind))
+
+
 def queries(inventory):
     symbols, classes, selectors = set(), set(), set()
     for item in inventory['items']:
@@ -67,6 +76,8 @@ def scan(version, args, query, query_hash):
     metadata = folder / 'scan.json'
     expected = {'scan_schema': 2, 'cache': identity, 'query_sha256': query_hash,
                 'ipsw_version': subprocess.check_output(['ipsw', 'version'], text=True).strip()}
+    if args.image_pattern:
+        expected['image_pattern'] = args.image_pattern
     if metadata.exists() and json.loads(metadata.read_text()) == expected and (folder / 'definitions.json').exists():
         print('Reusing ' + version, flush=True)
         return
@@ -74,6 +85,8 @@ def scan(version, args, query, query_hash):
     # On the 27.2.1 cache that consumed over 8 GiB. The same search scoped to
     # batches of 128 images measured 1.42 GiB. All images are still searched.
     info = json.loads(subprocess.check_output(['ipsw', '--no-color', 'dyld', 'info', str(cache), '--json'], text=True))
+    if args.image_pattern:
+        info['dylibs'] = [i for i in info['dylibs'] if re.search(args.image_pattern, i['name'])]
     pattern = json.loads(query.read_text())[0]['pattern']
     groups, group, basenames = [], [], set()
     for image in info['dylibs']:
@@ -149,7 +162,7 @@ def report(versions, args, symbols, classes, selectors):
             states = []
             for version in versions:
                 hits = results[name].get(version, [])
-                exports = [h for h in hits if h['type'] in ('regular', 'weak_def') or 're-export' in h['type']]
+                exports = [h for h in hits if is_exported(h)]
                 chosen = exports or hits
                 states.append(('export:' if exports else 'definition:') + ','.join(sorted({h['image'] for h in chosen}))
                               if chosen else 'not-found')
@@ -163,6 +176,7 @@ def main():
     parser.add_argument('--corpus', type=Path, default=Path.home() / 're/ios')
     parser.add_argument('--output', type=Path, default=ROOT / '.build/compatibility/cache-matrix')
     parser.add_argument('--version', action='append', dest='versions')
+    parser.add_argument('--image-pattern', help='Optional image-path regex for a separately recorded supplemental scan')
     args = parser.parse_args()
     inventory = json.loads(args.inventory.read_text())
     if not inventory.get('ast_requested') or inventory.get('ast_errors'):
