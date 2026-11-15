@@ -5,9 +5,17 @@ import UIKit
 /// How far a scroll view's pan runs behind the finger, measured with the stroke
 /// below: a stroke of this plus n points scrolls n, each stroke to within half a
 /// point (TestHost on iOS 17.1.1: single strokes of 167 points varied by two
-/// thirds of a point, six back to back by 1.3 points).
-private let scrollSlop = 10.7
+/// thirds of a point, six back to back by 1.3 points). It was 10.7 until the stroke
+/// stepped over the hysteresis pixel; that left strokes 0.3 points short.
+private let scrollSlop = 11.0
 private let strokeStep = 0.01
+/// How far a pan recognizer waits before it begins, measured in Sileo on iOS 17.1.1:
+/// it began on the move that reached exactly 10 points, and then gave its delegate
+/// only the distance past that as its translation. A move landing on 10 itself began
+/// it with a translation of exactly (0, 0), which SwipeCellKit's
+/// `abs(translation.y) <= abs(translation.x)` takes for a sideways swipe, opening the
+/// row's actions on every vertical stroke.
+private let panHysteresis = 10.0
 
 /// A stroke that lands where it should, with no fling, as distances along the line:
 /// - to 9 points at once, then a pixel a step to 13, so the pan starts at the same
@@ -19,14 +27,19 @@ private let strokeStep = 0.01
 /// - 2 points over 8 steps. UIKit takes its fling speed from the last moves it sees,
 ///   so these have to be real moves: a hold, or moves on the spot, still flung after
 ///   a fast body, and 3 steps were too few.
+/// - no move on the pan's hysteresis pixel: the move past it is two pixels, so a pan
+///   begins a pixel along the stroke, never at zero translation.
 /// 150 strokes of 30, 200 and 500 points on TestHost's list were all within a point.
 private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double) -> (xs: [Double], ys: [Double], seconds: Double) {
+    // Touches land on whole pixels; starting on one makes each distance below land
+    // where it says.
+    let pixel = 1 / max(icli_screen_metrics().scale, 1)
+    let x1 = (x1 / pixel).rounded() * pixel, y1 = (y1 / pixel).rounded() * pixel
     let length = hypot(x2 - x1, y2 - y1)
     let tail = 2.0, slopEnd = 13.0, bodyEnd = max(length - tail, 0)
     var distances = [0.0]
     if bodyEnd > slopEnd {
         distances += [4.5, 9]
-        let pixel = 1 / max(icli_screen_metrics().scale, 1)
         for distance in stride(from: 9 + pixel, through: slopEnd + pixel / 2, by: pixel) {
             distances.append(distance)
         }
@@ -41,6 +54,11 @@ private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double) -> (xs: 
         distances += (1 ... body).map { bodyEnd * Double($0) / Double(body) }
     }
     distances += (1 ... 8).map { bodyEnd + (length - bodyEnd) * Double($0) / 8 }
+    // The last point stays: that is where the stroke ends.
+    let hysteresisPixel = (panHysteresis / pixel).rounded()
+    distances = distances.enumerated().filter { index, distance in
+        index == distances.count - 1 || (distance / pixel).rounded() != hysteresisPixel
+    }.map(\.element)
     let unitX = length > 0 ? (x2 - x1) / length : 0, unitY = length > 0 ? (y2 - y1) / length : 0
     return (distances.map { x1 + unitX * $0 }, distances.map { y1 + unitY * $0 }, strokeStep * Double(distances.count - 1))
 }
