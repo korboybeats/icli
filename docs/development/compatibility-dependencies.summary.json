@@ -1129,7 +1129,7 @@
   },
   "artifacts": {
     "icli": {
-      "sha256": "2e7d3ff388acf9f8d629b7393d29a28d1cf1ec294a1f8945723f3dbc819dd816",
+      "sha256": "0f1f0b7bf5f688e3243cb66daf2b1432fa4b7cd543e59d195cf550d46aefd56f",
       "import_counts": {
         "arm64": {
           "total": 1604,
@@ -1955,5 +1955,6 @@
   },
   "ast_reuse_note": "The completed AST inputs are unchanged except the two generated ICLIFlexBuild.h build-ID strings; their exact diffs were checked, and original AST source hashes are retained separately.",
   "package_version": "1.0.0+korboy6",
-  "installed_cli_sha256": "2e7d3ff388acf9f8d629b7393d29a28d1cf1ec294a1f8945723f3dbc819dd816"
+  "installed_cli_sha256": "0f1f0b7bf5f688e3243cb66daf2b1432fa4b7cd543e59d195cf550d46aefd56f",
+  "artifact_refresh_note": "Rebuilt and installed the unchanged production sources during the acceptance-runner update. All source hashes and import lists match the previous complete snapshot."
 }

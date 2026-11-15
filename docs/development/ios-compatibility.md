@@ -175,15 +175,19 @@ checks and records that scope in the report.
 ## Current device evidence
 
 The installed iOS 17.1.1 CLI is `1.0.0+korboy6`, SHA-256
-`2e7d3ff388acf9f8d629b7393d29a28d1cf1ec294a1f8945723f3dbc819dd816`.
+`0f1f0b7bf5f688e3243cb66daf2b1432fa4b7cd543e59d195cf550d46aefd56f`.
 The install driver verified the CLI and all five companion files against the
-Mac-built artifacts and retained the package hold.
+Mac-built artifacts and retained the package hold. All three iOS package layouts
+passed verification again. Every inventoried production source hash and every
+artifact's import list matches the preceding snapshot; only the relinked CLI's
+file hash changed.
 
-The first root-only non-reboot run completed 106 cases: 105 passed. Siri was
+The preceding CLI's root-only non-reboot run completed 106 cases: 105 passed. Siri was
 activated, but its cleanup assertion failed after a fixed 1.5-second delay.
 A separate reproduction observed dismissal after 3.725 seconds. Replacing the
 fixed delay with `ui wait-gone` passed the targeted Siri rerun on the same
 binary. This is a broad run plus a targeted rerun, not a single clean full run.
+The extended acceptance runner's fresh device run is pending the shared lease.
 
 The [per-command matrix](ios-compatibility-commands.tsv) records positive
 execution within passing cases for 174 of 187 command leaves. The remaining
@@ -193,6 +197,20 @@ applies only to the asserted scenarios. Other release columns say
 `imports_only`: they qualify whole-process loading, not private command
 behavior. The source-gated iOS 14 simulation commands say `unavailable`.
 Complete private protocol/entitlement qualification remains open.
+
+The command matrix is reproducible with `scripts/compatibility-commands.py`.
+It accepts one or more `--acceptance` reports from the same installed binary,
+counts only successful command executions in passing asserted cases, and includes
+lease acquisition/release recorded outside the individual test cases. Its
+companion summary retains report and runner hashes. `--defer-reboot` marks the
+user-deferred reboot command explicitly.
+
+With `ICLI_TEST_SAVED_UNLOCK=1`, power and respring acceptance first check the
+existing on-device saved credential without authenticating. After locking, the
+runner calls `icli unlock` once; it neither provisions a credential nor puts it
+in a trace. Without that flag or `ICLI_UNLOCK_WAIT`, those scenarios remain
+unexecuted on a passcode device. A busy lease is waited for without taking it
+over.
 
 Raw device reports and screenshots stay private under `.build/compatibility/`.
 Test fixture apps were removed and the test leases were released.

@@ -248,9 +248,19 @@ class Device:
         """Seconds an operator has to enter the passcode, from ICLI_UNLOCK_WAIT (0: no operator)."""
         return float(self.env.get('ICLI_UNLOCK_WAIT', '0'))
 
+    def can_unlock_after_lock(self):
+        if self.env.get('ICLI_TEST_SAVED_UNLOCK') == '1':
+            checked = self.cli('unlock', '--check', timeout=60)
+            assert checked['result'] == 'check_passed' and not checked['attempted'], checked
+            return True
+        return self.unlock_wait() > 0
+
     def wait_unlocked(self, reason):
-        # icli cannot enter a passcode; after locking a passcode device the
-        # run waits for an operator to unlock it.
+        if self.env.get('ICLI_TEST_SAVED_UNLOCK') == '1':
+            self.cli('unlock', timeout=60)
+            info = self.cli('screen', 'info')
+            assert not info['locked'] and not info['screen_off'], info
+            return info
         deadline = time.monotonic() + max(self.unlock_wait(), 30)
         print(f'[{reason}] waiting up to {int(deadline - time.monotonic())} s for the device to be unlocked', flush=True)
         while time.monotonic() < deadline:
@@ -804,6 +814,17 @@ def ax_hit(d):
     hit = d.cli('ui', 'at', '100', '245')
     assert hit['element']['label'] == 'Increment'
     d.cli('ui', 'at', '--', '-1', '245', expected=1)
+
+
+@case('verified_ui_transition', 'ax', ['ui perform'])
+def verified_ui_transition(d):
+    d.fixture()
+    result = d.cli('ui', 'perform', '--app', BUNDLE,
+                   '--tap-identifier', 'counter.increment',
+                   '--expect-value-changed', 'counter.status', '--timeout', '6')
+    state = d.state()
+    assert result['outcome'] == 'verified' and result['verified'], result
+    assert state['counter'] == 1 and not state.get('other_taps'), state
 
 
 @case('ax_waits', 'ax', ['ui wait', 'ui wait-gone'])
@@ -1570,9 +1591,8 @@ def home_power(d):
         assert time.monotonic() < deadline, 'button home left ' + frontmost + ' in front'
         time.sleep(0.3)
     passcode = d.passcode_enabled()
-    if passcode and not d.unlock_wait():
-        d.observations.append('The device has a passcode and ICLI_UNLOCK_WAIT is unset, so button power and button wake were '
-                              'not run: after locking, only an operator can unlock the device.')
+    if passcode and not d.can_unlock_after_lock():
+        d.observations.append('button power was not run: configure ICLI_TEST_SAVED_UNLOCK=1 or ICLI_UNLOCK_WAIT to unlock afterward.')
         d.fixture()
         return
     d.cli('button', 'power')
@@ -1591,12 +1611,13 @@ def home_power(d):
         assert not info['screen_off'], info
         if passcode:
             assert info['locked'], info
-            d.wait_unlocked('button power')
         else:
             assert not info['locked'], info
     finally:
         # A failure above must not leave a locked device to every later case.
-        if not passcode:
+        if passcode:
+            d.wait_unlocked('button power')
+        else:
             deadline = time.monotonic() + 3
             while True:
                 info = d.cli('screen', 'info', expected=None)
@@ -1629,6 +1650,56 @@ def device_lock(d):
     info = d.cli('screen', 'info')
     assert not info['locked'] and not info['screen_off'], info
     d.fixture()
+
+
+@case('audio_route_noop', 'controls', ['cc audio list', 'cc audio select'])
+def audio_route_noop(d):
+    before = d.cli('cc', 'audio', 'list')
+    uid = before['selected_uid']
+    assert isinstance(uid, str) and uid, before
+    assert [r['uid'] for r in before['routes'] if r['selected']] == [uid], before
+    volume = d.cli('device', 'volume', 'get')['volume']
+    result = d.cli('cc', 'audio', 'select', uid)
+    assert result['selected_uid'] == uid and result['changed'] is False, result
+    missing = d.cli('cc', 'audio', 'select', 'icli-acceptance-missing-' + uuid.uuid4().hex, expected=1)
+    assert missing['error'] == 'route_unavailable' and missing['selected_uid'] == uid, missing
+    native = d.cli('probe', '-e', 'var c=ObjC.use("AVSystemController").sharedAVSystemController(); '
+                   'JSON.stringify(c.pickableRoutesForCategory_("Audio/Video").$value)')
+    assert native['ok'], native
+    picked = [r['RouteUID'] for r in json.loads(native['result']) if r.get('RouteCurrentlyPicked')]
+    assert picked == [uid], picked
+    assert abs(d.cli('device', 'volume', 'get')['volume'] - volume) < 0.00001
+    d.observations.append('Selection covered the current output and a missing UID; changing to another output was not tested.')
+
+
+@case('passcode_preflight', 'security', ['device passcode status', 'device passcode unlock', 'device passcode forget'])
+def passcode_preflight(d):
+    before = d.cli('device', 'passcode', 'status')
+    # This non-secret marker is used only with --check, which never authenticates.
+    checked = d.cli('device', 'passcode', 'unlock', '--passcode-stdin', '--check',
+                    input='icli-acceptance-check-only\n')
+    assert checked['attempted'] is False, checked
+    after = d.cli('device', 'passcode', 'status')
+    for key in ['failed_attempts', 'ledger_failures']:
+        assert after[key] == before[key], (before, after)
+    if before['ledger_failures'] == 0:
+        cleared = d.cli('device', 'passcode', 'forget', '--force')
+        assert cleared['cleared'] == 0 and not cleared['was_unreadable'], cleared
+        assert d.cli('device', 'passcode', 'status')['ledger_failures'] == 0
+    else:
+        d.observations.append('The nonempty rejected-passcode ledger was preserved; forget was not run.')
+    d.observations.append('Passcode unlock ran with --check only; no authentication attempt was made.')
+
+
+@case('flex_fixture', 'runtime', ['flex'])
+def flex_fixture(d):
+    bundle = 'dev.owngoal.icli.ContainerFixture'
+    launched = d.cli('app', 'launch', bundle, '--wait-foreground')
+    answer = d.cli('flex', 'ping', '--target', bundle, timeout=90)
+    assert answer['ok'] and answer['result']['pid'] == launched['pid'], answer
+    window = d.cli('flex', 'ui', 'key-window', '--target', bundle)
+    assert window['ok'] and window['result']['window'], window
+    d.observations.append('FLEX covered injection, process identity, and key-window inspection on the disposable fixture.')
 
 
 @case('audio_buttons', 'controls', ['button volume-up', 'button volume-down', 'button mute'])
@@ -2981,9 +3052,8 @@ def springboard_restart(d):
     before = springboard_pid()
     assert before, 'SpringBoard is not running'
     passcode = d.passcode_enabled()
-    if passcode and not d.unlock_wait():
-        d.observations.append('The device has a passcode and ICLI_UNLOCK_WAIT is unset, so sb respring was not run: '
-                              'SpringBoard restarts on the lock screen, and only an operator can unlock it.')
+    if passcode and not d.can_unlock_after_lock():
+        d.observations.append('sb respring was not run: configure ICLI_TEST_SAVED_UNLOCK=1 or ICLI_UNLOCK_WAIT to unlock afterward.')
         return
     restarted = d.cli('sb', 'respring', timeout=30)
     assert restarted['restarted'] and restarted['previous_pid'] == before[0] and restarted['pid'] != before[0], restarted
@@ -3577,7 +3647,7 @@ def device_status(d):
     assert d.cli('status')['prompt'] is None
 
 
-@case('lease', 'runtime', ['lease acquire', 'lease release', 'lease status'])
+@case('lease', 'runtime', ['lease acquire', 'lease release', 'lease status', 'lease indicator'])
 def lease(d):
     def plain(*arguments, expected=0):
         """A command from another agent: no lease token."""
@@ -3593,6 +3663,11 @@ def lease(d):
         assert plain('device', 'info')['memory_bytes'] > 0
         refused = plain('button', 'home', expected=75)
         assert refused['error'] == 'leased' and refused['owner'] == mine['owner'], refused
+        renewed = d.cli('lease', 'acquire', '--owner', mine['owner'], '--ttl', str(mine['idle_seconds']))
+        assert renewed['token'] == d.lease and renewed['owner'] == mine['owner'], renewed
+        assert d.cli('lease', 'status')['mine']
+        indicator = d.cli('lease', 'indicator')
+        assert indicator['indicator'] in ['on', 'off'], indicator
         d.observations.append('The run holds its own lease; background access and guarded refusal without the token were checked.')
         return
     current = plain('lease', 'status')
@@ -4021,7 +4096,7 @@ def main():
     report = {'environment': args.layout, 'root_only': device.root_only,
               'binary_sha256': local_hash, 'installed_binary_sha256': device_hash,
               'runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-              'version': version.stdout.strip(), 'device': device.cli('device', 'info'), 'cases': []}
+              'version': version.stdout.strip(), 'device': device.cli('device', 'info'), 'cases': [], 'lifecycle': []}
     if args.cases:
         unknown = set(args.cases) - {c[0] for c in CASES}
         if unknown:
@@ -4040,9 +4115,18 @@ def main():
     owner = 'icli-acceptance'
     if args.lease:
         # Held for the whole run: every command carrying the token keeps it alive.
-        held = json.loads(device.run([device.binary, 'lease', 'acquire', '--owner', owner]).stdout)
-        assert held.get('token'), f'could not take the lease: {held}'
+        waiting_for = None
+        while True:
+            held = device.cli('lease', 'acquire', '--owner', owner, expected=None)
+            if held.get('error') != 'leased':
+                break
+            if held.get('owner') != waiting_for:
+                waiting_for = held.get('owner')
+                print('Waiting for device lease: ' + str(waiting_for), flush=True)
+            time.sleep(15)
+        assert held.get('token') and held['held'] and held['owner'] == owner, held
         device.lease = held['token']
+        report['lifecycle'].append({'name': 'run_lease_acquire', 'passed': True, 'trace': [device.trace[-1]]})
     fixture_apps = []
     try:
         fixture_apps = install_fixture_apps(device)
@@ -4073,7 +4157,7 @@ def main():
             report['completed_run'] = len(report['cases']) == len(report['planned_cases'])
             flag = ' (SpringBoard restarted)' if result.get('springboard_restarted') else ''
             print(('PASS' if result['passed'] else 'FAIL') + ' ' + name + flag + ' ' + result.get('error', ''), flush=True)
-            report['untested_commands'] = sorted(set(inventory) - observed_commands(report['cases'], inventory))
+            report['untested_commands'] = sorted(set(inventory) - observed_commands(report['cases'] + report['lifecycle'], inventory))
             Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2))
     finally:
         # file_roundtrip and extended_files write here; it would outlive the run.
@@ -4081,13 +4165,17 @@ def main():
         if not args.keep_fixtures:
             remove_fixture_apps(device, fixture_apps)
         if device.lease:
-            device.run([device.binary, 'lease', 'release'])
+            released = device.cli('lease', 'release')
+            assert released['released'] and released['owner'] == owner, released
+            report['lifecycle'].append({'name': 'run_lease_release', 'passed': True, 'trace': [device.trace[-1]]})
             device.lease = None
         try:
             device.run(['rm', '-rf', device.sh('/var/tmp/icli-acceptance')]
                        + [device.sh('/tmp/' + name) for name in fixtures], sudo=True)
         except subprocess.TimeoutExpired:
             print('could not remove /var/tmp/icli-acceptance and the fixtures from the device', flush=True)
+        report['untested_commands'] = sorted(set(inventory) - observed_commands(report['cases'] + report['lifecycle'], inventory))
+        Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2))
     complete = not report['full_run'] or not report['untested_commands']
     return 0 if report['cases'] and complete and all(case['passed'] for case in report['cases']) else 1
 
