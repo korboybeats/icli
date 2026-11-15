@@ -7,8 +7,18 @@ let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UU
 let testLeasePath = directory.appendingPathComponent("lease.json").path
 var locked = false
 var screenOff = false
+var springboardLocked = false
+var notificationLocked = false
+var disagree = false
+struct IcliLockStatus {
+    var locked: Bool, screen_off: Bool, springboard_locked: Bool, notification_locked: Bool, sources_disagree: Bool
+}
 func icli_private_init() {}
-func icli_lock_status() -> (locked: Bool, screen_off: Bool) { (locked, screenOff) }
+func icli_lock_status() -> IcliLockStatus {
+    IcliLockStatus(locked: locked, screen_off: screenOff, springboard_locked: springboardLocked,
+                   notification_locked: notificationLocked, sources_disagree: disagree)
+}
+// PRODUCTION LOCK MESSAGE
 func icli_notify_post(_ name: String, _ hasState: Bool, _ state: UInt64, _ delivered: inout Bool) -> Bool { true }
 enum IcliError: Error { case locked; case commandFailed([String: Any]) }
 // PRODUCTION LEASE
@@ -66,6 +76,18 @@ for off in [false, true] {
     Lease.bypass = false
 }
 locked = false; screenOff = false
+// Stale lockstate after a respring: SpringBoard unlocked, the notification
+// locked. The command runs and says why.
+springboardLocked = false; notificationLocked = true; disagree = true
+try Envelope.applyLockPolicy(allowWhenLocked: false, requiresLease: false)
+try require(Envelope.warning?.hasPrefix("lock sources disagree") == true, "disagreement not reported")
+// A disagreement the keybag settles as locked still blocks.
+locked = true
+do { try Envelope.applyLockPolicy(allowWhenLocked: false, requiresLease: false); fatalError("keybag-locked disagreement ran") }
+catch IcliError.locked {}
+locked = false; notificationLocked = false; disagree = false
+try Envelope.applyLockPolicy(allowWhenLocked: false, requiresLease: false)
+try require(Envelope.warning == nil, "warning without a disagreement")
 try Lease.store(fixture.merging(["expires_at": now - 1]) { _, new in new })
 try Envelope.applyLockPolicy(allowWhenLocked: false)
-print("PASS lease policy: default exclusion, background concurrency, bypass without renewal or ownership changes, owner renewal, screen-lock independence, expiration")
+print("PASS lease policy: default exclusion, background concurrency, bypass without renewal or ownership changes, owner renewal, screen-lock independence, lock-source disagreement, expiration")

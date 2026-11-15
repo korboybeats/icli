@@ -12,8 +12,11 @@ lease = status[status.index('public enum Lease {'):status.index('public func lea
 lease = lease.replace('"/var/mobile/Library/Caches/com.korboy.icli/lease.json"', 'testLeasePath')
 envelope = Path('Sources/IcliKit/Envelope.swift').read_text()
 policy = envelope[envelope.index('    public static func applyLockPolicy('):envelope.index('    public static func printJSON(')]
+start = status.index('/// The warning for commands that run while the sources disagree.')
+message = status[start:status.index('\n}\n', start) + 3]
 fixture = Path('Tests/LeasePolicy/main.swift').read_text()
-fixture = fixture.replace('// PRODUCTION LEASE', lease).replace('// PRODUCTION POLICY', policy)
+fixture = (fixture.replace('// PRODUCTION LEASE', lease).replace('// PRODUCTION POLICY', policy)
+           .replace('// PRODUCTION LOCK MESSAGE', message))
 (work / 'main.swift').write_text(fixture)
 PY
 "${SWIFTC:-swiftc}" "$work/main.swift" -o "$work/lease-tests"

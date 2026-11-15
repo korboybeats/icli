@@ -25,6 +25,8 @@ func decodeBridgeJSON(_ s: String?, _ what: String) throws -> [String: Any] {
     try JSONSerialization.jsonObject(with: Data(s!.utf8)) as! [String: Any]
 }
 func icli_lock_status() -> LockStatus { screen }
+// Status.swift's report of each lock source; the policy only passes it through.
+func lockSources(_ lock: LockStatus) -> [String: Any] { [:] }
 func icli_full_unlock_json(_ bytes: UnsafePointer<UInt8>?, _ count: Int, _ checkOnly: Bool) -> UnsafeMutablePointer<CChar>? {
     if checkOnly { preflights += 1; return json(["ready": !unavailable, "attempted": false, "confirmed": false]) }
     fullCalls += 1
