@@ -819,6 +819,7 @@ def ax_hit(d):
 @case('verified_ui_transition', 'ax', ['ui perform'])
 def verified_ui_transition(d):
     d.fixture()
+    d.cli('app', 'launch', BUNDLE, '--wait-foreground')
     result = d.cli('ui', 'perform', '--app', BUNDLE,
                    '--tap-identifier', 'counter.increment',
                    '--expect-value-changed', 'counter.status', '--timeout', '6')
