@@ -17,6 +17,31 @@ private let strokeStep = 0.01
 /// row's actions on every vertical stroke.
 private let panHysteresis = 10.0
 
+/// Touches land on whole pixels: a stroke that starts on one lands each distance
+/// along it where it says.
+func pixelAligned(_ value: Double, pixel: Double) -> Double {
+    (value / pixel).rounded() * pixel
+}
+
+/// `distances` along a stroke from a pixel-aligned start, with the move that would
+/// land on the pan's hysteresis pixel moved one pixel past it, so a pan never begins
+/// at zero translation. The move is dropped instead when the next one is no
+/// further on, and the last stays: that is where the stroke ends.
+func clearingHysteresis(_ distances: [Double], pixel: Double) -> [Double] {
+    let hysteresisPixel = (panHysteresis / pixel).rounded()
+    var result: [Double] = []
+    for (index, distance) in distances.enumerated() {
+        guard index < distances.count - 1, (distance / pixel).rounded() == hysteresisPixel else {
+            result.append(distance)
+            continue
+        }
+        if (distances[index + 1] / pixel).rounded() > hysteresisPixel + 1 {
+            result.append((hysteresisPixel + 1) * pixel)
+        }
+    }
+    return result
+}
+
 /// A stroke that lands where it should, with no fling, as distances along the line:
 /// - to 9 points at once, then a pixel a step to 13, so the pan starts at the same
 ///   place each time: half-point steps left single strokes a point apart and six
@@ -31,10 +56,8 @@ private let panHysteresis = 10.0
 ///   begins a pixel along the stroke, never at zero translation.
 /// 150 strokes of 30, 200 and 500 points on TestHost's list were all within a point.
 private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double) -> (xs: [Double], ys: [Double], seconds: Double) {
-    // Touches land on whole pixels; starting on one makes each distance below land
-    // where it says.
     let pixel = 1 / max(icli_screen_metrics().scale, 1)
-    let x1 = (x1 / pixel).rounded() * pixel, y1 = (y1 / pixel).rounded() * pixel
+    let x1 = pixelAligned(x1, pixel: pixel), y1 = pixelAligned(y1, pixel: pixel)
     let length = hypot(x2 - x1, y2 - y1)
     let tail = 2.0, slopEnd = 13.0, bodyEnd = max(length - tail, 0)
     var distances = [0.0]
@@ -54,11 +77,7 @@ private func strokePath(x1: Double, y1: Double, x2: Double, y2: Double) -> (xs: 
         distances += (1 ... body).map { bodyEnd * Double($0) / Double(body) }
     }
     distances += (1 ... 8).map { bodyEnd + (length - bodyEnd) * Double($0) / 8 }
-    // The last point stays: that is where the stroke ends.
-    let hysteresisPixel = (panHysteresis / pixel).rounded()
-    distances = distances.enumerated().filter { index, distance in
-        index == distances.count - 1 || (distance / pixel).rounded() != hysteresisPixel
-    }.map(\.element)
+    distances = clearingHysteresis(distances, pixel: pixel)
     let unitX = length > 0 ? (x2 - x1) / length : 0, unitY = length > 0 ? (y2 - y1) / length : 0
     return (distances.map { x1 + unitX * $0 }, distances.map { y1 + unitY * $0 }, strokeStep * Double(distances.count - 1))
 }

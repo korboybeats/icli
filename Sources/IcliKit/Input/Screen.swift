@@ -114,7 +114,16 @@ public func swipe(
     try validatePoint(x2, y2)
     try validateDuration(seconds, name: "seconds")
     guard (1 ... 2000).contains(steps) else { throw IcliError.failed("steps must be 1–2000") }
-    guard icli_hid_swipe(x1, y1, x2, y2, seconds, Int32(steps)) else { throw IcliError.failed("hid swipe unavailable") }
+    // Evenly spaced moves, one every seconds/steps, as icli_hid_swipe sends them,
+    // except that none lands on a pan's hysteresis: steps that divide 10 points
+    // opened SwipeCellKit rows (see panHysteresis).
+    let pixel = 1 / max(icli_screen_metrics().scale, 1)
+    let startX = pixelAligned(x1, pixel: pixel), startY = pixelAligned(y1, pixel: pixel)
+    let length = hypot(x2 - startX, y2 - startY)
+    let distances = clearingHysteresis((0 ... steps).map { length * Double($0) / Double(steps) }, pixel: pixel)
+    let unitX = length > 0 ? (x2 - startX) / length : 0, unitY = length > 0 ? (y2 - startY) / length : 0
+    let xs = distances.map { startX + unitX * $0 }, ys = distances.map { startY + unitY * $0 }
+    guard icli_hid_stroke(xs, ys, Int32(xs.count), seconds, 0) else { throw IcliError.failed("hid swipe unavailable") }
     return ["from": [x1, y1], "to": [x2, y2]]
 }
 
