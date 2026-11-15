@@ -12,7 +12,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--inventory', type=Path, required=True)
 parser.add_argument('--scan', type=Path, action='append', required=True,
                     help='Scan root; a later root overrides duplicate versions')
-parser.add_argument('--supplement', type=Path)
+parser.add_argument('--supplement', type=Path, action='append', default=[],
+                    help='Additional image-scoped scan root; may be repeated')
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
 inventory = json.loads(args.inventory.read_text())
@@ -39,11 +40,14 @@ for version in versions:
     metadata = json.loads((folder / 'scan.json').read_text())
     patterns = [re.compile(json.loads((folder.parent / 'queries.json').read_text())[0]['pattern'])]
     records = json.loads((folder / 'definitions.json').read_text())
-    supplemental = None
-    if args.supplement and (args.supplement / version / 'scan.json').exists():
-        extra = args.supplement / version
-        supplemental = json.loads((extra / 'scan.json').read_text())
-        assert supplemental['cache'] == metadata['cache'], 'different cache identities: ' + version
+    supplemental = []
+    for root in args.supplement:
+        extra = root / version
+        if not (extra / 'scan.json').exists():
+            continue
+        extra_metadata = json.loads((extra / 'scan.json').read_text())
+        assert extra_metadata['cache'] == metadata['cache'], 'different cache identities: ' + version
+        supplemental.append(extra_metadata)
         records.extend(json.loads((extra / 'definitions.json').read_text()))
         patterns.append(re.compile(json.loads((extra.parent / 'queries.json').read_text())[0]['pattern']))
     definitions, methods = defaultdict(set), set()
