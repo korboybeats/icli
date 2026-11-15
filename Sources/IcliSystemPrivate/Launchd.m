@@ -7,6 +7,8 @@
 #import <mach/mach.h>
 #import <errno.h>
 #import <string.h>
+#import <unistd.h>
+#import <fcntl.h>
 
 // libxpc selects its launchctl client initialization path when this marker is
 // present in the main image, matching the system launchctl executable.
@@ -44,13 +46,27 @@ struct xpc_global_data {
 // as an implicitly __autoreleasing out parameter, ARC retains it once more and
 // it is never freed; a load reply carries the job's listening sockets, so the
 // ports stayed bound after bootout for as long as this process lived.
-extern int _xpc_pipe_interface_routine(
+typedef int (*InterfaceRoutine)(
     xpc_object_t pipe,
     uint64_t routine,
     xpc_object_t message,
     xpc_object_t __strong *reply,
     uint64_t flags
 );
+typedef int (*LegacyRoutine)(xpc_object_t, xpc_object_t, xpc_object_t __strong *, uint64_t);
+static InterfaceRoutine interfaceRoutine;
+static LegacyRoutine legacyRoutine;
+
+static void loadPipeRoutines(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        void *xpc = dlopen("/usr/lib/system/libxpc.dylib", RTLD_LAZY | RTLD_NOLOAD);
+        if (xpc) {
+            interfaceRoutine = dlsym(xpc, "_xpc_pipe_interface_routine");
+            legacyRoutine = dlsym(xpc, "xpc_pipe_routine_with_flags");
+        }
+    });
+}
 extern const char *xpc_strerror(int error);
 
 /// Job records carry whatever a plist or an XPC submission put in them, so
@@ -129,9 +145,87 @@ static int launchdRoutine(
     xpc_dictionary_set_uint64(message, "type", domain);
     xpc_dictionary_set_uint64(message, "handle", handle);
     xpc_object_t response = NULL;
-    int status = _xpc_pipe_interface_routine(global->xpc_bootstrap_pipe, routine, message, &response, 0);
+    loadPipeRoutines();
+    int status;
+    if (interfaceRoutine) {
+        status = interfaceRoutine(global->xpc_bootstrap_pipe, routine, message, &response, 0);
+    } else if (legacyRoutine) {
+        // iOS 14 launchd registers service routines with subsystem 2 and
+        // domain routines with subsystem 3. libxpc does not flatten them.
+        xpc_dictionary_set_uint64(message, "subsystem",
+            routine == RoutineKickstart || routine == RoutinePrintService ? 2 : 3);
+        xpc_dictionary_set_uint64(message, "routine", routine);
+        status = legacyRoutine(global->xpc_bootstrap_pipe, message, &response, 0);
+    } else {
+        return ENOTSUP;
+    }
     if (status == 0 && response) status = (int)xpc_dictionary_get_int64(response, "error");
     if (reply) *reply = response;
+    return status;
+}
+
+// iOS 14 launchd prints to an fd and replies before its final fflush/close.
+// Drain a pipe concurrently (large service descriptions can fill it), and
+// wait for EOF rather than reading a temporary file before that last flush.
+static int launchdPrint(uint64_t routine, uint64_t domain, uint64_t handle,
+                        xpc_object_t message, NSString **text) {
+    loadPipeRoutines();
+    *text = @"";
+    const size_t limit = 0x100000;
+    if (!interfaceRoutine) {
+        if (!legacyRoutine) return ENOTSUP;
+        int descriptors[2];
+        if (pipe(descriptors) != 0) return errno;
+        if (fcntl(descriptors[0], F_SETFD, FD_CLOEXEC) < 0 ||
+            fcntl(descriptors[1], F_SETFD, FD_CLOEXEC) < 0) {
+            int error = errno;
+            close(descriptors[0]);
+            close(descriptors[1]);
+            return error;
+        }
+        int readFD = descriptors[0];
+        dispatch_queue_t queue = dispatch_queue_create("icli.launchd.print", DISPATCH_QUEUE_SERIAL);
+        dispatch_semaphore_t done = dispatch_semaphore_create(0);
+        NSMutableData *output = [NSMutableData data];
+        __block int readError = 0;
+        dispatch_io_t channel = dispatch_io_create(DISPATCH_IO_STREAM, readFD, queue, ^(int error) {
+            close(readFD);
+        });
+        dispatch_io_read(channel, 0, SIZE_MAX, queue, ^(bool finished, dispatch_data_t data, int error) {
+            if (data && output.length < limit) {
+                dispatch_data_apply(data, ^bool(dispatch_data_t region, size_t offset, const void *bytes, size_t count) {
+                    [output appendBytes:bytes length:MIN(count, limit - output.length)];
+                    return output.length < limit;
+                });
+            }
+            if (finished) {
+                readError = error;
+                dispatch_semaphore_signal(done);
+            }
+        });
+        xpc_dictionary_set_fd(message, "fd", descriptors[1]);
+        close(descriptors[1]);
+        int status = launchdRoutine(routine, domain, handle, message, NULL);
+        xpc_dictionary_set_value(message, "fd", NULL);
+        BOOL complete = dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) == 0;
+        dispatch_io_close(channel, complete ? 0 : DISPATCH_IO_STOP);
+        if (status != 0) return status;
+        if (!complete) return ETIMEDOUT;
+        if (readError) return readError;
+        *text = [[NSString alloc] initWithData:output encoding:NSUTF8StringEncoding] ?: @"";
+        return 0;
+    }
+    vm_address_t address = 0;
+    if (vm_allocate(mach_task_self(), &address, limit, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) return ENOMEM;
+    xpc_dictionary_set_value(message, "shmem", xpc_shmem_create((void *)address, limit));
+    xpc_object_t reply = NULL;
+    int status = launchdRoutine(routine, domain, handle, message, &reply);
+    if (status == 0 && reply) {
+        uint64_t written = xpc_dictionary_get_uint64(reply, "bytes-written");
+        *text = [[NSString alloc] initWithBytes:(void *)address length:MIN(written, limit)
+                                     encoding:NSUTF8StringEncoding] ?: @"";
+    }
+    vm_deallocate(mach_task_self(), address, limit);
     return status;
 }
 
@@ -226,20 +320,11 @@ char *icli_launchd_services_json(void) {
 /// The system domain's disabled-service overrides: {label: true when disabled}.
 char *icli_launchd_disabled_json(void) {
     xpc_object_t message = xpc_dictionary_create(NULL, NULL, 0);
-    vm_size_t size = 0x100000;
-    vm_address_t address = 0;
-    if (vm_allocate(mach_task_self(), &address, size, VM_FLAGS_ANYWHERE) != KERN_SUCCESS)
-        return icli_system_json(@{@"status": @(ENOMEM)});
-    xpc_dictionary_set_value(message, "shmem", xpc_shmem_create((void *)address, size));
     xpc_dictionary_set_bool(message, "disabled", true);
-    xpc_object_t reply = NULL;
-    int status = launchdRoutine(RoutinePrint, DomainSystem, 0, message, &reply);
+    NSString *text;
+    int status = launchdPrint(RoutinePrint, DomainSystem, 0, message, &text);
     NSMutableDictionary *overrides = [NSMutableDictionary dictionary];
-    if (status == 0 && reply) {
-        uint64_t written = xpc_dictionary_get_uint64(reply, "bytes-written");
-        NSString *text = [[NSString alloc] initWithBytes:(void *)address
-                                                  length:MIN(written, size)
-                                                encoding:NSUTF8StringEncoding] ?: @"";
+    if (status == 0) {
         for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
             NSArray *parts = [line componentsSeparatedByString:@"\" => "];
             if (parts.count != 2) continue;
@@ -250,7 +335,6 @@ char *icli_launchd_disabled_json(void) {
             overrides[name] = @([state isEqualToString:@"disabled"] || [state isEqualToString:@"true"]);
         }
     }
-    vm_deallocate(mach_task_self(), address, size);
     return icli_system_json(@{@"status": @(status), @"message": @(xpc_strerror(status)), @"disabled": overrides});
 }
 
@@ -332,30 +416,17 @@ char *icli_launchd_kill_json(const char *label, int signal) {
 }
 
 char *icli_launchd_print_json(const char *label) {
-    vm_size_t size = 0x100000;
-    vm_address_t address = 0;
-    if (vm_allocate(mach_task_self(), &address, size, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) {
-        return icli_system_json(@{@"status": @(ENOMEM), @"message": @(xpc_strerror(ENOMEM))});
-    }
     uint64_t domains[2][2];
     NSString *__unsafe_unretained domainNames[2];
     int count = serviceDomains(domains, domainNames);
     int status = LaunchdNoSuchService;
-    uint64_t written = 0;
+    NSString *text = @"";
     NSString *domainName = @"system";
     for (int i = 0; i < count && status == LaunchdNoSuchService; i++) {
-        memset((void *)address, 0, size);
         xpc_object_t message = serviceMessage(label);
-        xpc_dictionary_set_value(message, "shmem", xpc_shmem_create((void *)address, size));
-        xpc_object_t reply = NULL;
-        status = launchdRoutine(RoutinePrintService, domains[i][0], domains[i][1], message, &reply);
-        written = status == 0 && reply ? xpc_dictionary_get_uint64(reply, "bytes-written") : 0;
+        status = launchdPrint(RoutinePrintService, domains[i][0], domains[i][1], message, &text);
         domainName = domainNames[i];
     }
-    NSString *text = [[NSString alloc] initWithBytes:(void *)address
-                                              length:MIN(written, size)
-                                            encoding:NSUTF8StringEncoding] ?: @"";
-    vm_deallocate(mach_task_self(), address, size);
     return icli_system_json(@{
         @"status": @(status),
         @"message": @(xpc_strerror(status)),

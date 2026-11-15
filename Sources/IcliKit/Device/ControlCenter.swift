@@ -163,7 +163,7 @@ private func onOff(_ value: Int32) -> [String: Any] {
 private func read(_ value: Int32, _ what: String) throws -> Int32 {
     try requireControlCenter()
     guard value >= 0 else {
-        throw IcliError.unavailable("\(what) cannot be read on this device; see docs/entitlements.md for the entitlement it needs.")
+        throw IcliError.unavailable("\(what) is unavailable on this iOS or device, or access was denied.")
     }
     return value
 }
@@ -171,7 +171,7 @@ private func read(_ value: Int32, _ what: String) throws -> Int32 {
 private func check(_ status: Int32, _ what: String, seconds: Int) throws {
     switch status {
     case 0: return
-    case -1: throw IcliError.unavailable("\(what) cannot be changed on this device; see docs/entitlements.md for the entitlement it needs.")
+    case -1: throw IcliError.unavailable("\(what) cannot be changed on this iOS or device, or access was denied.")
     case -2: throw IcliError.failed("\(what) did not change within \(seconds) seconds.")
     default: throw IcliError.failed("\(what) refused the change.")
     }

@@ -29,6 +29,9 @@ public func simulateLocation(
     speed: Double? = nil,
     course: Double? = nil,
 ) throws -> [String: Any] {
+    guard #available(iOS 15.0, tvOS 15.0, *) else {
+        throw IcliError.unavailable("location simulation verification is unavailable on this iOS")
+    }
     guard latitude.isFinite, (-90 ... 90).contains(latitude) else {
         throw IcliError.failed("latitude must be between -90 and 90")
     }
@@ -83,6 +86,9 @@ public func simulateLocation(
 /// that location is far from the real one, a Wi-Fi-only device can reject
 /// real fixes for about 15 minutes.
 public func clearSimulatedLocation() throws -> [String: Any] {
+    guard #available(iOS 15.0, tvOS 15.0, *) else {
+        throw IcliError.unavailable("location simulation verification is unavailable on this iOS")
+    }
     _ = try decodeLocation(takeCString(icli_location_clear_json()))
     // locationd stops asynchronously and can still stamp one more simulated fix.
     let deadline = Date().addingTimeInterval(6)
@@ -100,7 +106,8 @@ public func clearSimulatedLocation() throws -> [String: Any] {
 /// The location CoreLocation reports to a client, read as a System Services
 /// location bundle so no permission prompt is needed. Waits up to `timeout`
 /// seconds for a fresh fix; otherwise returns the last known location with
-/// `fresh` false. `simulated` is CoreLocation's own source flag.
+/// `fresh` false. `simulated` is CoreLocation's own source flag, or null on
+/// iOS 14, where CoreLocation does not expose that information.
 public func currentLocation(timeout: Double = 10) throws -> [String: Any] {
     guard timeout.isFinite, timeout > 0, timeout <= 300 else {
         throw IcliError.failed("timeout must be more than 0 and at most 300 seconds")

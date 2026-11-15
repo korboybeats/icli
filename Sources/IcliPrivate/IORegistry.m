@@ -39,7 +39,9 @@ static void icliWalkRegistry(io_registry_entry_t entry, const char *planeName, i
 
 char *icli_ioreg_json(const char *plane) {
     const char *planeName = (plane && plane[0]) ? plane : kIOServicePlane;
-    io_registry_entry_t root = IORegistryGetRootEntry(kIOMainPortDefault);
+    // IOKit documents MACH_PORT_NULL as the default port. The synonymous
+    // kIOMainPortDefault variable is only exported from iOS 15 onward.
+    io_registry_entry_t root = IORegistryGetRootEntry(MACH_PORT_NULL);
     if (!root) {
         return icli_json_or_empty(@{@"entries": @[], @"error": @"no io registry"});
     }

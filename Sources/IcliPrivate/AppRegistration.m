@@ -8,6 +8,7 @@
 - (NSArray *)allInstalledApplications;
 - (BOOL)uninstallApplication:(NSString *)bundleID withOptions:(id)options;
 - (BOOL)unregisterApplication:(NSURL *)url;
+- (BOOL)registerApplicationDictionary:(NSDictionary *)info;
 + (id)enumeratorWithOptions:(NSUInteger)options;
 - (BOOL)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)infos
                                                operationUUID:(NSUUID *)uuid
@@ -19,7 +20,18 @@
 BOOL icli_ls_register_containerized(id workspace, NSDictionary *info, NSError **error) {
     SEL containerized = @selector(
     registerContainerizedApplicationWithInfoDictionaries:operationUUID:requestContext:saveObserver:registrationError:);
-    if (!info || ![workspace respondsToSelector:containerized]) return NO;
+    if (!info) return NO;
+    if (![workspace respondsToSelector:containerized]) {
+        // iOS 14 CoreServices takes the original dictionary, with nested
+        // _LSBundlePlugins, and returns BOOL (B24@0:8@16). Newer systems
+        // deprecate this path; prefer their containerized interface above.
+        if (![workspace respondsToSelector:@selector(registerApplicationDictionary:)]) {
+            if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFeatureUnsupportedError
+                userInfo:@{NSLocalizedDescriptionKey: @"App registration is unavailable on this iOS."}];
+            return NO;
+        }
+        return [workspace registerApplicationDictionary:info];
+    }
     // The interface takes each plug-in as an info dictionary of its own,
     // after the app's, and ignores plug-ins nested under _LSBundlePlugins.
     NSMutableDictionary *app = [info mutableCopy];

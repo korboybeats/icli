@@ -199,6 +199,8 @@ private extension SyslogStreamEnd {
 /// with the sequence, when the consuming task is cancelled, or when the
 /// stream ends by itself. At most `bufferLimit` entries wait for a consumer
 /// that falls behind; later ones are dropped until it catches up.
+/// On iOS 14 use the callback-based `SyslogStream` instead.
+@available(iOS 15.0, tvOS 15.0, *)
 public func syslogEntries(
     filter: SyslogFilter = SyslogFilter(),
     seconds: TimeInterval? = nil,

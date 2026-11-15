@@ -370,6 +370,7 @@ int icli_cc_flashlight_set(double level) {
 // bundle; icli's own identifier is not one of them.
 static NSString *const FocusClient = @"com.apple.donotdisturb.control-center.module";
 static NSString *const FocusAssertion = @"com.apple.donotdisturb.control-center.module.manual";
+static NSString *const DefaultFocusMode = @"com.apple.donotdisturb.mode.default";
 
 static id focusService(NSString *name) {
     loadFramework("/System/Library/PrivateFrameworks/DoNotDisturb.framework/DoNotDisturb");
@@ -385,12 +386,25 @@ static id callWithError(id target, const char *selector, NSError **error) {
     return ((id (*)(id, SEL, NSError **))objc_msgSend)(target, sel, error);
 }
 
-static NSArray *focusModes(NSError **error) {
+static id focusProperty(id object, const char *name) {
+    SEL selector = sel_registerName(name);
+    return [object respondsToSelector:selector] ? ((id (*)(id, SEL))objc_msgSend)(object, selector) : nil;
+}
+
+static NSArray *focusModes(id state, NSError **error) {
     NSMutableArray *modes = [NSMutableArray array];
-    NSArray *available = callWithError(focusService(@"DNDModeSelectionService"), "availableModesWithError:", error);
+    id selection = focusService(@"DNDModeSelectionService");
+    if (!selection && [state respondsToSelector:sel_registerName("activeModeIdentifiers")]
+        && ![state respondsToSelector:sel_registerName("activeModeIdentifier")]) {
+        // iOS 14's DNDState reports a set of identifiers; Focus's mode
+        // selection service arrived later. DNDDefaultModeIdentifier in the
+        // 14.0.1 framework is this exact string.
+        return @[@{@"id": DefaultFocusMode, @"name": @"Do Not Disturb"}];
+    }
+    NSArray *available = callWithError(selection, "availableModesWithError:", error);
     for (id mode in available) {
-        id identifier = [mode valueForKey:@"modeIdentifier"];
-        id name = [mode valueForKey:@"name"];
+        id identifier = focusProperty(mode, "modeIdentifier");
+        id name = focusProperty(mode, "name");
         if ([identifier isKindOfClass:NSString.class])
             [modes addObject:@{@"id": identifier, @"name": [name isKindOfClass:NSString.class] ? name : identifier}];
     }
@@ -400,15 +414,22 @@ static NSArray *focusModes(NSError **error) {
 char *icli_cc_focus_json(void) {
     NSError *error = nil;
     id state = callWithError(focusService(@"DNDStateService"), "queryCurrentStateWithError:", &error);
-    if (!state) {
-        return icli_json(@{@"error": error.localizedDescription ?: @"The Do Not Disturb service is unavailable."});
+    if (!state || ![state respondsToSelector:sel_registerName("isActive")]) {
+        return icli_json(@{@"error": error.localizedDescription ?: @"Do Not Disturb is unavailable on this iOS."});
     }
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     BOOL active = sendBool(state, "isActive");
     result[@"active"] = @(active);
-    NSArray *modes = focusModes(nil);
+    NSArray *modes = focusModes(state, nil);
     result[@"modes"] = modes;
-    id identifier = active ? [state valueForKey:@"activeModeIdentifier"] : nil;
+    id identifier = active ? focusProperty(state, "activeModeIdentifier") : nil;
+    if (active && !identifier) {
+        id identifiers = focusProperty(state, "activeModeIdentifiers");
+        if ([identifiers isKindOfClass:NSSet.class]) {
+            if ([identifiers containsObject:DefaultFocusMode]) identifier = DefaultFocusMode;
+            else if ([identifiers count] == 1) identifier = [identifiers anyObject];
+        }
+    }
     if ([identifier isKindOfClass:NSString.class]) {
         result[@"mode_id"] = identifier;
         for (NSDictionary *mode in modes)
@@ -432,6 +453,7 @@ int icli_cc_focus_set(const char *mode, char **message) {
         id request = ((id (*)(Class, SEL, NSString *, NSString *, id))objc_msgSend)(
             details, make, FocusAssertion, @(mode), nil);
         SEL take = sel_registerName("takeModeAssertionWithDetails:error:");
+        if (!request || ![service respondsToSelector:take]) return -1;
         ok = ((id (*)(id, SEL, id, NSError **))objc_msgSend)(service, take, request, &error) != nil;
     } else {
         SEL invalidate = sel_registerName("invalidateAllActiveModeAssertionsWithError:");

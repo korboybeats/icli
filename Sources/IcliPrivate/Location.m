@@ -157,6 +157,10 @@ char *icli_location_read_json(double timeout, bool match, double latitude, doubl
         return icli_json(@{@"error": [NSString stringWithFormat:@"no location within %g s", timeout]});
     NSISO8601DateFormatter *formatter = [NSISO8601DateFormatter new];
     formatter.formatOptions |= NSISO8601DateFormatWithFractionalSeconds;
+    id simulated = NSNull.null;
+    if (@available(iOS 15.0, tvOS 15.0, *)) {
+        simulated = @(location.sourceInformation.isSimulatedBySoftware);
+    }
     return icli_json(@{
         @"latitude": @(location.coordinate.latitude),
         @"longitude": @(location.coordinate.longitude),
@@ -168,7 +172,7 @@ char *icli_location_read_json(double timeout, bool match, double latitude, doubl
         @"timestamp": [formatter stringFromDate:location.timestamp],
         @"age_seconds": @(MAX(0, -location.timestamp.timeIntervalSinceNow)),
         @"fresh": @(fresh(location)),
-        @"simulated": @(location.sourceInformation.isSimulatedBySoftware),
+        @"simulated": simulated,
         @"client": bundlePath,
     });
 }

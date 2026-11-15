@@ -61,6 +61,13 @@ char *icli_amfi_developer_mode_json(bool arm) {
 static id lowPowerModeService(void) {
     dlopen("/System/Library/PrivateFrameworks/LowPowerMode.framework/LowPowerMode", RTLD_NOW);
     Class cls = NSClassFromString(@"_PMLowPowerMode");
+    if (!cls) {
+        // iOS 14 CoreDuet's _CDBatterySaver has the same getPowerMode and
+        // setPowerMode:fromSource:withCompletion: ABI (including BOOL/NSError
+        // completion arguments). See docs/development/ios-compatibility.md.
+        dlopen("/System/Library/PrivateFrameworks/CoreDuet.framework/CoreDuet", RTLD_NOW);
+        cls = NSClassFromString(@"_CDBatterySaver");
+    }
     return [cls respondsToSelector:@selector(sharedInstance)]
         ? ((id (*)(Class, SEL))objc_msgSend)(cls, @selector(sharedInstance))
         : nil;
