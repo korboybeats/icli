@@ -195,6 +195,13 @@ entries. These are static layout and host-reader results, not device log
 captures from those releases. Raw decoder copies remain private under
 `.build/compatibility/logging-layouts/`.
 
+The [accessibility protocol note](ios-compatibility-accessibility.md) records
+native instruction and dispatch-table checks for element attributes, direct
+activation and scrolling on 14.0.1 and 27.2.1. In particular, the older service's
+5019 dispatch calls `accessibilityIdentifier`; the differently named
+`AXElement.identifier` wrapper is not a replacement for it. This endpoint
+inspection does not qualify the whole 40-cache numeric protocol surface.
+
 ## Verification boundaries
 
 The Mac builds all six universal artifacts at 14.0. Binary verification checks
