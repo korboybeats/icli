@@ -212,6 +212,13 @@ activation and scrolling on 14.0.1 and 27.2.1. In particular, the older service'
 5019 dispatch calls `accessibilityIdentifier`; the differently named
 `AXElement.identifier` wrapper is not a replacement for it. This endpoint
 inspection does not qualify the whole 40-cache numeric protocol surface.
+Its [native witness matrix](ios-compatibility-accessibility.tsv) now records
+matching common accessor/action argument loads in all 40 caches, four newer
+5019 wrapper witnesses and the four scroll mappings in every cache. The
+different 16.x helper implementations were inspected separately. Earlier
+5019 wrapper cells remain unresolved; the older app-side dispatcher evidence
+and the 17.1.1 runtime result are kept separate. These checks do not qualify
+every C/MIG field, entitlement gate or app-side handler.
 
 ## Verification boundaries
 

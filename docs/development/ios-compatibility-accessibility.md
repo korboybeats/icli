@@ -1,11 +1,13 @@
 # Accessibility protocol evidence
 
-Scope: static inspection of the supplied iOS 14.0.1 and 27.2.1 arm64e firmware.
+Scope: native instruction and dispatch-table inspection of iOS 14.0.1 and
+27.2.1, plus native accessor argument-load witnesses and scroll mapping checks
+across all 40 supplied caches.
 The available iOS 17.1.1 device separately passed the complete `korboy7`
 non-reboot acceptance suite. The later `korboy8` run was paused after 68 passing
 cases and remains incomplete.
-This note does not infer intermediate releases or prove device operation on
-either inspected endpoint. No production behavior changed in this check.
+The static results do not prove device operation on another release. No
+production behavior changed in this check.
 
 `Sources/IcliPrivate/Accessibility.m` uses numeric AX attributes/actions. The
 numbers below were checked against actual native instructions, not the
@@ -40,6 +42,52 @@ the actual table bytes at `0x19e5a2778` and `0x18fd87b70` gives the same values:
 | left | 2008 | 2106 |
 | right | 2009 | 2107 |
 
+## Checks across all supplied caches
+
+The [native witness matrix](ios-compatibility-accessibility.tsv) adds a column
+for every supplied cache. Its [input summary](ios-compatibility-accessibility.summary.json)
+retains the source, cache, reader, collector, raw-record and IDA-reference hashes.
+It contains 444 matching native argument-load witnesses and 160 separately
+checked scroll mappings, with 36 unresolved wrapper cells.
+
+For the eleven common accessor/action rows, the actual `AXElement` method
+metadata identifies the native implementation address in each cache. Its
+copied bytes contain the expected unshifted `MOVZ` into argument register 1
+or 2; each cell records that instruction address, register, word and native
+method encoding. These are bounded argument-load witnesses, not a proof of
+the complete method's control flow or every private C/MIG signature.
+
+The `axIdentifier` wrapper supplies four additional 5019 argument-load witnesses
+on 26–27. The earlier 36 class-chain snapshots do not provide that wrapper.
+Those cells remain `method_unresolved`, which does not mean the attribute is
+unavailable. The older app-side 5019 dispatch proof below and the 17.1.1 fixture
+runtime result remain separate evidence; other older app-side dispatchers are
+not inferred from the newer wrapper.
+
+Every cache's scroll mapping was checked against its actual code and table.
+Thirty-two use the inline three-value table and a 2107 default. The eight
+16.x caches call a native switch helper. IDA disassembly and decompilation of
+16.0.3, 16.4.1 and arm64-only 16.7.16 establish the three helper code shapes.
+The later arm64e helper changes the range-check instructions; the arm64 helper
+uses different jump registers and has no caller authentication instruction.
+For each supplied cache, all helper instructions match one inspected shape
+apart from the two page-address instructions, which are decoded and checked
+against the actual jump-table bytes. No unknown shape receives a mapping.
+All four mappings agree with the table above in all 40 caches.
+
+The raw class snapshots, copied instructions and switch/table records remain
+in `.build/compatibility/ax-native-methods/`. The native inputs were collected
+with `compatibility-objc.py`'s cache reader and the local
+`.build/compatibility/collect-ax-native-methods.py` and
+`collect-ax-scroll-mappings.py` research scripts. The latter records the exact
+inspected helper shapes and rejects unmatched code. Regenerate the committed
+matrix from those saved inputs with:
+
+```sh
+python3 scripts/compatibility-accessibility.py \
+  --metadata .build/compatibility/ax-native-methods
+```
+
 ## Identifier dispatch on iOS 14
 
 The older `AXElement.identifier` wrapper loads 2031. That is a different
@@ -66,9 +114,11 @@ Raw IDA disassembly, pseudocode, table bytes and selector resolutions remain in
 in `identities.json` there. The framework images were extracted from the
 existing caches; this check used no additional device or full firmware download.
 
-The inspected `AXUIElementPerformAction` implementations both dispatch a
+The endpoint `AXUIElementPerformAction` implementations both dispatch a
 numeric action through their native MIG path. The attribute-copy implementation
 likewise passes the numeric attribute through its native request. These checks
 do not establish every MIG field, requesting-client policy, entitlement gate,
-app-specific handler or attribute on every supplied release. Those remain
+app-specific handler or attribute on every supplied release. The all-cache
+argument-load witnesses and scroll mappings above do not close those limits.
+Those remain
 separate compatibility qualification work.
