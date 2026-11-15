@@ -14,9 +14,9 @@ Audio buttons try hardware events first and fall back to the system audio contro
 
 `icli status` returns lock and screen state, the app in front, whether the keyboard, a SpringBoard overlay or an owner-only prompt is up, and `springboard_pid` and `boot_time`. A runner that compares the last two between steps knows another agent resprang or rebooted the device under it.
 
-A lease blocks interaction and shared-state changes by other runners. Background file work and inspection run without its token and do not renew it. Guarded commands need `ICLI_LEASE=<token>` and renew the holder’s idle time; background-only observers must renew explicitly. `lease` and `status` remain available. See [command policy and concurrent work](leases.md).
+A lease blocks automated interaction and shared-state changes by other runners. Commands with terminal input bypass leases automatically; `icli --ignore-lease <command>` also bypasses them for piped input or scripts. Bypassing leaves the holder's lease unchanged. Background file work and inspection run without its token and do not renew it. Other guarded commands need `ICLI_LEASE=<token>` and renew the holder’s idle time; background-only observers must renew explicitly. `lease` and `status` remain available. See [command policy and concurrent work](leases.md).
 
-Leases coordinate interactive testing. Install an authorized build through the SSH shell (`dpkg -i` or `trollinst`) without acquiring or taking over an existing testing lease.
+Leases coordinate interactive testing. Install an authorized build through the SSH shell (`dpkg -i`, or `icli app install <ipa> --container` for IPAs) without acquiring or taking over an existing testing lease.
 
 `ICLI_FAILURE_ARTIFACTS=<dir>` makes every failed command save `error.json`, `screen.jpg` and `tree.json` in a new folder under `<dir>`, named in the error's `artifacts`.
 
