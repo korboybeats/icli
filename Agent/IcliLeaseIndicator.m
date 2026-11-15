@@ -43,9 +43,28 @@ static const char *const LeaseChanged = "com.korboy.icli.lease-changed";
 @interface IcliIndicatorViewController : UIViewController
 @end
 
+@interface UIApplication (IcliIndicatorOrientation)
+- (UIInterfaceOrientation)activeInterfaceOrientation;
+@end
+
 @implementation IcliIndicatorViewController
+- (UIInterfaceOrientation)_preferredInterfaceOrientationGivenCurrentOrientation:(UIInterfaceOrientation)orientation {
+    // SpringBoard's scene resolver can prefer portrait even while its front
+    // app is landscape. Follow the displayed interface, not that preference
+    // or the physical device (which may have rotation lock enabled).
+    UIApplication *app = [UIApplication sharedApplication];
+    if ([app respondsToSelector:@selector(activeInterfaceOrientation)])
+        return [app activeInterfaceOrientation];
+    return orientation;
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    // SpringBoard can resize a window without rotating it, or rotate it
+    // without giving it the displayed screen's bounds. Keep both in sync.
+    UIWindow *window = self.view.window;
+    CGRect frame = window.screen.bounds;
+    if (window && !CGRectEqualToRect(window.frame, frame)) window.frame = frame;
     [[IcliLeaseIndicator shared] layoutLabel];
 }
 @end

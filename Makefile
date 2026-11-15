@@ -30,7 +30,7 @@ AGENT_FLAGS   := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneo
 INDICATOR       := $(BUILD)/IcliLeaseIndicator.dylib
 INDICATOR_FLAGS := -dynamiclib -arch arm64 -arch arm64e -isysroot $(SDK) -miphoneos-version-min=15.0 \
 	-Os -std=gnu11 -fobjc-arc -Wall -Wextra -Werror \
-	-install_name @rpath/IcliLeaseIndicator.dylib -framework Foundation -framework UIKit
+	-install_name @rpath/IcliLeaseIndicator.dylib -framework Foundation -framework UIKit -framework CoreGraphics
 
 ifeq ($(DEBUG),1)
 CONFIGURATION := debug
