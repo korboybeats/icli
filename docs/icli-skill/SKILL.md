@@ -5,11 +5,11 @@ description: "Command map for icli, the on-device CLI that controls and inspects
 
 # icli command map
 
-icli runs **on the device**. Run every command in an SSH session on the device, for example `ssh mobile@<device> 'icli device info'`. It prints JSON on stdout. Add `--human` for readable text. To read the screen and decide what to tap, add `--compact` to `ui tree` or `screen ocr`: one line per element, about a sixth of the JSON's size. `icli <group> --help` and `icli <group> <command> --help` list every option.
+icli runs **on the device**. Run every command in an SSH session on the device, for example `ssh mobile@<device> 'icli device info'`. When the SSH login is already root (for example `ssh-iphone`), leave out `sudo` in the commands below. It prints JSON on stdout. Add `--human` for readable text. To read the screen and decide what to tap, add `--compact` to `ui tree` or `screen ocr`: one line per element, about a sixth of the JSON's size. `icli <group> --help` and `icli <group> <command> --help` list every option.
 
 The tables below mark each command with two properties:
 
-- **Root**: `required` means icli refuses to run without root (use `sudo icli …`). `usually` means the command runs, but the files or launchd domain it changes normally need root. `no` means it works as the mobile user.
+- **Root**: `required` means icli refuses to run without root (use `sudo icli …`, or plain `icli` in a root shell). `usually` means the command runs, but the files or launchd domain it changes normally need root. `no` means it works as the mobile user.
 - **Screen**: `unlocked` means the command exits with code 2 (`device_locked`) while the device is locked or its screen is off. `any` means it also runs while the device is locked.
 
 Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, button, clipboard), [device](reference/device.md) (device, cc, lock and unlock, location, notify), [apps](reference/apps.md) (app, url, sb), [files and logs](reference/files-logs.md) (fs, log), [packages](reference/packages.md) (pkg), [system](reference/system.md) (svc, prefs, account, env, proc, sec, net, tests, probe, and session, batch, status and lease for test runs).
@@ -85,7 +85,8 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Keep one icli process open and send it commands as you go | `icli session`, then one line per command: `{"id":1,"argv":["ui","tap","OK"]}` (one JSON line back each) |
 | Protect phone interaction from other runners during a run | `export ICLI_LEASE=$(icli lease acquire --owner myapp-build \| jq -r .token)`, then `icli lease release` |
 | Save the screen and element tree whenever a command fails | `export ICLI_FAILURE_ARTIFACTS=/var/tmp/icli-failures` (the error's `artifacts` names the folder) |
-| Install a .deb or .ipa | `sudo icli app install /tmp/x.deb` (or `.ipa`) |
+| Install a .deb | `sudo icli app install /tmp/x.deb` |
+| Install an .ipa so it launches | `sudo icli app install /tmp/x.ipa --container` (re-signs it ad-hoc; without `--container` it goes into the bootstrap unsigned) |
 | Uninstall an app or package | `sudo icli app uninstall <bundle-id> --force` / `sudo icli pkg remove <pkg>` |
 | Inspect a .deb without installing it | `icli pkg info <file.deb>` |
 | Check whether a package is installed | `icli pkg status <name>` / `icli pkg list --filter <text>` |
@@ -99,6 +100,8 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 | Capture packets | `sudo icli net capture --seconds 5 --filter 'tcp port 443'` |
 | Run the self-tests | `icli tests --expect-layout roothide` |
 | Run a JavaScript probe in the icli process | `icli probe -e '<source>'` |
+| Inspect a running app's live objects, heap, defaults, keychain, databases or network | `icli flex health --target <app>` first, then `icli flex heap instances <Class> --target <app>`, `flex defaults entries`, `flex network transactions` (`icli flex --help` lists all) |
+| Trace an app's ObjC method calls | `icli flex trace start --target <app> --class <pattern>`, then `flex trace events` and `flex trace stop` |
 | Restart userspace | `sudo icli device reboot --userspace --force` |
 
 ## Speed
@@ -110,14 +113,15 @@ Per-group detail: [interaction](reference/interaction.md) (screen, ui, input, bu
 - **Prefer the accessibility tree to OCR.** `--source ax` (the default) is much faster than `ocr`. Use `any` only when the text may be missing from the tree. Trim `ui tree` with `--clickable-only` and `--limit`.
 - **Read the screen with `--compact`.** When you read `ui tree` or `screen ocr` to decide what to tap, add `--compact`. It prints one line per element instead of pretty JSON: on the Home Screen `ui tree` drops from 11.6 KB to 1.8 KB, and `screen ocr --fast` from 5.2 KB to 0.8 KB. Tap the `x,y` from a line straight with `screen tap`; it is the element's tap point. Inside `batch` and `session` a `--compact` step answers with its lines in `text` instead of `result`. Use the JSON instead when a script parses the output, or when you need what the lines leave out: a frame's origin (to pick a `--region`, or a `--x/--y` inside a scroll view), sub-point coordinates or raw `traits`. The line format is in [reference/interaction.md](reference/interaction.md).
 - **Use `ui perform` for one exact, verified tap** in an automated test. It needs a known identifier and app, and checks the change you expect.
-- **Device leases cover interactive testing, not installation.** An existing lease must not block an authorized build/install or trigger another approval request. Install through the SSH shell (`ssh-iphone`, `dpkg -i` for DEBs, `trollinst` for IPAs) without acquiring, waiting for, or taking over the lease. If the device is busy, skip optional UI testing and report installation separately. When the user says they will check it, leave testing to them.
+- **Device leases cover interactive testing, not installation.** An existing lease must not block an authorized build/install or trigger another approval request. Install through the SSH shell (`ssh-iphone`, `dpkg -i` for DEBs, `icli app install <ipa> --container` for IPAs) without acquiring, waiting for, or taking over the lease. If the device is busy, skip optional UI testing and report installation separately. When the user says they will check it, leave testing to them.
 - **Background work.** File operations, logs and audited inspection commands run while another task holds a lease, without its token. Do not acquire, share or take over a lease for those commands. They do not renew a lease, even with its token; see [command policy](../usage/leases.md).
-- **Interactive testing.** Hold an `icli lease` while driving the UI and export `ICLI_LEASE` in shells running icli. Use a recognizable `<project>-<task>` owner, and release the lease when testing ends.
+- **Interactive testing.** Hold an `icli lease` while driving the UI and export `ICLI_LEASE` in shells running icli. Use a recognizable `<project>-<task>` owner, and release the lease when testing ends. Before acquiring, `icli lease status` shows whether another runner holds it (`held`, owner); if one does, wait for it or skip the UI test rather than overriding it.
+- **Bypassing a lease.** Commands typed in the phone's own terminal always run. `icli --ignore-lease <command>` runs one scripted command despite another runner's lease without changing it, and can interrupt that runner's test, so use it only when told to.
 
 ## Conventions
 
 - **Output**: one JSON object on stdout, with keys sorted, unless `--compact` (`ui tree`, `ui at`, `ui wait`, `ui wait-gone`, `screen ocr`) or `--human` asks for text. On failure the object is `{"error": <code>, "message": <text>}`, where the code is `failed`, `device_locked`, `force_required`, `unavailable`, `missing_dependency`, `command_failed`, or a command's own code such as `timed_out` or `refresh_incomplete`. `icli probe` prints its own line instead, `{"ok": true, "result": <text>}` or `{"ok": false, "error": <message text>}`, both with `output`, and `icli probe repl` is interactive text. Argument errors come from the argument parser as plain text on stderr.
-- **Exit codes**: `0` is success. `2` is `device_locked`. `75` is `leased`: another runner holds the device (see `icli lease`). `1` is any other runtime failure. A result or failure that carries a nonzero `status` exits with that status (1–255). Treat any nonzero exit as a failure and read the JSON.
+- **Exit codes**: `0` is success. `2` is `device_locked`. `75` is `leased`: another runner holds the device (see `icli lease`; don't retry with `--ignore-lease` unless told to). `1` is any other runtime failure. A result or failure that carries a nonzero `status` exits with that status (1–255). Treat any nonzero exit as a failure and read the JSON.
 - **Locked device**: see the Screen column. Most interactive and many read commands need the device unlocked with the screen on. When you get exit 2, run `icli button wake`. If `screen info` still shows `locked: true`, a person has to unlock the device.
 - **Destructive commands need `--force`**: `app kill`, `app unregister`, `app unregister-dir`, `app uninstall --package`, `fs rm`, `sec keychain delete` and `device reboot` refuse to run without it and return `force_required`.
 - **Coordinates** are UI points in the orientation shown on screen. The origin is the top-left corner as the user sees it. `screen info` gives the current `width`, `height` and `orientation`; an iPad in landscape reports a landscape width. Elements from `ui tree` and boxes from `screen ocr` use the same space, so you can pass an element's `x`,`y` (its tap point, which can sit off the frame's centre) straight to `screen tap`.
@@ -156,13 +160,13 @@ To copy a screenshot to your Mac on RootHide: `scp mobile@<device>:/rootfs/tmp/s
 
 ```sh
 scp app.ipa mobile@<device>:/tmp/                 # RootHide: icli sees it as <jbroot>/tmp/app.ipa
-sudo icli app install /tmp/app.ipa                # use the path as icli sees it
+sudo icli app install /tmp/app.ipa --container    # use the path as icli sees it; --container re-signs it
 icli app info <bundle-id>
 icli app launch <bundle-id>
 sudo icli app uninstall <bundle-id> --force
 ```
 
-`app install` picks the installer from the file extension: `.deb` installs natively, as `pkg install` does, `.ipa` installs into the bootstrap and registers the app, and `.app` registers the bundle. Maintainer scripts are never run; the result lists them in `scripts_not_run`.
+`app install` picks the installer from the file extension: `.deb` installs natively, as `pkg install` does, `.ipa` installs into the bootstrap and registers the app without re-signing it (add `--container` for its own re-signed app container, which is what launches a decrypted or developer-signed IPA), and `.app` registers the bundle. Maintainer scripts are never run; the result lists them in `scripts_not_run`.
 
 **Recover from a stuck state**
 

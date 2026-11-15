@@ -13,11 +13,11 @@
 
 A session line is an argument list or an object with `argv`, the batch step fields `expect` and `delay_ms`, and an `id` the reply repeats. The first line out is `{"ready":true,"pid":…,"version":…}`. Each reply has `index`, `ok`, `exit_code`, `elapsed_ms`, `result` (or `text`, the lines of a `--compact` step), and `message` or `expect_failed`. A failed command does not end the session; end of input, SIGINT, SIGTERM or SIGHUP does, and a running `screen record` finishes its movie first. Commands get no stdin. `batch`, `session`, `probe`, `tests` and `screen shot --stdout` cannot run in it. Inside a session `app frontmost` took about 3 ms, `ui tree` 10–35 ms and `ui tap` about 150 ms, against about 0.1 s of process start-up and about 0.4 s for a new SSH login per command.
 
-A lease blocks interaction and shared-state changes by other runners. Background file work and inspection run without its token and do not renew it. Guarded commands need `ICLI_LEASE=<token>` and renew the holder’s idle time; background-only observers must renew explicitly. `lease` and `status` remain available. See [command policy and concurrent work](../../usage/leases.md).
+A lease blocks automated interaction and shared-state changes by other runners. Commands with terminal input bypass leases automatically; `icli --ignore-lease <command>` also bypasses them for piped input or scripts, leaving the holder's lease unchanged. Background file work and inspection run without its token and do not renew it. Guarded commands need `ICLI_LEASE=<token>` and renew the holder’s idle time; background-only observers must renew explicitly. `lease` and `status` remain available. See [command policy and concurrent work](../../usage/leases.md).
 
 With `ICLI_FAILURE_ARTIFACTS=<dir>` set, a failed command (including a failed batch or session step) writes `<dir>/<time>-<pid>-<command words>/` with `error.json` (the arguments, the error, the app in front, lock state), `screen.jpg` and `tree.json`, and the error gets `artifacts` with that folder. A `leased` refusal writes none. Without the variable nothing is written.
 
-Leases coordinate interactive testing. An authorized installation through the SSH shell (`dpkg -i` or `trollinst`) does not require acquiring or taking over a testing lease. Leave an existing holder's lease intact.
+Leases coordinate interactive testing. An authorized installation through the SSH shell (`dpkg -i`, or `icli app install <ipa> --container` for IPAs) does not require acquiring or taking over a testing lease. Leave an existing holder's lease intact.
 
 ## svc (launchd)
 
