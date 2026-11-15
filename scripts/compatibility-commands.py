@@ -27,6 +27,10 @@ passed, failed = defaultdict(set), defaultdict(set)
 for report in reports:
     assert report['binary_sha256'] == report['installed_binary_sha256'], 'Installed binary does not match the build'
     for case in report['cases'] + report.get('lifecycle', []):
+        # The lock-state scenario intentionally kills SpringBoard; older runners
+        # flag that expected restart with the same field as unexpected restarts.
+        if case.get('springboard_restarted') and case['name'] != 'lock_state_after_respring':
+            continue
         for trace in case['trace']:
             argv = trace.get('cli_arguments', [])
             if trace['exit'] != 0 or any(a in argv for a in ['--help', '--experimental-dump-help']):
@@ -64,6 +68,8 @@ summary = {
         'tested_at': report['tested_at'], 'runner_sha256': report['runner_sha256'],
         'root_only': report.get('root_only', False), 'completed_run': report.get('completed_run', False),
         'passing_cases': sum(c['passed'] for c in report['cases']), 'total_cases': len(report['cases']),
+        'excluded_restarted_cases': [c['name'] for c in report['cases']
+                                     if c.get('springboard_restarted') and c['name'] != 'lock_state_after_respring'],
     } for path, report in zip(args.acceptance, reports)],
     'limits': [
         'case_pass requires positive execution in a passing asserted scenario; it does not cover every mode or input.',

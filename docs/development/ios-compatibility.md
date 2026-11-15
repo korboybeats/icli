@@ -182,18 +182,20 @@ passed verification again. Every inventoried production source hash and every
 artifact's import list matches the preceding snapshot; only the relinked CLI's
 file hash changed.
 
-The preceding CLI's root-only non-reboot run completed 106 cases: 105 passed. Siri was
-activated, but its cleanup assertion failed after a fixed 1.5-second delay.
-A separate reproduction observed dismissal after 3.725 seconds. Replacing the
-fixed delay with `ui wait-gone` passed the targeted Siri rerun on the same
-binary. This is a broad run plus a targeted rerun, not a single clean full run.
-The extended acceptance runner's fresh device run is pending the shared lease.
+A fresh root-only run on this binary completed all 110 non-reboot cases with
+110 passes. It includes the event-based Siri cleanup, verified UI transition,
+power/wake, saved-credential recovery after respring, audio route checks,
+passcode preflight, fixture FLEX inspection, and lease lifecycle checks.
+The runner SHA-256 and complete report hash are retained in the
+[command evidence summary](ios-compatibility-commands.summary.json).
 
 The [per-command matrix](ios-compatibility-commands.tsv) records positive
-execution within passing cases for 174 of 187 command leaves. The remaining
-13 entries are explicitly `not_executed`; reboot is deferred, and several
-others need dedicated scenarios or improved trace coverage. `case_pass`
-applies only to the asserted scenarios. Other release columns say
+execution within passing cases for all 186 non-reboot command leaves. The
+remaining command, `device reboot`, is explicitly `deferred`. `case_pass`
+applies only to the asserted scenarios: passcode unlock used `--check`, the
+empty failure ledger was cleared, audio selection covered the current route
+and a missing UID, FLEX inspected the fixture, and the lease indicator setting
+was read. Other release columns say
 `imports_only`: they qualify whole-process loading, not private command
 behavior. The source-gated iOS 14 simulation commands say `unavailable`.
 Complete private protocol/entitlement qualification remains open.
@@ -204,6 +206,12 @@ counts only successful command executions in passing asserted cases, and include
 lease acquisition/release recorded outside the individual test cases. Its
 companion summary retains report and runner hashes. `--defer-reboot` marks the
 user-deferred reboot command explicitly.
+
+```sh
+python3 scripts/compatibility-commands.py \
+  --acceptance .build/compatibility/acceptance-complete-nonreboot.json \
+  --defer-reboot
+```
 
 With `ICLI_TEST_SAVED_UNLOCK=1`, power and respring acceptance first check the
 existing on-device saved credential without authenticating. After locking, the

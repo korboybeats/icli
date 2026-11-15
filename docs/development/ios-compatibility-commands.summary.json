@@ -1,0 +1,28 @@
+{
+  "runtime_os": "17.1.1",
+  "binary_sha256": "0f1f0b7bf5f688e3243cb66daf2b1432fa4b7cd543e59d195cf550d46aefd56f",
+  "command_counts": {
+    "case_pass": 186,
+    "deferred": 1
+  },
+  "presence_sha256": "2035468c307fa88f9c1c0998aa7dbda8a0cad9e9a2f228bb8e81e2066bab3dfb",
+  "reports": [
+    {
+      "file": "acceptance-complete-nonreboot.json",
+      "sha256": "23c67d1f42c17700a57313adc3a181230ef8a8c0c7f36e04108fd7d8fdb28a5e",
+      "tested_at": "2026-11-15T12:10:17.021473+00:00",
+      "runner_sha256": "a20c23101bd68b8e2e8c2f988b895a8aec0c82a0def795d2c4a9ad128c042b5c",
+      "root_only": true,
+      "completed_run": true,
+      "passing_cases": 110,
+      "total_cases": 110,
+      "excluded_restarted_cases": []
+    }
+  ],
+  "limits": [
+    "case_pass requires positive execution in a passing asserted scenario; it does not cover every mode or input.",
+    "Passcode preflight, audio no-op selection, lease indicator reads, and fixture FLEX inspection have limited scenarios.",
+    "imports_only is whole-process loader evidence, not per-command private ABI or runtime proof.",
+    "Only the source-gated iOS 14 location simulation commands are marked unavailable here."
+  ]
+}
