@@ -23,6 +23,9 @@ commit = subprocess.check_output(['git','rev-parse','HEAD'], cwd=root, text=True
 assert not subprocess.check_output(['git','status','--porcelain','--untracked-files=no'], cwd=root, text=True), 'commit source changes before preparing a release'
 notes_path = root / f'docs/releases/{version}.md'
 notes = notes_path.read_text().strip()
+# GitHub shows the release title ("icli <tag>") above the notes, so the notes
+# file's own top heading would repeat it.
+notes = re.sub(r'\A# [^\n]*\n+', '', notes)
 report = json.loads((root / '.build/package-verification.json').read_text())
 assert report['version'] == version
 assert {p['layout'] for p in report['packages']} == {'rootless','roothide','tvos'}
