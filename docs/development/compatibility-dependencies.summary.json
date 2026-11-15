@@ -32,7 +32,7 @@
     ".build/flexultra-src/Agent/IcliFUTrace.m": "65988671aade5f5c72b8492474a37785a232a6c01b9c08cc2af472673e1182fb",
     ".build/flexultra-src/Agent/IcliFUUI.h": "02f5e31d4259a3e42c23667fdb85d30bb2c5f00cf1938751cda8d2425c0472f1",
     ".build/flexultra-src/Agent/IcliFUUI.m": "99dbd0e865d939550a08a446e88ccb8b49f35345bea96065afbe42eb9c713da1",
-    ".build/flexultra-src/ICLIFlexBuild.h": "f3f919f9c03397032cd443179b0b077e4153271fb3408aeb13b41a93aef6ff68",
+    ".build/flexultra-src/ICLIFlexBuild.h": "e29de5f3679599f8b4d45ea1ca34a565869d60411f2d8de86fbacb8907fa8c9b",
     ".build/flexultra-src/Shared/IcliFUMCPTools.h": "d3d6c4aafb202873548a4633aee3c985592a80b443fd66ae26fd7b9a8cf3fcd8",
     ".build/flexultra-src/Shared/IcliFUMCPTools.m": "c13b6d06abdbfd0ed4809ebec36fc8c08db8687cc5cd2ddfc80a3d8e1109341a",
     ".build/flexultra-src/Shared/IcliFUProtocol.h": "b926946f7d1cb9c7e16de542dbc0f7b8457d1a41f99ddc8008c683f51703bd15",
@@ -51,7 +51,7 @@
     "Agent/IcliProbeAgent.m": "7846905e90e0358d9fc134c41f3e5824f6cdaa5a29a52aa6e61812d46553eb3c",
     "Sources/IcliFlexClient/CLI.m": "9d7de657cbfddc7c9e66e8233d695bb19d7397691374664478dcd2f2453304ff",
     "Sources/IcliFlexClient/Host.m": "c524c866423e73b5cbdf3be74f00188200ed99e7c932ed6bb1a8af2e26e412b7",
-    "Sources/IcliFlexClient/ICLIFlexBuild.h": "f3f919f9c03397032cd443179b0b077e4153271fb3408aeb13b41a93aef6ff68",
+    "Sources/IcliFlexClient/ICLIFlexBuild.h": "e29de5f3679599f8b4d45ea1ca34a565869d60411f2d8de86fbacb8907fa8c9b",
     "Sources/IcliFlexClient/ICLIFlexHost.h": "308bec9f839133d09ace61401eaa1c1a65c36fab8288b02633b1b67b310df79e",
     "Sources/IcliFlexClient/IcliFUMCPTools.h": "d3d6c4aafb202873548a4633aee3c985592a80b443fd66ae26fd7b9a8cf3fcd8",
     "Sources/IcliFlexClient/IcliFUMCPTools.m": "62b0f331afd718b810dc65aa375436f6c277fab0ff0841ee229ed17bc4e2dd7a",
@@ -112,7 +112,7 @@
     "Sources/IcliLaunchPrivate/LockResolve.c": "e8e847474448c6ada93582d7d23ab41480a40612664f906010151c7405353adb",
     "Sources/IcliLaunchPrivate/Watch.m": "bdb9d019384c140e2d198630462f5998073226cd55f8612702d3c17e9764f412",
     "Sources/IcliLaunchPrivate/include/IcliLaunchPrivate.h": "a83554d2ce4d702f4603f78c3de7edfea20ad662903737e6191ceeb5174c899a",
-    "Sources/IcliPrivate/Accessibility.m": "c74e4b08e453d1a7cdd3fcce5df09b04549340894c87b432afa2bc1fe9e14384",
+    "Sources/IcliPrivate/Accessibility.m": "ca32693a2b6872d30be91b7bf6a6b34f16f5199b83130a3085471003ef2ce86d",
     "Sources/IcliPrivate/Account.m": "92450f744234871c1fda47380b3dc6c9f0442e350828852290bcd75b193d9a41",
     "Sources/IcliPrivate/AppHandlers.m": "29c5ca39b42c9fb43d6adced9977608fa2cadefcc1f2176c0c9b337bf3f49ee3",
     "Sources/IcliPrivate/AppRegistration.m": "de2ca1ae65b0a0db3dced626ed6503aeedacb746f81aa885b58240201eb6ac1a",
@@ -127,7 +127,7 @@
     "Sources/IcliPrivate/Deb.m": "62ab61a423e46ee16af9f92efef47c27dfa5df768a037c8d0be23053242d971d",
     "Sources/IcliPrivate/DebianVersion.c": "b5e9b9c6d01ccc7227b818d0ba4de3001c37929b6ea955dea57fb9586f88e96c",
     "Sources/IcliPrivate/Frames.m": "d9ae2961dd0a02eb1bc119cfbc593a14ce5c84277ddfe88534ba6790d1f0bd38",
-    "Sources/IcliPrivate/FullUnlock.m": "6e99db097466331bcd8e6945b83534046cc7ad858315ddb28bfecaafd597c8b7",
+    "Sources/IcliPrivate/FullUnlock.m": "7fbdb78695379fbe9c694320e9acc987f0f5f4de2ff5df58a390aba6619fd82a",
     "Sources/IcliPrivate/IORegistry.m": "9d0f0e8035e6fedc27896f9bfc23748b8e71fd68fe0092173eb16123ce173673",
     "Sources/IcliPrivate/IcliJSON.h": "4698bcb2bb8dd651f871f4810558a0b487473f4cde6cc8cac810b4ff6fa616d9",
     "Sources/IcliPrivate/IcliPrivate.m": "9e56b794a3f8cd03776bef9b074efbed7c62c0649f151629b99df44ac7b22eff",
@@ -1129,7 +1129,7 @@
   },
   "artifacts": {
     "icli": {
-      "sha256": "a5956c24f544079f1a9f9b0fb7e4af4418dbbe2edb632671023ca169f5d5e77a",
+      "sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c",
       "import_counts": {
         "arm64": {
           "total": 1604,
@@ -1208,20 +1208,20 @@
     }
   },
   "counts": {
-    "c-reference": 1501,
+    "c-reference": 1502,
     "cf-string": 13,
     "class": 74,
     "class-candidate": 56,
     "entitlement": 90,
     "floor-import": 153,
-    "literal": 6986,
-    "lookup-site": 461,
+    "literal": 6990,
+    "lookup-site": 459,
     "objc-declaration": 229,
     "objc-message": 4915,
     "path": 142,
     "selector": 350,
-    "selector-candidate": 85,
-    "symbol": 148,
+    "selector-candidate": 86,
+    "symbol": 146,
     "symbol-candidate": 5,
     "system-name": 37
   },
@@ -1337,7 +1337,7 @@
     "Sources/IcliLaunchPrivate/LockResolve.c": "e8e847474448c6ada93582d7d23ab41480a40612664f906010151c7405353adb",
     "Sources/IcliLaunchPrivate/Watch.m": "bdb9d019384c140e2d198630462f5998073226cd55f8612702d3c17e9764f412",
     "Sources/IcliLaunchPrivate/include/IcliLaunchPrivate.h": "a83554d2ce4d702f4603f78c3de7edfea20ad662903737e6191ceeb5174c899a",
-    "Sources/IcliPrivate/Accessibility.m": "c74e4b08e453d1a7cdd3fcce5df09b04549340894c87b432afa2bc1fe9e14384",
+    "Sources/IcliPrivate/Accessibility.m": "ca32693a2b6872d30be91b7bf6a6b34f16f5199b83130a3085471003ef2ce86d",
     "Sources/IcliPrivate/Account.m": "92450f744234871c1fda47380b3dc6c9f0442e350828852290bcd75b193d9a41",
     "Sources/IcliPrivate/AppHandlers.m": "29c5ca39b42c9fb43d6adced9977608fa2cadefcc1f2176c0c9b337bf3f49ee3",
     "Sources/IcliPrivate/AppRegistration.m": "de2ca1ae65b0a0db3dced626ed6503aeedacb746f81aa885b58240201eb6ac1a",
@@ -1352,7 +1352,7 @@
     "Sources/IcliPrivate/Deb.m": "62ab61a423e46ee16af9f92efef47c27dfa5df768a037c8d0be23053242d971d",
     "Sources/IcliPrivate/DebianVersion.c": "b5e9b9c6d01ccc7227b818d0ba4de3001c37929b6ea955dea57fb9586f88e96c",
     "Sources/IcliPrivate/Frames.m": "d9ae2961dd0a02eb1bc119cfbc593a14ce5c84277ddfe88534ba6790d1f0bd38",
-    "Sources/IcliPrivate/FullUnlock.m": "6e99db097466331bcd8e6945b83534046cc7ad858315ddb28bfecaafd597c8b7",
+    "Sources/IcliPrivate/FullUnlock.m": "7fbdb78695379fbe9c694320e9acc987f0f5f4de2ff5df58a390aba6619fd82a",
     "Sources/IcliPrivate/IORegistry.m": "9d0f0e8035e6fedc27896f9bfc23748b8e71fd68fe0092173eb16123ce173673",
     "Sources/IcliPrivate/IcliJSON.h": "4698bcb2bb8dd651f871f4810558a0b487473f4cde6cc8cac810b4ff6fa616d9",
     "Sources/IcliPrivate/IcliPrivate.m": "9e56b794a3f8cd03776bef9b074efbed7c62c0649f151629b99df44ac7b22eff",
@@ -1953,7 +1953,12 @@
     "Vendor/FlexUltra/VendoredReflex/Sources/Reflex/FLExtensions.swift": "750bb8ce09969fae4a61cc1306ef1fa30cff8847ebfda38aa7043aece970821a",
     "Vendor/FlexUltra/VendoredReflex/Sources/Reflex/PointerExtensions.swift": "c59c0e2f2d337219eb93f3a7c32fd6049619ba7b215d1cffc0cd3429bc18c708"
   },
-  "ast_reuse_note": "The 269 successful Clang inputs precede the final prepared FLEX build identifier. Reconstructing both generated headers with the original identifier exactly reproduces their saved AST-input hashes; all other 724 source hashes match. Only the build identifier literal and final header hashes were refreshed.",
-  "package_version": "1.0.0+korboy7",
-  "installed_cli_sha256": "a5956c24f544079f1a9f9b0fb7e4af4418dbbe2edb632671023ca169f5d5e77a"
+  "ast_refreshed_files": [
+    "Sources/IcliPrivate/Accessibility.m",
+    "Sources/IcliPrivate/FullUnlock.m"
+  ],
+  "ast_reuse_note": "Two changed production translation units were freshly indexed with Clang; the other 267 completed inputs were reused after source-hash checks. All 722 other non-generated sources match the preceding qualified snapshot. The two generated headers differ from that snapshot only in their build-ID literals and exactly match the original AST-input hashes. All six artifact/slice import lists match.",
+  "previous_inventory_sha256": "f86b25ee841976520508fc2797c76c504d1a9108ecb8bd725668a2fc0651a6dc",
+  "package_version": "1.0.0+korboy8",
+  "installed_cli_sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c"
 }

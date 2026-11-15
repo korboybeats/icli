@@ -1,17 +1,20 @@
 # iOS compatibility audit
 
-Status: investigation in progress. Version `1.0.0+korboy7` builds and packages
+Status: investigation in progress. Version `1.0.0+korboy8` builds and packages
 for iOS 14.0. This is a deployment floor, not certification that every command
 works on every release. The only physical test target is iOS 17.1.1.
 
-The implemented compatibility fixes are in source commit `6b3b934`. The current
-CLI has SHA-256 `a5956c24f544079f1a9f9b0fb7e4af4418dbbe2edb632671023ca169f5d5e77a`.
+The implemented compatibility fixes include source commits `6b3b934` and
+`9120923`. The current CLI has SHA-256
+`90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c`.
 The six shipped artifacts now have 2,005 distinct strong import names. Every
 name has export evidence in all 40 supplied caches, including the added 14.0
 cache. Both arm64 and arm64e slices pass binary/package verification for the
 rootful, rootless, and RootHide layouts. These are static results; private
 protocol behavior, entitlements, layouts, and device operation need separate
 qualification. Reboot acceptance is deferred at the user's request.
+Phone testing is now paused at the user's request: the current build's run
+stopped after 68 passing cases out of 110 planned, with no failed cases.
 
 ## Inventory
 
@@ -31,15 +34,15 @@ hashes, successful Clang inputs, entitlement values, and artifact hashes.
 | Source/header files | 726 |
 | C/Objective-C translation units indexed with Clang | 269 |
 | Clang failures remaining | 0 |
-| Distinct C function references, including project functions | 1,501 |
+| Distinct C function references, including project functions | 1,502 |
 | Distinct typed Objective-C receiver/selector pairs | 4,915 |
 | Explicit selectors | 350 |
-| Additional selector candidates from literals | 85 |
+| Additional selector candidates from literals | 86 |
 | Explicit dynamic class names | 74 |
 | Additional class candidates from literals | 56 |
-| Explicit dynamic symbol names | 148 |
+| Explicit dynamic symbol names | 146 |
 | Additional symbol candidates from literals | 5 |
-| Dynamic lookup sites, including variable arguments | 461 |
+| Dynamic lookup sites, including variable arguments | 459 |
 | Entitlement keys | 90 |
 | Absolute path literals | 142 |
 | Distinct strong import names across all shipped slices | 2,005 |
@@ -51,9 +54,13 @@ preparation because the preparation script changes framework and class lookups.
 Swift source literals and compiled Swift imports are included; Clang cannot
 enumerate Swift call sites. The generated metadata sources beyond the selected
 Swift metadata entry point remain a conservative inventory superset.
-The final source/import snapshot retains the original AST input hashes. Only
-the two generated `ICLIFlexBuild.h` build-ID string literals changed after
-those 269 completed Clang inputs; their exact diffs were checked separately.
+The final source/import snapshot freshly indexes the two changed production
+translation units, `Accessibility.m` and `FullUnlock.m`, and retains the other
+267 completed Clang inputs after source-hash checks. The two generated
+`ICLIFlexBuild.h` headers differ from the preceding snapshot only in their
+build-ID literals and exactly match the original AST-input hashes. All other
+722 source/header hashes match the preceding qualified snapshot. Every final
+artifact/slice import list was read afresh and is unchanged.
 
 The following need semantic review in addition to a name-presence check:
 
@@ -109,7 +116,7 @@ repeated `--supplement` arguments so newer scoped queries retain the earlier
 fallback evidence. A later report root
 overrides duplicate versions, so 14.0 uses the updated inventory's full scan.
 
-The committed [presence matrix](ios-compatibility-presence.tsv) has 6,390 rows
+The committed [presence matrix](ios-compatibility-presence.tsv) has 6,389 rows
 and a column for each cached release. Its [evidence summary](ios-compatibility-presence.summary.json)
 retains cache identities, query hashes, supplemental scopes, and the per-version
 strong-import checks. `E` means an exported definition, `D` another definition,
@@ -120,12 +127,14 @@ a command pass. In particular, stripped Objective-C method names can be absent
 from symbol results while their runtime method metadata still exists.
 
 The [receiver-specific method matrix](ios-compatibility-methods.tsv) records
-53 selected private receiver/selector pairs across the same 40 caches. These
+112 selected private receiver/selector pairs across the same 40 caches. These
 are reviewed calls used by the compatibility fallbacks and adjacent device,
 registration, audio and logging paths. Each resolved cell contains the actual
 declaring class and native Objective-C encoding, including superclass methods.
 Its [input summary](ios-compatibility-methods.summary.json) retains the raw
-metadata and reader hashes. This establishes receiver and method encoding for
+metadata, reader and reviewed-source hashes. The selected source files match
+the recorded `korboy7` inventory byte for byte; its native method snapshots are
+retained rather than relabeled as a fresh scan. This establishes receiver and method encoding for
 those rows; it is not exhaustive private-API qualification. In particular,
 an `@?` argument alone does not establish the block's callback prototype.
 
@@ -175,6 +184,8 @@ requirements; it does not bundle a newer Swift concurrency runtime.
 | App registration | 14–15 lack the newer containerized registration selector. Its newer return is an object, not BOOL. On 14, application records lack signer identity. | Use the verified BOOL-returning `registerApplicationDictionary:` entry point with the original dictionary. Prefer proxies when records cannot supply signer identity, preserving rootful user-app classification. Modern registration checks its error and reads back the result. Older device behavior is not claimed. |
 | App lookup | A cold dynamic lookup can precede loading LaunchServices. | Initialize the workspace before looking up application classes for standalone list/name operations. |
 | Process logs | The activity entry layout changes between 14–16, 17–18 and 26–27. | Decode the measured offsets for the actual OS major, copy packed timestamps safely and reject unqualified future layouts. Every supplied cache's native decoder was inspected; see the layout matrix below. |
+| Accessibility caller context | Two optional manual client lookups do not resolve in the supplied caches. Resolving the actual native setters and forcing a client identity would overwrite a host's selected context. | Keep native caller detection and the existing automation switches. The device-only production-source probe preserves a deliberately seeded current and outgoing context; a negative control detects the discarded overwrite. |
+| Passcode unlock | A private factory or unlock method may exist with an incompatible encoding. | Check factory availability, arity and object return; check passcode, BOOL and completion argument types before preparing the credential or invoking the method. Native method-signature fixtures cover incompatible types, and owned Mac RPC fixtures exercise both supported unlock forms. |
 | Rootful packages | The existing packager and acceptance runner already support rootful paths. | All three iOS packages are extracted afresh and checked, including all six binaries and both slices. This is package proof, not checkra1n/unc0ver/Taurine runtime proof. |
 
 The iOS 14.0.1 launchd extracted from the firmware and its libxpc have been
@@ -222,36 +233,41 @@ checks and records that scope in the report.
 
 ## Current device evidence
 
-The installed iOS 17.1.1 CLI is `1.0.0+korboy7`, SHA-256
-`a5956c24f544079f1a9f9b0fb7e4af4418dbbe2edb632671023ca169f5d5e77a`.
+The installed iOS 17.1.1 CLI is `1.0.0+korboy8`, SHA-256
+`90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c`.
 The install driver verified the CLI and all five companion files against the
 Mac-built artifacts and retained the package hold. All three iOS package layouts
-passed verification again. A new 269-input AST inventory covers the changed
-production code; its summary records the final source hashes and the two
-identifier-only generated-header changes. All six artifact import lists remain
-identical to the preceding qualified import set.
+passed verification again. The final inventory contains 269 successful Clang
+inputs, including fresh analysis of both changed production translation units;
+its summary records source hashes and the qualified reused inputs. All six
+artifact import lists remain identical to the preceding qualified import set.
 
-A fresh root-only run on this binary completed all 110 non-reboot cases with
-110 passes. It includes the event-based Siri cleanup, verified UI transition,
-power/wake, saved-credential recovery after respring, audio route checks,
-passcode preflight, fixture FLEX inspection, and lease lifecycle checks.
+The current root-only run passed its first 68 non-reboot cases before the user
+paused phone testing. There are no failed cases, but 42 planned cases were not
+completed. Its report records `completed_run: false`, successful lease release,
+and a matching installed binary hash. The runner exited through its cleanup
+path, removed both installed test apps and stopped further device interaction.
 The runner SHA-256 and complete report hash are retained in the
 [command evidence summary](ios-compatibility-commands.summary.json).
 
-Eight additional FLEX fixture sections passed all 138 checks: core inspection,
+The preceding `korboy7` build passed a complete 110/110 non-reboot run. On that
+build, eight additional FLEX fixture sections passed all 138 checks: core inspection,
 storage, UI, tracing, command dispatch, metadata, physical state and lifecycle.
 Storage includes reading an actual fixture heartbeat from the process log;
 enabling monitoring alone was not counted as proof of delivery. These reports
-match this installed CLI and remain under `.build/compatibility/korboy7-flex/`.
+belong to the earlier binary and remain under `.build/compatibility/korboy7-flex/`;
+they are not counted as current-build passes.
 App-owned Realm behavior was not exercised against an unrelated user app.
 
 The [per-command matrix](ios-compatibility-commands.tsv) records positive
-execution within passing cases for all 186 non-reboot command leaves. The
-remaining command, `device reboot`, is explicitly `deferred`. `case_pass`
+execution within passing cases for 107 command leaves on the current binary.
+Another 79 leaves are `not_executed`, and `device reboot` is explicitly
+`deferred`. The preceding build's complete report remains private under
+`.build/compatibility/acceptance-korboy7-nonreboot.json`; it is not combined
+with the current binary's report. `case_pass`
 applies only to the asserted scenarios: passcode unlock used `--check`, the
 empty failure ledger was cleared, audio selection covered the current route
-and a missing UID, FLEX inspected the fixture, and the lease indicator setting
-was read. Other release columns say
+and a missing UID, and FLEX inspected the fixture. Other release columns say
 `imports_only`: they qualify whole-process loading, not private command
 behavior. The source-gated iOS 14 simulation commands say `unavailable`.
 Complete private protocol/entitlement qualification remains open.
@@ -265,7 +281,7 @@ user-deferred reboot command explicitly.
 
 ```sh
 python3 scripts/compatibility-commands.py \
-  --acceptance .build/compatibility/acceptance-korboy7-nonreboot.json \
+  --acceptance .build/compatibility/acceptance-korboy8-final.json \
   --defer-reboot
 ```
 

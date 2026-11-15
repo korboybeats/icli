@@ -1,7 +1,9 @@
 # Accessibility protocol evidence
 
 Scope: static inspection of the supplied iOS 14.0.1 and 27.2.1 arm64e firmware.
-The available iOS 17.1.1 device separately passed the current acceptance suite.
+The available iOS 17.1.1 device separately passed the complete `korboy7`
+non-reboot acceptance suite. The later `korboy8` run was paused after 68 passing
+cases and remains incomplete.
 This note does not infer intermediate releases or prove device operation on
 either inspected endpoint. No production behavior changed in this check.
 

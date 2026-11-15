@@ -23,6 +23,14 @@ with args.index.open() as stream:
                for row in csv.DictReader(stream, delimiter='\t')]
 assert queries and len({(q['receiver'], q['side'], q['selector']) for q in queries}) == len(queries)
 inventory_hash = hashlib.sha256(args.inventory.read_bytes()).hexdigest()
+inventory = json.loads(args.inventory.read_text())
+source_hashes = {}
+for query in queries:
+    for name in query['sources'].split(';'):
+        path = Path(__file__).resolve().parents[1] / name
+        expected = inventory['source_sha256'][name]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, 'Reviewed source changed: ' + name
+        source_hashes[name] = expected
 inputs = {p.stem: p for p in args.metadata.glob('*.json') if re.fullmatch(r'\d+(?:\.\d+)+', p.stem)}
 versions = sorted(inputs, key=lambda value: tuple(map(int, value.split('.'))))
 assert versions, 'No versioned metadata inputs'
@@ -55,6 +63,7 @@ with args.output.open('w') as stream:
 args.output.with_suffix('.summary.json').write_text(json.dumps({
     'inventory_sha256': inventory_hash,
     'selected_methods': len(queries),
+    'reviewed_source_sha256': source_hashes,
     'versions': evidence,
     'legend': {'json': 'Actual declaring owner and native Objective-C method encoding',
                'class_unresolved': 'No unique class definition in the recorded symbol scopes',

@@ -1,21 +1,22 @@
 {
   "runtime_os": "17.1.1",
-  "binary_sha256": "a5956c24f544079f1a9f9b0fb7e4af4418dbbe2edb632671023ca169f5d5e77a",
+  "binary_sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c",
   "command_counts": {
-    "case_pass": 186,
+    "case_pass": 107,
+    "not_executed": 79,
     "deferred": 1
   },
-  "presence_sha256": "dd70983823349a0ec71272079f58abf061d838bb34453cda63b14413c14ae8ba",
+  "presence_sha256": "57a9fa58b740d0a5158cbd97e260a8da864958baa93033cc3ab07f69121d5bd2",
   "reports": [
     {
-      "file": "acceptance-korboy7-nonreboot.json",
-      "sha256": "5f1fdc80ec3822b96d49795ea3a05e9a871ed5fbf139d6b6f6c5276c6cbd433b",
-      "tested_at": "2026-11-15T14:10:14.688230+00:00",
+      "file": "acceptance-korboy8-final.json",
+      "sha256": "d634a63da2ca6f6690a67d3f39c56319de44092e802bf7aaf2c37b6728a1bca8",
+      "tested_at": "2026-11-15T16:18:36.602013+00:00",
       "runner_sha256": "a20c23101bd68b8e2e8c2f988b895a8aec0c82a0def795d2c4a9ad128c042b5c",
       "root_only": true,
-      "completed_run": true,
-      "passing_cases": 110,
-      "total_cases": 110,
+      "completed_run": false,
+      "passing_cases": 68,
+      "total_cases": 68,
       "excluded_restarted_cases": []
     }
   ],

@@ -1,6 +1,24 @@
 {
   "inventory_sha256": "f86b25ee841976520508fc2797c76c504d1a9108ecb8bd725668a2fc0651a6dc",
-  "selected_methods": 53,
+  "selected_methods": 112,
+  "reviewed_source_sha256": {
+    "Sources/IcliPrivate/IcliPrivate.m": "9e56b794a3f8cd03776bef9b074efbed7c62c0649f151629b99df44ac7b22eff",
+    "Sources/IcliPrivate/SilentMode.m": "f03866d364c7a703908832a73ca2f0747e116b4e3671d468be5f9c0a9e01ac45",
+    "Sources/IcliLaunchPrivate/Launch.m": "1408e3a904ae74ce165c62f2f3552c0ea55aa3b35c94acbeaab4ed9acc668081",
+    "Sources/IcliPrivate/Modes.m": "791269a9b1846dce5966be201c3f6a203c76f3c75c5db06b0a7d01c159492b07",
+    "Sources/IcliPrivate/ControlCenter.m": "80d25b5d52cd06620a1aad48849d7f67c568ff137d5f699f22325525178a722f",
+    "Sources/IcliPrivate/AppRegistration.m": "de2ca1ae65b0a0db3dced626ed6503aeedacb746f81aa885b58240201eb6ac1a",
+    "Sources/IcliSystemPrivate/LaunchServices.m": "c5f5be02b0f0c1793e0b689372c61a245d4115f754f12b956bcdf3faef3cea68",
+    "Sources/IcliPrivate/Audio.m": "c3b88820529679a91064ed7473737bfea330c0cc6bc44b16ae9eaf211c25c0d0",
+    "Sources/IcliPrivate/AudioRoutes.m": "aa8ad1919cede17bcdf6c94542f55cd8d77bf92c0b7f9abf4424088bb2d45305",
+    "Sources/IcliPrivate/Levels.m": "87ac17b8cd8d91b7e0532c45d7e42888c806ec301694a956cc6287f534bd824c",
+    "Sources/IcliPrivate/Location.m": "41dde1e88cf4f40ae2b6bc03f3fe412c63662e231ffb6169e54df75937def6da",
+    "Sources/IcliPrivate/Logging.m": "a95d938bfec3c91a3e58c284a6f05eb2526135d12cc3bb95d3bc8863a42a9284",
+    "Sources/IcliPrivate/Containers.m": "288b99ca9df131c2ee80bd40eb7ee6a31f239bf1882540b381eddec264e5334a",
+    "Sources/IcliPrivate/AppHandlers.m": "29c5ca39b42c9fb43d6adced9977608fa2cadefcc1f2176c0c9b337bf3f49ee3",
+    "Sources/IcliPrivate/System.m": "b850428924ef912694d2af9a898299c779823c108d1351a3b7e0693ac7d34745",
+    "Sources/IcliPrivate/Permissions.m": "7e2c010cec79dcf3b981c00e55a20bb9d6490feb346b2bae50604c19d1d298a7"
+  },
   "versions": {
     "14.0": {
       "metadata_sha256": "b405098a5030850c310107b91eb0ce32e2eee4eaa4b795f55ccdb37fb0e8b193",
