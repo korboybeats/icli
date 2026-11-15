@@ -46,8 +46,9 @@ public func deviceStatus() -> [String: Any] {
 
 /// An exclusive claim on the device for one runner, so another agent's input
 /// does not land in the middle of its test. Without a lease nothing changes;
-/// while one is held, interaction and state-changing commands without its token
-/// fail with `leased`. Explicit background commands do not check or renew it.
+/// while one is held, automated interaction and state-changing commands without
+/// its token fail with `leased`. The CLI bypasses this for terminal input or
+/// --ignore-lease. Background and bypassed commands do not check or renew it.
 ///
 /// A lease is held until its runner releases it. Every guarded command that carries
 /// the token keeps it alive, so a run of any length never loses it; only a
@@ -67,6 +68,9 @@ public enum Lease {
     }
     /// Set by the lease and status commands, which must run whoever holds it.
     public static var exempt = false
+    /// Process/step override, set by the CLI for terminal input or --ignore-lease.
+    /// It never changes the existing holder's lease or bypasses device-lock checks.
+    public static var bypass = false
     public static let exitStatus = 75
     public static let defaultIdleSeconds = 600.0
 
@@ -87,6 +91,7 @@ public enum Lease {
     }
 
     static func check() throws {
+        guard !bypass else { return }
         guard FileManager.default.fileExists(atPath: path), let lease = current() else { return }
         guard callerToken != lease["token"] as? String else {
             touch(lease)
@@ -94,7 +99,7 @@ public enum Lease {
         }
         throw IcliError.commandFailed(describe(lease).merging([
             "error": "leased", "status": exitStatus,
-            "message": "\(lease["owner"] as? String ?? "another runner") holds this device; run with its ICLI_LEASE token or wait until it is released",
+            "message": "\(lease["owner"] as? String ?? "another runner") holds this device; use its ICLI_LEASE token, run icli --ignore-lease <command>, or wait until it is released",
         ]) { $1 })
     }
 

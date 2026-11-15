@@ -100,8 +100,9 @@ struct LeaseCommand: ParsableCommand {
         commandName: "lease",
         abstract: "Claim the device for one runner, so other agents' commands are refused instead of landing mid-test.",
         discussion: """
-        While a lease is held, interaction and shared-state changes without its token fail with error leased and exit status 75; \
-        background file work and inspection, lease and status still run. Pass the token as ICLI_LEASE=<token>. A lease is held until it is released: \
+        While a lease is held, automated interaction and shared-state changes without its token fail with error leased and exit status 75; \
+        terminal commands always run. Use icli --ignore-lease <command> to bypass it with piped input or scripts, without changing the lease. \
+        Background file work and inspection, lease and status still run. Pass the token as ICLI_LEASE=<token>. A lease is held until it is released: \
         guarded commands carrying the token keep it alive, however long the run. Background commands never renew it. Only a lease no guarded command has used \
         for --ttl seconds (default 600) lapses, so a runner that crashed or lost its connection frees the device.
 

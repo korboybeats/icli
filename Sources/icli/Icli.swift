@@ -1,4 +1,5 @@
 import ArgumentParser
+import Darwin
 import Foundation
 import IcliKit
 
@@ -33,6 +34,15 @@ func emit(
 
 @main
 struct Icli: ParsableCommand {
+    @Flag(help: "Run despite another runner's lease, without changing it. Terminal input bypasses leases automatically.")
+    var ignoreLease = false
+
+    func validate() {
+        // Capture terminal input before session replaces stdin with /dev/null.
+        // Nested commands inherit the enclosing batch/session/probe override.
+        Lease.bypass = Lease.bypass || ignoreLease || isatty(STDIN_FILENO) == 1
+    }
+
     static var configuration = CommandConfiguration(
         commandName: "icli",
         abstract: "On-device iOS control CLI",

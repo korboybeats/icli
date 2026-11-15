@@ -37,8 +37,17 @@ try Envelope.applyLockPolicy(allowWhenLocked: false, requiresLease: false)
 try require(Data(contentsOf: URL(fileURLWithPath: Lease.path)) == before, "background command changed lease")
 setenv("ICLI_LEASE", "wrong", 1)
 try refused { try Envelope.applyLockPolicy(allowWhenLocked: true) }
+Lease.bypass = true
+try Envelope.applyLockPolicy(allowWhenLocked: false)
+try require(Data(contentsOf: URL(fileURLWithPath: Lease.path)) == before, "bypass changed foreign lease")
+Lease.bypass = false
+try refused { try Envelope.applyLockPolicy(allowWhenLocked: true) }
 try Envelope.applyLockPolicy(allowWhenLocked: true, requiresLease: false)
 setenv("ICLI_LEASE", "holder", 1)
+Lease.bypass = true
+try Envelope.applyLockPolicy(allowWhenLocked: false)
+try require(Data(contentsOf: URL(fileURLWithPath: Lease.path)) == before, "bypass renewed holder lease")
+Lease.bypass = false
 try Envelope.applyLockPolicy(allowWhenLocked: false, requiresLease: false)
 try require(Data(contentsOf: URL(fileURLWithPath: Lease.path)) == before, "background command renewed holder lease")
 try Envelope.applyLockPolicy(allowWhenLocked: false)
@@ -50,8 +59,13 @@ for off in [false, true] {
     do { try Envelope.applyLockPolicy(allowWhenLocked: false, requiresLease: false); fatalError("background bypassed lock policy") }
     catch IcliError.locked {}
     try Envelope.applyLockPolicy(allowWhenLocked: true, requiresLease: false)
+    Lease.bypass = true
+    do { try Envelope.applyLockPolicy(allowWhenLocked: false); fatalError("lease bypass skipped device-lock policy") }
+    catch IcliError.locked {}
+    try Envelope.applyLockPolicy(allowWhenLocked: true)
+    Lease.bypass = false
 }
 locked = false; screenOff = false
 try Lease.store(fixture.merging(["expires_at": now - 1]) { _, new in new })
 try Envelope.applyLockPolicy(allowWhenLocked: false)
-print("PASS lease policy: default exclusion, background concurrency, no renewal with or without token, owner renewal, screen-lock independence, expiration")
+print("PASS lease policy: default exclusion, background concurrency, bypass without renewal or ownership changes, owner renewal, screen-lock independence, expiration")

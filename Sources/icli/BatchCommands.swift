@@ -97,6 +97,8 @@ struct BatchStep {
     }
 
     func execute() -> [String: Any] {
+        let previousBypass = Lease.bypass
+        defer { Lease.bypass = previousBypass }
         let start = ProcessInfo.processInfo.systemUptime
         Envelope.capturing = true
         Envelope.argv = argv
@@ -105,6 +107,12 @@ struct BatchStep {
         var parseError: String?
         do {
             var command = try Icli.parseAsRoot(argv)
+            // Root options may precede or separate command words. Check the
+            // parsed type as well, so they cannot hide a forbidden nested runner.
+            guard !(command is Batch || command is Session || command is Probe || command is Flex || command is Tests),
+                  (command as? Screen.Shot)?.stdout != true else {
+                throw ValidationError("this command cannot run inside a batch or session")
+            }
             try command.run()
         } catch {
             // ArgumentParser's route for bad arguments and --help alike.

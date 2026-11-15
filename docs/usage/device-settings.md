@@ -45,8 +45,9 @@ as requested within three seconds. Missing/unknown native state returns
 This native path requires iOS 17+ and compatible APIs. Devices with a physical
 ringer switch may refuse Control Center client writes; refusal is reported as
 a failure. See [native evidence and validation](../development/silent-mode-validation.md).
-Reads can run alongside another task's lease; writes require its token while
-held. The same commands work as ordinary `batch` and `session` steps.
+Reads can run alongside another task's lease. Terminal commands bypass leases;
+automated writes need its token or `icli --ignore-lease cc set silent on`.
+The same commands work as ordinary `batch` and `session` steps.
 
 A simulated location applies to every app and stays on after icli exits, until `location clear`. `notify post` posts a Darwin notification to every observer, optionally storing a `--state` value first; names that notifyd reserves, such as those under `com.apple.system.`, need root. `device devmode enable` asks the system to turn Developer Mode on after the next restart and does nothing when it is already on. `device timezone set` turns Set Automatically off and switches the system time zone; running apps follow at once, and `device timezone automatic on` hands it back to the system. `prefs` commands use mobile's preferences by default, including under `sudo`; `--user root`, `current` or `any` choose another set, and a `.plist` path works as a domain. Writes go through cfprefsd, so running apps see them.
 
