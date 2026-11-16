@@ -300,6 +300,18 @@ as requesting execution exclusively on the CPU and deprecates it in favor of
 compute-device selection from 17. Native method presence and the SDK contract
 support the fallback implementation; they are not an older-device OCR test.
 
+The iOS 14.0.1 (`18A393`) filesystem's native
+`System/Library/DoNotDisturb/ClientBundles/com.apple.donotdisturb.user-toggles.preload.bundle/Info.plist`
+lists `com.apple.donotdisturb.control-center.module` in `DNDClientIdentifier`
+under `DNDModeAssertionServiceOptions`, with `DNDAssertionsPersist: true`.
+This matches icli's client and the native Control Center initializer at
+`0x1c7e38ddc`. The filesystem's dyld-cache header matches the existing 14.0.1
+corpus. Plist SHA-256 is
+`e5f4ad3fb0e0adaabf52bac6bf4edd005b723074e69f39bb18ddee4ecc571dfd`;
+private provenance is `.build/compatibility/focus14-persistence-policy.json`.
+This qualifies the shipped client persistence policy on that release, without
+claiming service execution or extrapolating the resource to other releases.
+
 ## Verification boundaries
 
 The 73 distinct weak import names also appear in the presence matrix. Forty-six
