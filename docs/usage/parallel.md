@@ -60,4 +60,4 @@ A session's token, not the device lease, authorizes work in it: commands with `-
 
 ## Errors
 
-Broker errors keep Parallel's code in `error`: `stale_generation`, `generation_required`, `unauthorized`, `unknown_session`, `capacity`, `app_in_use`, `app_in_foreground`, `not_running`, `session_busy`, `launch_timeout`, `agent_missing` and others; see Parallel's PROTOCOL.md. Transport failures are `parallel_unavailable` (exit 69), `parallel_disconnected` and `timed_out`. `icli tests` reports whether Parallel is loaded and speaks icli's protocol.
+Broker errors keep Parallel's code in `error`: `user_control` (the person has taken control of the session in the Parallel viewer app; input resumes when they hand it back, capture still works), `stale_generation`, `generation_required`, `unauthorized`, `unknown_session`, `capacity`, `app_in_use`, `app_in_foreground`, `not_running`, `session_busy`, `launch_timeout`, `agent_missing` and others; see Parallel's PROTOCOL.md. Transport failures are `parallel_unavailable` (exit 69), `parallel_disconnected` and `timed_out`. `icli tests` reports whether Parallel is loaded and speaks icli's protocol.
