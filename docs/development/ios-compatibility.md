@@ -255,11 +255,14 @@ The 73 distinct weak import names also appear in the presence matrix. Forty-six
 have an export-evidence gap in at least one supplied cache. Weak imports need
 their own caller review; the strong-import result does not qualify those paths.
 The [selected weak-import summary](ios-compatibility-weak-imports.summary.json)
-records IDA control-flow inputs and slice hashes for the preceding `korboy8`
-binary. With each recorded missing OS version and a missing weak function,
+records fresh IDA control-flow inputs and slice hashes for the installed
+`korboy9` binary. With each recorded missing OS version and a missing weak function,
 conservative branch tracing excludes all found direct calls to
-`swift_coroFrameAlloc`, `swift_willThrowTypedImpl` and `AsyncStream.makeStream`
-in both architecture slices. Disabling the modeled guards reaches every
+`swift_coroFrameAlloc`, `swift_stdlib_isStackAllocationSafe`,
+`swift_willThrowTypedImpl`, `AsyncStream.makeStream`, the CoreML compute-device
+metadata accessor and both Vision compute-device operations in both slices.
+All 3,392 selected absent-version/call checks exclude those calls.
+Disabling the modeled guards reaches every
 inspected call, providing a control against an empty or incomplete graph.
 
 The coroutine allocator has an actual null check and `malloc` fallback.
@@ -269,13 +272,20 @@ build SDK explicitly declares it `@backDeployed(before: iOS 17.0)`. The public
 async logging entry still requires 15+, while 14 uses callback logging.
 These are compiled guard checks, not runtime results on the missing releases.
 
-Five stack-allocation helper call sites per slice contain 15.4 checks. The
-conservative tracer retains an unknown path at one site because a saved result
-crosses a runtime retain call; that site remains unresolved in this check.
+The three modern OCR operations each have a compiled 17+ guard, retaining
+the older CPU-only property path before that boundary.
+Five stack-allocation helper call sites per slice contain 15.4 checks.
+At the previously unresolved site, the compiled code saves the version result
+in `x21`, calls the nonthrowing `swift_bridgeObjectRetain`, then tests `w21`.
+Swift's [runtime declaration](https://github.com/swiftlang/swift/blob/swift-5.3-RELEASE/include/swift/Runtime/HeapObject.h)
+and [calling-convention summary](https://github.com/swiftlang/swift/blob/main/docs/ABI/CallingConventionSummary.rst)
+establish preservation across this call. The checker now retains that one
+documented fact; dropping it reproduces 14 unresolved checks per slice.
+The selected checks now have no unresolved paths. Other calls still invalidate
+register facts conservatively.
 New decoding-protocol descriptors, load markers, async entry-point reachability
 and the other weak imports still require separate qualification. The selected
 check must not be described as a complete weak-import audit.
-It has not been rerun on `korboy9`.
 
 The Mac builds all six universal artifacts at 14.0. Binary verification checks
 every strong import, including mangled Swift names, against
@@ -312,7 +322,10 @@ discovered local-network address. Original failures remain in the report.
 The fresh crash-report roundtrip still failed: an independent diagnostic
 confirmed the fixture process exited after its crash URL, but neither the
 reader nor a direct directory listing found a new report. A bounded ReportCrash
-log capture returned no entries. The cause remains unresolved; no clean
+log capture returned no entries. A separately signed fixture with a fresh
+bundle identifier, executable name and URL scheme also exited without a new
+report, so the failure is not confined to the old fixture identity.
+The cause remains unresolved; no clean
 110/110 current-build run is claimed.
 
 On this same build, eight additional FLEX fixture sections passed all 138 checks: core inspection,
