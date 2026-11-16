@@ -5,6 +5,8 @@
 static BOOL legacy;
 static BOOL missingPredicate;
 static BOOL loaded;
+static BOOL parallelVisible;
+static NSSet<NSString *> *parallelSessions;
 static NSUInteger proxyLists, recordLists, oldPredicates, newPredicates, stateRequests;
 static BOOL registrationAccepted = YES;
 static NSArray *registrationInfos;
@@ -23,6 +25,10 @@ static int fixturePidPath(int pid, void *buffer, uint32_t size) { return 0; }
 #undef proc_pidpath
 #undef dlopen
 #undef NSClassFromString
+
+NSSet<NSString *> *icli_parallel_session_bundles(void) {
+    return parallelSessions ?: [NSSet set];
+}
 
 @interface AppProxy : NSObject
 @property NSString *applicationIdentifier;
@@ -136,8 +142,12 @@ static NSArray<AppProxy *> *proxies(void) {
 - (NSArray *)statesForPredicate:(id)predicate withDescriptor:(StateDescriptor *)descriptor error:(NSError **)error {
     assert(predicate && descriptor.values == 0x19 && error);
     stateRequests++;
-    return @[@{@"process": @{@"pid": @1234,
+    NSArray *states = @[@{@"process": @{@"pid": @1234,
         @"identity": @{@"embeddedApplicationIdentifier": @"dev.owngoal.icli.bootstrap"}},
+        @"assertions": @[@{@"domain": @"com.apple.frontboard:SuspendableRole-UIFocal"}]}];
+    if (!parallelVisible) return states;
+    return [states arrayByAddingObject:@{@"process": @{@"pid": @5678,
+        @"identity": @{@"embeddedApplicationIdentifier": @"com.apple.fixture"}},
         @"assertions": @[@{@"domain": @"com.apple.frontboard:SuspendableRole-UIFocal"}]}];
 }
 @end
@@ -158,6 +168,10 @@ int main(int argc, const char **argv) {
         NSString *mode = @(argv[1]);
         legacy = [mode isEqual:@"legacy"];
         missingPredicate = [mode isEqual:@"missing-predicate"];
+        if ([mode hasPrefix:@"parallel-"]) {
+            parallelSessions = [NSSet setWithObject:@"dev.owngoal.icli.bootstrap"];
+            parallelVisible = [mode isEqual:@"parallel-visible"];
+        }
         if ([mode isEqual:@"cold-installed"]) {
             assert(!loaded && icli_app_is_installed("dev.owngoal.icli.bootstrap") && loaded);
             assert(!icli_app_is_installed("dev.owngoal.icli.missing"));
@@ -172,6 +186,13 @@ int main(int argc, const char **argv) {
             NSString *focal = bulkFocalApplication(pids);
             if (missingPredicate) {
                 assert(!focal && !stateRequests);
+            } else if (parallelSessions) {
+                if (parallelVisible) {
+                    assert([focal isEqual:@"com.apple.fixture"] && [pids[focal] intValue] == 5678);
+                } else {
+                    assert(!focal);
+                }
+                assert(stateRequests == 1 && newPredicates == 1 && !oldPredicates);
             } else {
                 assert([focal isEqual:@"dev.owngoal.icli.bootstrap"] && [pids[focal] intValue] == 1234);
                 assert(stateRequests == 1 && oldPredicates == legacy && newPredicates == !legacy);

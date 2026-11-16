@@ -1,6 +1,6 @@
 # iOS compatibility audit
 
-Status: investigation in progress. Version `1.0.0+korboy12` builds and packages
+Status: investigation in progress. Version `1.0.0+korboy13` builds and packages
 for iOS 14.0. This is a deployment floor, not certification that every command
 works on every release. The only physical test target is iOS 17.1.1.
 
@@ -461,15 +461,24 @@ scoped check reads base class hierarchies; it does not establish absence of
 category methods, task-port authorization, authentication success or lock-screen
 dismissal on those releases. The source still requires native state confirmation.
 
-Current `korboy12` source passed all 21 offline host test scripts, covering the
+Current `korboy13` source passed all 21 offline host test scripts, covering the
 older/newer location paths, Silent mode, app-service fallbacks, native launchd
 protocol, process-log layouts, RootHide paths, archive handling, geometry and
-passcode/lease guards. Real Mach calls against an owned disposable Mac process
-also pass both unlock selectors and both native ringer receiver chains. Logs
-and fixture identities stay private under
-`.build/compatibility/korboy12-host-suite/`. These checks exercise production
-logic and the Mac transport; they do not execute iOS services from the firmware
-caches or replace per-version service authorization evidence.
+passcode/lease guards. The app-service fixture supplies the optional Parallel
+session query and checks that a hidden session alone is not selected as the
+physical frontmost app, while a separate visible app is selected. Its initial
+missing-symbol failure and the passing run are both retained. Both architecture
+slices and all three iOS package layouts pass verification for the current CLI,
+SHA-256 `d5842fc6a05b7d47a5eae1aebf497d719238f4b9c64eef832b84273421e97794`.
+Logs and source/fixture identities stay private under
+`.build/compatibility/korboy13-candidate/`.
+
+Separately, `korboy12` real Mach calls against an owned disposable Mac process
+passed both unlock selectors and both native ringer receiver chains; those
+results remain pinned to `.build/compatibility/korboy12-host-suite/`.
+These checks exercise production logic and the Mac transport; they do not
+execute iOS services from the firmware caches or replace per-version service
+authorization evidence. No phone operations were performed for this validation.
 
 ```sh
 python3 scripts/compatibility-commands.py \
