@@ -1,11 +1,44 @@
 # Native Silent Mode
 
 `cc get silent`, `cc set silent on|off` and `cc toggle silent` use the
-standalone AVSystemController client. `on` means ringer muted. They do not
-write category volumes or use Control Center UI, buttons, Siri, Frida or an
-injected SpringBoard setter. The implementation is limited to iOS 17+ and
-checks method signatures at runtime; absent or incompatible APIs fail closed.
-tvOS reports unavailable.
+standalone AVSystemController client on iOS 17+. iOS 14–16 reads use native AX
+request 4020; writes invoke SpringBoard's existing ringer-control methods.
+`on` means ringer muted. No category volume, UI, button, Siri or Frida operation
+is used. Method signatures are checked at runtime; absent or incompatible APIs
+fail closed. tvOS reports unavailable.
+
+## iOS 14–16 implementation
+
+The older write path reuses icli's existing Mach call transport, requiring root
+and a SpringBoard task port. It creates a temporary native worker and invokes
+existing methods on the main thread through NSInvocation; it installs no
+executable payload or dylib. Cleanup releases its owned worker and allocations
+and restores signal handling. A transport failure is reported without retrying
+the write. The standalone iOS 17+ client never falls back to this path.
+
+Control Center's native `SBControlCenterSystemAgent setRingerMuted:` calls
+`SBWorkspace.mainWorkspace.ringerControl` on iOS 14–15. On iOS 16, it reads
+`SBApp.ringerControl`; icli obtains that application through
+`SpringBoard.sharedApplication`. The final method is `setRingerMuted:` with
+`void` return and BOOL argument. Both factories and the control getter return
+objects without arguments. All four selected factory/control/setter/getter
+contracts match in the 25 supplied iOS 14–16 caches, including arm64 16.7.16.
+This is metadata evidence, not execution on those systems.
+
+Native iOS 14 setter `0x1a42c480c` updates ringer state, publishes its
+notification and saves sound defaults. Native iOS 16.0.3 Control Center setter
+`0x1c6dc893c` uses `SBApp`, and ringer setter `0x1c6a2cef4` also saves
+`localDefaults.soundDefaults.setRingerMuted:`. These addresses apply only to
+the respective supplied caches. No category volume setter is called by icli.
+Private native analysis and cache identities are retained under
+`.build/compatibility/silent14-*`, `silent16-*` and
+`korboy12-ringer-contracts.json`.
+
+After the write, native AX state must agree with the requested value within
+three seconds. Missing replies remain unknown, repeated sets send no write,
+and timeout never becomes success. Older-device execution and volume
+preservation have not been physically tested; the phone result below belongs
+to the historical iOS 17 implementation.
 
 ## Native evidence
 
@@ -53,6 +86,10 @@ run-loop callback completion, missing/incompatible signatures, getter errors
 including the zero-code NSError success case, exceptions, rejected setters,
 state becoming unavailable and accepted requests that never reach the target.
 The timeout case must fail after the bounded native rereads.
+The same script now tests the older AX read/write path and compiles the actual
+native ringer invocation routine against Foundation. It checks both workspace
+and application receiver chains, main-thread dispatch, both BOOL values,
+signature rejection, nil receivers and memory failures before writes.
 
 ## Physical phone result
 

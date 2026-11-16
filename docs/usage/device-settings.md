@@ -47,9 +47,10 @@ Center, pressing buttons or changing Media, Ringtone, Alarm or Siri volume.
 without another write. A write succeeds only after the native state reads back
 as requested within three seconds. Missing/unknown native state returns
 `unavailable`; an unconfirmed change returns `failed` and exits nonzero.
-This native path requires iOS 17+ and compatible APIs. Devices with a physical
-ringer switch may refuse Control Center client writes; refusal is reported as
-a failure. See [native evidence and validation](../development/silent-mode-validation.md).
+On iOS 14–16, writes call SpringBoard's native ringer control and require root
+and access to its task. iOS 17+ uses the standalone native service; devices with
+a physical ringer switch may refuse its Control Center client writes, which
+is reported as a failure. See [native evidence and validation](../development/silent-mode-validation.md).
 Reads can run alongside another task's lease. Terminal commands bypass leases;
 automated writes need its token or `icli --ignore-lease cc set silent on`.
 The same commands work as ordinary `batch` and `session` steps.

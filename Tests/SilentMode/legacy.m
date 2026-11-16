@@ -8,6 +8,26 @@ static NSString *behavior;
 static id reply;
 static NSUInteger reads;
 static NSUInteger messages;
+static NSUInteger writes;
+static BOOL modernAPI;
+
+bool fixtureModernSilentAPI(void) { return modernAPI; }
+int icli_springboard_ringer_set(bool enabled) {
+    writes++;
+    if ([behavior isEqual:@"reject"]) return -3;
+    if ([behavior isEqual:@"unavailable"]) return -1;
+    if ([behavior isEqual:@"lost-state"]) { reply = nil; return 0; }
+    if ([behavior isEqual:@"never"]) return 0;
+    if ([behavior isEqual:@"delayed"]) {
+        [NSTimer scheduledTimerWithTimeInterval:0.015 repeats:NO block:^(NSTimer *timer) {
+            (void)timer;
+            reply = @(enabled);
+        }];
+    } else {
+        reply = @(enabled);
+    }
+    return 0;
+}
 
 // Older systems have no qualified standalone AVSystemController silent client.
 @interface AVSystemController : NSObject
@@ -91,6 +111,8 @@ static void reset(NSString *mode, id result) {
     reply = result;
     reads = 0;
     messages = 0;
+    writes = 0;
+    modernAPI = NO;
 }
 
 int main(void) {
@@ -99,10 +121,9 @@ int main(void) {
             reset(@"native", state);
             assert(icli_cc_silent_get() == state.intValue);
             assert(reads == 1 && messages == 1);
-            // Legacy writes remain unavailable even for an unchanged target.
-            assert(icli_cc_silent_set(false) == -1);
-            assert(icli_cc_silent_set(true) == -1);
-            assert(reads == 1 && messages == 1);
+            assert(icli_cc_silent_set(state.boolValue) == 0 && writes == 0);
+            assert(icli_cc_silent_set(!state.boolValue) == 0 && writes == 1);
+            assert(icli_cc_silent_get() == !state.boolValue);
         }
         for (NSString *mode in @[@"missing-server", @"wrong-server-abi", @"nil-server", @"throw-server",
                                  @"missing-get", @"wrong-get-abi", @"missing-object-get", @"wrong-object-get-abi",
@@ -110,15 +131,32 @@ int main(void) {
             reset(mode, @YES);
             assert(icli_cc_silent_get() == -1);
             assert(reads == 0);
+            int expected = [mode hasPrefix:@"throw-"] ? -3 : -1;
+            assert(icli_cc_silent_set(false) == expected && writes == 0);
         }
         reset(@"throw-get", @YES);
         assert(icli_cc_silent_get() == -1 && reads == 1);
         for (id invalid in @[NSNull.null, @"0", @"1", @2, @(-1), @{}, @[]]) {
             reset(@"native", invalid);
             assert(icli_cc_silent_get() == -1 && reads == 1);
+            assert(icli_cc_silent_set(true) == -1 && writes == 0);
         }
         reset(@"native", nil);
         assert(icli_cc_silent_get() == -1 && reads == 1);
-        puts("PASS legacy Silent mode: native off/on reads, read-only request, unavailable writes, missing/incompatible APIs, absent/malformed replies, exceptions");
+        assert(icli_cc_silent_set(true) == -1 && writes == 0);
+        reset(@"delayed", @NO);
+        assert(icli_cc_silent_set(true) == 0 && writes == 1 && reads > 2);
+        reset(@"reject", @NO);
+        assert(icli_cc_silent_set(true) == -3 && writes == 1 && reads == 1);
+        reset(@"unavailable", @NO);
+        assert(icli_cc_silent_set(true) == -1 && writes == 1 && reads == 1);
+        reset(@"lost-state", @NO);
+        assert(icli_cc_silent_set(true) == -1 && writes == 1 && reads == 2);
+        reset(@"never", @NO);
+        assert(icli_cc_silent_set(true) == -2 && writes == 1 && reads > 2);
+        reset(@"native", @NO);
+        modernAPI = YES;
+        assert(icli_cc_silent_set(true) == -1 && writes == 0 && reads == 0);
+        puts("PASS legacy Silent mode: off/on, idempotence, delayed confirmation, timeout, native failures, invalid/absent state, exceptions, modern policy preserved");
     }
 }

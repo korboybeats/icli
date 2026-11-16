@@ -1,6 +1,6 @@
 # iOS compatibility audit
 
-Status: investigation in progress. Version `1.0.0+korboy11` builds and packages
+Status: investigation in progress. Version `1.0.0+korboy12` builds and packages
 for iOS 14.0. This is a deployment floor, not certification that every command
 works on every release. The only physical test target is iOS 17.1.1.
 
@@ -9,7 +9,11 @@ requires fresh matching coordinates; both commands return `simulating: null`
 there because the OS cannot confirm simulation provenance or stop completion.
 The older clear path waits for NSXPCConnection's public iOS 13+ send barrier
 before returning; this establishes sending, not receipt or stop completion.
-Twenty-five offline host checks cover the older and newer paths. This candidate
+Twenty-five offline host checks cover the older and newer paths.
+`korboy12` adds native Silent-mode writes on iOS 14–16, using the measured
+workspace receiver on 14–15 and application receiver on 16. The 100 selected
+native contracts match across all 25 supplied older caches. Focused host
+fixtures cover native invocation and confirmation. This candidate
 has not been installed on the phone; the device evidence below remains tied
 to the preceding `korboy10` binaries.
 
@@ -245,7 +249,7 @@ requirements; it does not bundle a newer Swift concurrency runtime.
 | Focus | Mode selection service is absent through cached 14.8. Older state uses `activeModeIdentifiers`. | 14 exposes the verified default Do Not Disturb identity and plural state property. Newer mode selection remains preferred. |
 | Rotation | `AXSpringBoardServer.setOrientation:` is missing on cached 14 releases. | Use the native `AXPISystemActionHelper` portrait, upside-down, left and right actions. Factory/action signatures match in all ten 14 caches; native caller and orientation meanings were checked in the 14.0.1 firmware. Newer rotation remains preferred. |
 | Foreground processes | The newer application-process predicate is missing on 14. | Use the native `predicateMatchingLaunchServicesProcesses` predicate, whose implementation filters application identities. |
-| Silent mode | The selected Celestial getter/setter begin in cached 17.0.3. | Read 14–16 through the native AX request 4020 and require an actual BOOL-valued object reply. Nil, errors and incompatible signatures remain unavailable. Writes on 14–16 remain unavailable; no button-event simulation is substituted. |
+| Silent mode | The selected Celestial getter/setter begin in cached 17.0.3; older Control Center uses SpringBoard's ringer control, whose receiver moved in 16. | Read 14–16 through native AX request 4020 and require an actual BOOL-valued object reply. Write through the native main-thread ringer setter using the existing Mach transport; require state confirmation. Missing task access, errors and incompatible signatures fail explicitly. Older-device execution remains untested. |
 | App registration | 14–15 lack the newer containerized registration selector. Its newer return is an object, not BOOL. On 14, application records lack signer identity. | Use the verified BOOL-returning `registerApplicationDictionary:` entry point with the original dictionary. Prefer proxies when records cannot supply signer identity, preserving rootful user-app classification. Modern registration checks its error and reads back the result. Older device behavior is not claimed. |
 | App lookup | A cold dynamic lookup can precede loading LaunchServices. | Initialize the workspace before looking up application classes for standalone list/name operations. |
 | Process logs | The activity entry layout changes between 14–16, 17–18 and 26–27. | Decode the measured offsets for the actual OS major, copy packed timestamps safely and reject unqualified future layouts. Every supplied cache's native decoder was inspected; see the layout matrix below. |
@@ -398,8 +402,8 @@ and a missing UID, and FLEX inspected the fixture. Other release columns say
 `imports_only`: they qualify whole-process loading, not private command
 behavior. This published table records the preceding `korboy10` artifact,
 whose iOS 14 simulation commands were source-gated as `unavailable`.
-The `korboy11` source enables those requests with the unknown-state result
-described above; it has no on-device command result in this historical table.
+The newer source enables location requests and older Silent-mode writes as
+described above; neither has an on-device result in this historical table.
 Complete private protocol/entitlement qualification remains open.
 
 The command matrix is reproducible with `scripts/compatibility-commands.py`.
@@ -439,9 +443,10 @@ The audit remains open until all of the following have current evidence:
 4. Establish the iOS 14 toolchain/runtime boundary and rootful packaging before
    lowering build stamps, package dependencies, and import verification.
 5. Build and pass binary/package verification, including both slices and every
-   iOS layout. Install using `scripts/build-install.sh`.
-6. Run the full acceptance suite with `--lease` on 17.1.1, remove its test apps,
-   and record per-command runtime results separately from static results.
+   iOS layout. Phone installation is paused by the user's instruction.
+6. Preserve historical iOS 17.1.1 acceptance separately from static results.
+   The user has stopped further testing of that working phone; do not rerun
+   its acceptance suite as part of other-version implementation.
 7. Commit/push each completed logical step and save the measured findings.
 
 Testing on another OS or physical target requires a separate user decision.

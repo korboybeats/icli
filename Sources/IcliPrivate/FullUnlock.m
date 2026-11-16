@@ -3,6 +3,7 @@
 // Mach exception replies. The passcode is only copied into task memory.
 #import "IcliPrivate.h"
 #import "IcliJSON.h"
+#import "SilentModeInternal.h"
 #import "MachExceptions/IcliMachExceptionServer.h"
 #import <Foundation/Foundation.h>
 #import <TargetConditionals.h>
@@ -628,6 +629,42 @@ static bool invokeUnlock(FullUnlock *s, const uint8_t *passcode, size_t length) 
     return !s->error[0];
 }
 
+static bool invokeRinger(FullUnlock *s, bool enabled, bool application) {
+    uint64_t receiver = klass(s, application ? "SpringBoard" : "SBWorkspace");
+    if (!receiver) return fail(s, "SpringBoard's workspace is unavailable.");
+    const char *methods[] = {application ? "sharedApplication" : "mainWorkspace", "ringerControl", "setRingerMuted:"};
+    for (unsigned i = 0; i < 3; i++) {
+        uint64_t selector = sel(s, methods[i]);
+        if (!message(s, receiver, "respondsToSelector:", selector,0,0))
+            return fail(s, "SpringBoard's native ringer operation is unavailable.");
+        uint64_t signature = message(s, receiver, "methodSignatureForSelector:", selector,0,0);
+        if (message(s, signature, "numberOfArguments",0,0,0) != (i == 2 ? 3 : 2) ||
+            !unlockTypeMatches(s, message(s, signature, "methodReturnType",0,0,0), i == 2 ? 'v' : '@', false) ||
+            (i == 2 && !unlockTypeMatches(s, message(s, signature, "getArgumentTypeAtIndex:",2,0,0), 'B', false)))
+            return fail(s, "SpringBoard's native ringer signature is incompatible.");
+        uint64_t invocation = message(s, klass(s, "NSInvocation"), "invocationWithMethodSignature:", signature,0,0);
+        if (!invocation) return fail(s, "Cannot prepare the native ringer invocation.");
+        message(s, invocation, "setTarget:", receiver,0,0);
+        message(s, invocation, "setSelector:", selector,0,0);
+        uint64_t result = 0, output = data(s, &result, sizeof(result));
+        if (i == 2) {
+            uint64_t argument = data(s, &enabled, sizeof(enabled));
+            message(s, invocation, "setArgument:atIndex:", argument,2,0);
+        }
+        message(s, invocation, "retainArguments",0,0,0);
+        if (s->error[0]) return false;
+        if (i == 2) s->attempted = true;
+        message(s, invocation, "performSelectorOnMainThread:withObject:waitUntilDone:", sel(s, "invoke"),0,1);
+        if (s->error[0]) return false;
+        if (i < 2) {
+            message(s, invocation, "getReturnValue:", output,0,0);
+            if (!readTask(s, output, &receiver, sizeof(receiver)) || !receiver)
+                return fail(s, "SpringBoard's native ringer object is unavailable.");
+        }
+    }
+    return !s->error[0];
+}
+
 static void cleanup(FullUnlock *s) {
     char original[sizeof(s->error)];
     strlcpy(original, s->error, sizeof(original));
@@ -776,6 +813,23 @@ char *icli_probe_attach_json(int pid, const char *executable, const char *dylib,
     return icli_json(s.error[0] ? @{@"error": @(s.error)} : @{@"ok": @YES, @"pid": @(pid)});
 #else
     return icli_json(@{@"error": @"Attaching a probe requires an arm64 iPhone or iPad; use app launch --probe on this platform."});
+#endif
+}
+
+// Call the existing main-thread ringer API; no payload, UI or input event.
+int icli_springboard_ringer_set(bool enabled) {
+#if defined(__arm64__) && !TARGET_OS_TV
+    if (@available(iOS 17.0, *)) return -1;
+    if (!icli_full_unlock_signals_begin()) return -3;
+    FullUnlock s = {0};
+    bool application = false;
+    if (@available(iOS 16.0, *)) application = true;
+    bool applied = setup(&s, false) && invokeRinger(&s, enabled, application);
+    cleanup(&s);
+    bool restored = icli_full_unlock_signals_end();
+    return applied && !s.error[0] && restored ? 0 : -3;
+#else
+    return -1;
 #endif
 }
 

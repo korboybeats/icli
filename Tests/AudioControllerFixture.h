@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 
+bool fixtureModernSilentAPI(void);
+
 // Host Foundation may already load Apple's AVSystemController. Keep the fake
 // class distinct and redirect only the native bridge's class lookup in tests.
 static inline Class IcliFixtureClassFromString(NSString *name) {

@@ -1,4 +1,5 @@
 #import "IcliPrivate.h"
+#import "SilentModeInternal.h"
 #import <Foundation/Foundation.h>
 #import <TargetConditionals.h>
 #import <objc/message.h>
@@ -100,9 +101,31 @@ int icli_cc_silent_get(void) {
     @catch (NSException *exception) { return -1; }
 }
 
+static int waitForSilentState(id controller, bool enabled) {
+    NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 3;
+    for (;;) {
+        int state = controller ? silentState(controller) : legacySilentState();
+        if (state < 0) return -1;
+        if (state == (enabled ? 1 : 0)) return 0;
+        NSTimeInterval left = deadline - NSProcessInfo.processInfo.systemUptime;
+        if (left <= 0) return -2;
+        [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode
+                             beforeDate:[NSDate dateWithTimeIntervalSinceNow:MIN(left, 0.05)]];
+    }
+}
+
 int icli_cc_silent_set(bool enabled) {
     @try {
         id controller = silentController();
+        if (!controller) {
+            // Do not bypass the newer service's client/hardware policy.
+            if (@available(iOS 17.0, *)) return -1;
+            int before = legacySilentState();
+            if (before < 0) return -1;
+            if (before == (enabled ? 1 : 0)) return 0;
+            int status = icli_springboard_ringer_set(enabled);
+            return status ? status : waitForSilentState(nil, enabled);
+        }
         int before = silentState(controller);
         if (before < 0) return -1;
         if (before == (enabled ? 1 : 0)) return 0;
@@ -115,15 +138,6 @@ int icli_cc_silent_set(bool enabled) {
         // Acceptance is not completion. Service the calling thread's run loop
         // and read the native property until it agrees, or the deadline passes.
         // No subscription, timer or polling work survives this command.
-        NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 3;
-        for (;;) {
-            int state = silentState(controller);
-            if (state < 0) return -1;
-            if (state == (enabled ? 1 : 0)) return 0;
-            NSTimeInterval left = deadline - NSProcessInfo.processInfo.systemUptime;
-            if (left <= 0) return -2;
-            [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode
-                                 beforeDate:[NSDate dateWithTimeIntervalSinceNow:MIN(left, 0.05)]];
-        }
+        return waitForSilentState(controller, enabled);
     } @catch (NSException *exception) { return -3; }
 }

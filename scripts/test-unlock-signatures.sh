@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 source = Path('Sources/IcliPrivate/FullUnlock.m').read_text()
 start = source.index('static bool unlockTypeMatches(')
-end = source.index('static void cleanup(', start)
+end = source.index('static bool invokeRinger(', start)
 Path(sys.argv[1], 'unlock-signature-production.inc').write_text(source[start:end])
 PY
 xcrun clang -fobjc-arc -fblocks -Wall -Wextra -Werror -I"$work" \

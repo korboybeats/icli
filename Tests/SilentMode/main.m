@@ -4,6 +4,13 @@
 int icli_cc_silent_get(void);
 int icli_cc_silent_set(bool);
 
+bool fixtureModernSilentAPI(void) { return true; }
+int icli_springboard_ringer_set(bool enabled) {
+    (void)enabled;
+    assert(!"The modern API must not use the legacy ringer transport");
+    return -3;
+}
+
 @interface AVSystemController : NSObject
 @property(nonatomic) BOOL muted;
 @property(nonatomic) NSString *behavior;
