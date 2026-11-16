@@ -1,20 +1,22 @@
 # iOS compatibility audit
 
-Status: investigation in progress. Version `1.0.0+korboy8` builds and packages
+Status: investigation in progress. Version `1.0.0+korboy9` builds and packages
 for iOS 14.0. This is a deployment floor, not certification that every command
 works on every release. The only physical test target is iOS 17.1.1.
 
 The implemented compatibility fixes include source commits `6b3b934` and
-`9120923`. The current CLI has SHA-256
-`90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c`.
+`9120923` and the older CPU text-recognition fallback described below.
+The current CLI has SHA-256
+`2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a`.
 The six shipped artifacts now have 2,005 distinct strong import names. Every
 name has export evidence in all 40 supplied caches, including the added 14.0
 cache. Both arm64 and arm64e slices pass binary/package verification for the
 rootful, rootless, and RootHide layouts. These are static results; private
 protocol behavior, entitlements, layouts, and device operation need separate
 qualification. Reboot acceptance is deferred at the user's request.
-Phone testing is now paused at the user's request: the current build's run
+Phone testing is paused at the user's request. The preceding `korboy8` run
 stopped after 68 passing cases out of 110 planned, with no failed cases.
+The installed `korboy9` has not had a device regression run.
 
 ## Inventory
 
@@ -54,13 +56,14 @@ preparation because the preparation script changes framework and class lookups.
 Swift source literals and compiled Swift imports are included; Clang cannot
 enumerate Swift call sites. The generated metadata sources beyond the selected
 Swift metadata entry point remain a conservative inventory superset.
-The final source/import snapshot freshly indexes the two changed production
-translation units, `Accessibility.m` and `FullUnlock.m`, and retains the other
-267 completed Clang inputs after source-hash checks. The two generated
-`ICLIFlexBuild.h` headers differ from the preceding snapshot only in their
-build-ID literals and exactly match the original AST-input hashes. All other
-722 source/header hashes match the preceding qualified snapshot. Every final
-artifact/slice import list was read afresh and is unchanged.
+The final source/import snapshot retains all 269 completed Clang inputs after
+exact source/header hash checks against `korboy8`. The sole changed source,
+`Screen.swift`, is outside Clang's input set; its literals and hash were read
+afresh. The older flag's native method metadata is recorded separately below.
+Every final artifact/slice import list was read afresh and is unchanged.
+The cache query set is also identical to `korboy8`, so its 40 qualified cache
+scans are reused with the current inventory hash. Native Vision selector
+metadata separately covers the new Swift property use.
 
 The following need semantic review in addition to a name-presence check:
 
@@ -184,6 +187,7 @@ requirements; it does not bundle a newer Swift concurrency runtime.
 | App registration | 14–15 lack the newer containerized registration selector. Its newer return is an object, not BOOL. On 14, application records lack signer identity. | Use the verified BOOL-returning `registerApplicationDictionary:` entry point with the original dictionary. Prefer proxies when records cannot supply signer identity, preserving rootful user-app classification. Modern registration checks its error and reads back the result. Older device behavior is not claimed. |
 | App lookup | A cold dynamic lookup can precede loading LaunchServices. | Initialize the workspace before looking up application classes for standalone list/name operations. |
 | Process logs | The activity entry layout changes between 14–16, 17–18 and 26–27. | Decode the measured offsets for the actual OS major, copy packed timestamps safely and reject unqualified future layouts. Every supplied cache's native decoder was inspected; see the layout matrix below. |
+| CPU text recognition | The GPU-free path required 17 even though Vision's older CPU-only request flag is available on 14–16. | Use `usesCPUOnly` before 17 with the existing non-IOSurface image buffer. Newer systems retain compute-stage CPU selection. The native getter/setter encodings agree in all 40 caches; older-device OCR operation is not claimed. |
 | Accessibility caller context | Two optional manual client lookups do not resolve in the supplied caches. Resolving the actual native setters and forcing a client identity would overwrite a host's selected context. | Keep native caller detection and the existing automation switches. The device-only production-source probe preserves a deliberately seeded current and outgoing context; a negative control detects the discarded overwrite. |
 | Passcode unlock | A private factory or unlock method may exist with an incompatible encoding. | Check factory availability, arity and object return; check passcode, BOOL and completion argument types before preparing the credential or invoking the method. Native method-signature fixtures cover incompatible types, and owned Mac RPC fixtures exercise both supported unlock forms. |
 | Rootful packages | The existing packager and acceptance runner already support rootful paths. | All three iOS packages are extracted afresh and checked, including all six binaries and both slices. This is package proof, not checkra1n/unc0ver/Taurine runtime proof. |
@@ -220,13 +224,22 @@ different 16.x helper implementations were inspected separately. Earlier
 and the 17.1.1 runtime result are kept separate. These checks do not qualify
 every C/MIG field, entitlement gate or app-side handler.
 
+The [Vision CPU-flag matrix](ios-compatibility-vision-cpu.tsv) records the actual
+declaring class, method encoding and implementation address of `usesCPUOnly`
+and `setUsesCPUOnly:` on `VNRecognizeTextRequest` across all 40 caches. The
+[input summary](ios-compatibility-vision-cpu.summary.json) retains SDK-header,
+source, reader, collector and raw metadata hashes. The SDK defines this flag
+as requesting execution exclusively on the CPU and deprecates it in favor of
+compute-device selection from 17. Native method presence and the SDK contract
+support the fallback implementation; they are not an older-device OCR test.
+
 ## Verification boundaries
 
 The 73 distinct weak import names also appear in the presence matrix. Forty-six
 have an export-evidence gap in at least one supplied cache. Weak imports need
 their own caller review; the strong-import result does not qualify those paths.
 The [selected weak-import summary](ios-compatibility-weak-imports.summary.json)
-records IDA control-flow inputs and slice hashes for the installed `korboy8`
+records IDA control-flow inputs and slice hashes for the preceding `korboy8`
 binary. With each recorded missing OS version and a missing weak function,
 conservative branch tracing excludes all found direct calls to
 `swift_coroFrameAlloc`, `swift_willThrowTypedImpl` and `AsyncStream.makeStream`
@@ -246,6 +259,7 @@ crosses a runtime retain call; that site remains unresolved in this check.
 New decoding-protocol descriptors, load markers, async entry-point reachability
 and the other weak imports still require separate qualification. The selected
 check must not be described as a complete weak-import audit.
+It has not been rerun on `korboy9`.
 
 The Mac builds all six universal artifacts at 14.0. Binary verification checks
 every strong import, including mangled Swift names, against
@@ -265,22 +279,25 @@ checks and records that scope in the report.
 
 ## Current device evidence
 
-The installed iOS 17.1.1 CLI is `1.0.0+korboy8`, SHA-256
-`90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c`.
+The installed iOS 17.1.1 CLI is `1.0.0+korboy9`, SHA-256
+`2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a`.
 The install driver verified the CLI and all five companion files against the
 Mac-built artifacts and retained the package hold. All three iOS package layouts
 passed verification again. The final inventory contains 269 successful Clang
-inputs, including fresh analysis of both changed production translation units;
-its summary records source hashes and the qualified reused inputs. All six
-artifact import lists remain identical to the preceding qualified import set.
+inputs reused after source/header hash checks; its summary records the changed
+Swift source separately. All six artifact import lists remain identical to the
+preceding qualified import set.
 
-The current root-only run passed its first 68 non-reboot cases before the user
-paused phone testing. There are no failed cases, but 42 planned cases were not
+The latest root-only run belongs to `korboy8`, SHA-256
+`90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c`.
+It passed its first 68 non-reboot cases before the user paused phone testing.
+There are no failed cases, but 42 planned cases were not
 completed. Its report records `completed_run: false`, successful lease release,
 and a matching installed binary hash. The runner exited through its cleanup
 path, removed both installed test apps and stopped further device interaction.
 The runner SHA-256 and complete report hash are retained in the
 [command evidence summary](ios-compatibility-commands.summary.json).
+Those runtime results are not applied to the installed `korboy9` binary.
 
 The preceding `korboy7` build passed a complete 110/110 non-reboot run. On that
 build, eight additional FLEX fixture sections passed all 138 checks: core inspection,
@@ -292,11 +309,12 @@ they are not counted as current-build passes.
 App-owned Realm behavior was not exercised against an unrelated user app.
 
 The [per-command matrix](ios-compatibility-commands.tsv) records positive
-execution within passing cases for 107 command leaves on the current binary.
+execution within passing cases for 107 command leaves on the preceding
+`korboy8` binary.
 Another 79 leaves are `not_executed`, and `device reboot` is explicitly
 `deferred`. The preceding build's complete report remains private under
 `.build/compatibility/acceptance-korboy7-nonreboot.json`; it is not combined
-with the current binary's report. `case_pass`
+with the `korboy8` report. `case_pass`
 applies only to the asserted scenarios: passcode unlock used `--check`, the
 empty failure ledger was cleared, audio selection covered the current route
 and a missing UID, and FLEX inspected the fixture. Other release columns say

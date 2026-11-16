@@ -328,11 +328,9 @@ private func recognizeImage(
         if haveGPU {
             blocks = try visionBlocks(in: downsampled, languages: languages, minConfidence: minConfidence,
                                       pointSize: pointSize, locating: locating, fast: fast)
-        } else if #available(iOS 17.0, tvOS 17.0, *) {
+        } else {
             blocks = try visionBlocksCPU(in: downsampled, languages: languages, minConfidence: minConfidence,
                                          pointSize: pointSize, locating: locating, fast: fast)
-        } else {
-            throw IcliError.unavailable("System text recognition is unavailable on this device.")
         }
         if origin != .zero {
             blocks = blocks.map { block in
@@ -852,7 +850,6 @@ private func visionBlocks(
 
 // GPU-free OCR: Vision on the CPU over a plain (non-IOSurface) 420f buffer filled with vImage,
 // so nothing needs the GPU user client the kernel withholds from non-app processes.
-@available(iOS 17.0, tvOS 17.0, *)
 private func visionBlocksCPU(
     in image: CGImage,
     languages: [String],
@@ -865,10 +862,14 @@ private func visionBlocksCPU(
         throw IcliError.unavailable("System text recognition is unavailable on this device.")
     }
     let request = textRecognitionRequest(languages: languages, fast: fast)
-    for (stage, devices) in try request.supportedComputeStageDevices {
-        if let cpu = devices.first(where: { if case .cpu = $0 { return true } else { return false } }) {
-            request.setComputeDevice(cpu, for: stage)
+    if #available(iOS 17.0, tvOS 17.0, *) {
+        for (stage, devices) in try request.supportedComputeStageDevices {
+            if let cpu = devices.first(where: { if case .cpu = $0 { return true } else { return false } }) {
+                request.setComputeDevice(cpu, for: stage)
+            }
         }
+    } else {
+        request.usesCPUOnly = true
     }
     try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
     return textBlocks(from: request, minConfidence: minConfidence, pointSize: pointSize, locating: locating)

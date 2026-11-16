@@ -93,7 +93,7 @@
     "Sources/IcliKit/Input/Navigation.swift": "868bbf46b7b69d2a4d5d77417d079c3aa513a7653f950ab8e69a9081a4fb8488",
     "Sources/IcliKit/Input/Pointer.swift": "928ad608081266de77875e118de8ea4299f7fbfe85973b8dad88ffb7b5335827",
     "Sources/IcliKit/Input/RawInput.swift": "cb0750df0f6848aeec8392f7906a9b43f71fba2e5c6cb5f33ba0ff04d51e5aea",
-    "Sources/IcliKit/Input/Screen.swift": "ec7e8fe0b1fa5f0dfeb4efb75a64ea64233060242152df4f3b16bed9816478e8",
+    "Sources/IcliKit/Input/Screen.swift": "fed70970f6f8f6323cf7c6db343a261fe001614194c0e8700a945cac343af161",
     "Sources/IcliKit/Input/ScreenRecord.swift": "6cd56811200ab01281e784c4413f3f92d97fd2ff8a365d4318ea8c4ec4493b86",
     "Sources/IcliKit/Input/ScreenWait.swift": "33d3bb978232d2f0c94eb9c9469701c31a34b73cd1bd16c22e10ea809e867393",
     "Sources/IcliKit/Input/VerifiedAction.swift": "dadcb4f446d3f85dc45a6712dac37b4809755111ce128706a602de17e891d03c",
@@ -1129,7 +1129,7 @@
   },
   "artifacts": {
     "icli": {
-      "sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c",
+      "sha256": "2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a",
       "import_counts": {
         "arm64": {
           "total": 1604,
@@ -1953,12 +1953,9 @@
     "Vendor/FlexUltra/VendoredReflex/Sources/Reflex/FLExtensions.swift": "750bb8ce09969fae4a61cc1306ef1fa30cff8847ebfda38aa7043aece970821a",
     "Vendor/FlexUltra/VendoredReflex/Sources/Reflex/PointerExtensions.swift": "c59c0e2f2d337219eb93f3a7c32fd6049619ba7b215d1cffc0cd3429bc18c708"
   },
-  "ast_refreshed_files": [
-    "Sources/IcliPrivate/Accessibility.m",
-    "Sources/IcliPrivate/FullUnlock.m"
-  ],
-  "ast_reuse_note": "Two changed production translation units were freshly indexed with Clang; the other 267 completed inputs were reused after source-hash checks. All 722 other non-generated sources match the preceding qualified snapshot. The two generated headers differ from that snapshot only in their build-ID literals and exactly match the original AST-input hashes. All six artifact/slice import lists match.",
-  "previous_inventory_sha256": "f86b25ee841976520508fc2797c76c504d1a9108ecb8bd725668a2fc0651a6dc",
-  "package_version": "1.0.0+korboy8",
-  "installed_cli_sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c"
+  "ast_refreshed_files": [],
+  "ast_reuse_note": "All 269 completed Clang inputs are reused after exact source/header hash checks. The sole changed source is Screen.swift, which Clang does not index; its literals and source hash were read afresh. Every artifact/slice import list was read afresh and matches korboy8.",
+  "previous_inventory_sha256": "0a3233a000df663990f20098ed3a9a9ba523b27d86cfe5d54d1fd60186a3d40b",
+  "package_version": "1.0.0+korboy9",
+  "installed_cli_sha256": "2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a"
 }

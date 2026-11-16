@@ -1,0 +1,181 @@
+{
+  "scope": "Native getter/setter metadata for the legacy Vision CPU-only flag; not an older-device OCR result",
+  "source_sha256": {
+    "Sources/IcliKit/Input/Screen.swift": "fed70970f6f8f6323cf7c6db343a261fe001614194c0e8700a945cac343af161"
+  },
+  "sdk_header": {
+    "path": "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/Vision.framework/Headers/VNRequest.h",
+    "sha256": "bce33196f5f3ccec1d486f03d8ab18ab014defb3cbe2c079720940e611bdf19e"
+  },
+  "input_sha256": "596a4b86c4fb68ecd309294bd48b5cad800fdc5eca0018f0319de1a014fa38be",
+  "reader_sha256": "82ea1f1a47aa0b04346924ae679b8f06d1cc5e07cf98be492656562e615219f9",
+  "collector_sha256": "104757e0fa51e0dda95eee4551ae027ea239dd579e273619e55642b50a91309f",
+  "presence_sha256": "6fc6cdbac11ced61fddf17f1906fe37c127bd2a5e9804b11e1dd77c11ba5ea48",
+  "versions": {
+    "14.0": {
+      "cache_identity_sha256": "2c1759cc1cfea72404eda03dd89ca076776e134e229b61179af247e9e979a7c3",
+      "class_address": "0x1ddac8d18"
+    },
+    "14.0.1": {
+      "cache_identity_sha256": "f22f32fa47c475f0ada0d239b103e08ffe4c2ebbf09947882e2f53653d12b4da",
+      "class_address": "0x1ddad0d18"
+    },
+    "14.1": {
+      "cache_identity_sha256": "e0fc6cd9c3b0f883e3da88eb17e9bc881f3ec4049eedf4ff40c4b03a331398a6",
+      "class_address": "0x1de6e0a78"
+    },
+    "14.2": {
+      "cache_identity_sha256": "2e4a6efd1a208bf169cb77e4f0028c5201349121cfce03925c7c80b2b88634a4",
+      "class_address": "0x1e0450098"
+    },
+    "14.3": {
+      "cache_identity_sha256": "bad8502f1e827f361b9801f54573f296cb3b50842babcc1afb02f6b3d6745b1b",
+      "class_address": "0x1e37cdec8"
+    },
+    "14.4.2": {
+      "cache_identity_sha256": "0749c353fadd40d6a2022e567ebc5732c30db9b172af2bda603fcb731ec41892",
+      "class_address": "0x1e3b9a208"
+    },
+    "14.5.1": {
+      "cache_identity_sha256": "717364934672a46c677c3ed6ac5305fcc3c05e911edb92abaa61df551d9c0817",
+      "class_address": "0x1e3432100"
+    },
+    "14.6": {
+      "cache_identity_sha256": "afa55271a526975d6d21dcfea3e8707d7bad0eb3875507538bb8a8ec09af21e8",
+      "class_address": "0x1e3602a58"
+    },
+    "14.7.1": {
+      "cache_identity_sha256": "159874e9c1b91838636425b18b8678f2f5a775186e6f7c574b3fcc6a7b63933f",
+      "class_address": "0x1e377ab78"
+    },
+    "14.8": {
+      "cache_identity_sha256": "35958a792f967d4b95f232e6e38a806f8f2bc9cce53a00d27d7518041b6fb031",
+      "class_address": "0x1e37cab78"
+    },
+    "15.0.2": {
+      "cache_identity_sha256": "40d337f73bc77995c00ef112f1a0893aba1c2d636ac59e5ee338e3234002f023",
+      "class_address": "0x1da47abc0"
+    },
+    "15.1": {
+      "cache_identity_sha256": "edb7d0b6213077370ed69fce4c7cf42d1ee96bc8fd4bc833c3a783e7193792b1",
+      "class_address": "0x1da5247b8"
+    },
+    "15.2.1": {
+      "cache_identity_sha256": "ebde5000a370f28eff0e5719e1f3de8adae4c44935e777518b6fe25da4dd87f9",
+      "class_address": "0x1da54c808"
+    },
+    "15.3.1": {
+      "cache_identity_sha256": "7735acd28be1d1681679c8aceac523ecf5237b353daec0df33001758593bb0cc",
+      "class_address": "0x1da5f4880"
+    },
+    "15.4.1": {
+      "cache_identity_sha256": "2b1d0782e2c19f541e242629b70b497b0dabd6b2175ca51a79c008b5e6865aa4",
+      "class_address": "0x1d9dcab00"
+    },
+    "15.5": {
+      "cache_identity_sha256": "44f72679e59f3f236b270b80809915aba53b6816d88124290aa91e2150b518c7",
+      "class_address": "0x1d9f1b008"
+    },
+    "15.6.1": {
+      "cache_identity_sha256": "94ec3539a0e26f48f9d61a97fb8e23c5b68455c916624ed37fecefeb82029770",
+      "class_address": "0x1d9d93038"
+    },
+    "16.0.3": {
+      "cache_identity_sha256": "1a9c612fcd12bf635546fc6493a0ae3d467ada599d0c4613f534aa7825d08641",
+      "class_address": "0x1ddc17028"
+    },
+    "16.1.2": {
+      "cache_identity_sha256": "38033b83c753adf7a411f32c313ef4bd0c20c6235074dd4ed53e84754daa7e64",
+      "class_address": "0x1de1a35f8"
+    },
+    "16.2": {
+      "cache_identity_sha256": "ca7d77fa7f9f61eb4473be39ba962ec7524cc43d7b3abdfc78a62ced5a3030a0",
+      "class_address": "0x1de1183c0"
+    },
+    "16.3.1": {
+      "cache_identity_sha256": "fa519a77c3280fd11c32906cc8d32d2d329b4a5a0015776f1e774453f27dc1fc",
+      "class_address": "0x1de09cec0"
+    },
+    "16.4.1": {
+      "cache_identity_sha256": "975572e03d238a68cbdb26f9cd9e9211e7d3423c3d2cb24222672ca29d73437c",
+      "class_address": "0x1de94a830"
+    },
+    "16.5.1": {
+      "cache_identity_sha256": "a2a33658c68aaa7fc7755fdcc85f2e61c6ee62b748ba261cf4f96f6c3cb0b997",
+      "class_address": "0x1dea86bf8"
+    },
+    "16.6.1": {
+      "cache_identity_sha256": "318c420d5c64c748548f775df9b416ca6a64d357e2bf5713f992e0d9cbe82b05",
+      "class_address": "0x1deb43238"
+    },
+    "16.7.16": {
+      "cache_identity_sha256": "e5e8adf30497baf1c59cde61d49710a623723c603c70fa1b9d63e806dc418eb4",
+      "class_address": "0x1dd5919c0"
+    },
+    "17.0.3": {
+      "cache_identity_sha256": "c6b6011a2fe462e60f13a0e447bf9ab0a5bed094621412280677f43ce778dd2d",
+      "class_address": "0x1da073038"
+    },
+    "17.1.1": {
+      "cache_identity_sha256": "5a2176c69740c4780d4e89f158b74ae78354abf19a21411f0418b4c8de6915ae",
+      "class_address": "0x1d9988228"
+    },
+    "17.1.2": {
+      "cache_identity_sha256": "f626f43e8fe05efba57b5296a758b0db71f86654ee7c4cfd8f5e503dade9e47c",
+      "class_address": "0x1d9954228"
+    },
+    "17.2": {
+      "cache_identity_sha256": "b5fddae3e776cd00b0c778a3cc70045c80fc3a5b2a64f311afb2e994ec4bb5b5",
+      "class_address": "0x1e32c4ba8"
+    },
+    "17.2.1": {
+      "cache_identity_sha256": "eb9a36e7f7042486c195c62cc2853d96b16934b8333d8b7df2055d13ced94da1",
+      "class_address": "0x1d9bd1298"
+    },
+    "17.3.1": {
+      "cache_identity_sha256": "ee23cc8ac05abe26734ccc314feae5efbe8edbb4432fa597666689d7664cb129",
+      "class_address": "0x1d9ca1128"
+    },
+    "17.4.1": {
+      "cache_identity_sha256": "f00f74982bc2751bb9a23df75756f18e0f7719ebaca6bea7a5093d8e648dacd4",
+      "class_address": "0x1ea701c08"
+    },
+    "17.5.1": {
+      "cache_identity_sha256": "4fb5c84fe7665cc8a66ddcbe37882eaaf9c854509dfda8ec3b0ea48e90557e8f",
+      "class_address": "0x1e9f90628"
+    },
+    "17.6.1": {
+      "cache_identity_sha256": "a14df3da0252122df6c5b62b4ae297ec744ff18169c0334eb1b8e6af36990f90",
+      "class_address": "0x1e9bbad48"
+    },
+    "17.7": {
+      "cache_identity_sha256": "f7f31d98e340898cfcaaf16aab77f9dc44fe77b76e6d2e201712f2b8d239b67b",
+      "class_address": "0x1e9bc2d48"
+    },
+    "18.0": {
+      "cache_identity_sha256": "180174f68e61143dcfaa74d5bb16f177bf3bd5ddfde1d0a82968c4e9a88d7ed8",
+      "class_address": "0x1e70392e8"
+    },
+    "26.0": {
+      "cache_identity_sha256": "5ade2164f0a50f9ef647b8f13bd5d30854e5e218e617fdef25f9133cb4eaa679",
+      "class_address": "0x1edae4c50"
+    },
+    "26.6.2": {
+      "cache_identity_sha256": "de313ae0d41f3e3cb943cb4c9bea50bffd331446b0504b1f0aaccafd37a3f4f8",
+      "class_address": "0x1ed18d848"
+    },
+    "27.0": {
+      "cache_identity_sha256": "8c9e1b8e92f5bd0872bc3e64cc28f5709c5939dd95c03f33cc1b3ca1ca24fe51",
+      "class_address": "0x1e85906c8"
+    },
+    "27.2.1": {
+      "cache_identity_sha256": "c9c81afbac1cf7954a8221ca423fccd1511796e44ab6c06410dedf5bae74a9c5",
+      "class_address": "0x1ee74f6b8"
+    }
+  },
+  "limits": [
+    "The SDK defines CPU-only request execution; selector encodings do not prove full OCR operation on older hardware.",
+    "The legacy flag is used only before 17. Newer systems use the compute-stage API.",
+    "The input cache identities were checked against the referenced presence summary."
+  ]
+}
