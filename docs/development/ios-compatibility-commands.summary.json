@@ -1,41 +1,41 @@
 {
   "runtime_os": "17.1.1",
-  "binary_sha256": "2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a",
+  "binary_sha256": "bb61f7331d6fd977acece6c2437814ea04b1df8afc359ed3ca3e31e62b89c745",
   "command_counts": {
     "case_pass": 186,
     "deferred": 1
   },
-  "presence_sha256": "6fc6cdbac11ced61fddf17f1906fe37c127bd2a5e9804b11e1dd77c11ba5ea48",
+  "presence_sha256": "0222091ded2405248b67c188e63da547e4bc8a5c45252ffcca6f68a75e5e68e0",
   "reports": [
     {
-      "file": "acceptance-korboy9-nonreboot.json",
-      "sha256": "cc4a1cb207ccbe8d4856d572cfd78d5da0c5b42d5a6ed67cb70e4e86b27821f8",
-      "tested_at": "2026-11-16T03:10:12.405269+00:00",
+      "file": "acceptance-korboy10-nonreboot.json",
+      "sha256": "e9047f5043a278a8e75e9ba8c2baae3fe8b20711f0d7272421edc98567fed24d",
+      "tested_at": "2026-11-16T04:13:51.867626+00:00",
       "runner_sha256": "a20c23101bd68b8e2e8c2f988b895a8aec0c82a0def795d2c4a9ad128c042b5c",
       "root_only": true,
       "completed_run": true,
-      "passing_cases": 107,
+      "passing_cases": 106,
       "total_cases": 110,
       "failing_cases": [
-        "ui_scroll_to",
-        "crash_report_roundtrip",
-        "springboard_restart"
+        "ax_tree_and_tap",
+        "ax_tap_ambiguous",
+        "ui_fill",
+        "crash_report_roundtrip"
       ],
-      "excluded_restarted_cases": [
-        "ui_scroll_to",
-        "log_crash_summary"
-      ]
+      "excluded_restarted_cases": []
     },
     {
-      "file": "acceptance-korboy9-lan-retest.json",
-      "sha256": "9376397b5a080c252793fc6c0a142e6b827fa3cb030cccc68256f34d1b4ee058",
-      "tested_at": "2026-11-16T03:32:18.681140+00:00",
+      "file": "acceptance-korboy10-ui-retest.json",
+      "sha256": "83d8092303c20439b63ee9c3908774c4ccd008a6bf442f2fb8e21984bdd8d607",
+      "tested_at": "2026-11-16T04:30:13.498373+00:00",
       "runner_sha256": "a20c23101bd68b8e2e8c2f988b895a8aec0c82a0def795d2c4a9ad128c042b5c",
       "root_only": true,
       "completed_run": true,
       "passing_cases": 2,
-      "total_cases": 2,
-      "failing_cases": [],
+      "total_cases": 3,
+      "failing_cases": [
+        "ax_tree_and_tap"
+      ],
       "excluded_restarted_cases": []
     }
   ],

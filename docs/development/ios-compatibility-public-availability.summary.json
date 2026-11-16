@@ -1,0 +1,25 @@
+{
+  "target": "arm64-apple-ios14.0",
+  "sdk_version": "26.2",
+  "translation_units": 269,
+  "failed": 0,
+  "diagnostic_flags": [
+    "-Werror=unguarded-availability",
+    "-Werror=unguarded-availability-new"
+  ],
+  "control_results": [
+    {
+      "guarded": false,
+      "exit": 1
+    },
+    {
+      "guarded": true,
+      "exit": 0
+    }
+  ],
+  "sdk_control_header_sha256": "fd81a13c877f8824377b3ad6aac5f795811353b7f3b54fce75450d4085868256",
+  "inventory_sha256": "f8523b5479af4d558c26ff73dc6ac6f87a4a62699d5a783dd08211809ef4a4d3",
+  "raw_report_sha256": "460cd6da570919e99fb72ea654388129fe9cede057f859c1bc3beebda470535e",
+  "audit_script_sha256": "a06e38709576d6414dfe22562be10f8ed0c8ee40dc7afd77bba667f9d6109068",
+  "scope": "SDK-annotated public C and Objective-C API availability in all indexed translation units. Private SPI, protocols, service authorization and behavior require separate evidence."
+}

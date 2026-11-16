@@ -8,6 +8,10 @@ import IcliSystem
 public func collectDeviceSnapshot() throws -> [String: Any] {
     icli_private_init()
     let lock = icli_lock_status()
+    let passcode = icli_passcode_set()
+    guard passcode >= 0 else {
+        throw IcliError.unavailable("Passcode configuration is unavailable on this iOS.")
+    }
     var snapshot = try deviceSnapshot()
     snapshot["battery"] = [
         "fraction": icli_battery_fraction(),
@@ -16,7 +20,7 @@ public func collectDeviceSnapshot() throws -> [String: Any] {
     snapshot["lock"] = [
         "locked": lock.locked,
         "screen_off": lock.screen_off,
-        "passcode_enabled": icli_passcode_set(),
+        "passcode_enabled": passcode == 1,
     ]
     return snapshot
 }

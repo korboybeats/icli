@@ -1,23 +1,24 @@
 # iOS compatibility audit
 
-Status: investigation in progress. Version `1.0.0+korboy9` builds and packages
+Status: investigation in progress. Version `1.0.0+korboy10` builds and packages
 for iOS 14.0. This is a deployment floor, not certification that every command
 works on every release. The only physical test target is iOS 17.1.1.
 
 The implemented compatibility fixes include source commits `6b3b934` and
-`9120923` and the older CPU text-recognition fallback described below.
+`9120923`, the older CPU text-recognition fallback and the passcode-query
+correction described below.
 The current CLI has SHA-256
-`2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a`.
+`bb61f7331d6fd977acece6c2437814ea04b1df8afc359ed3ca3e31e62b89c745`.
 The six shipped artifacts now have 2,005 distinct strong import names. Every
 name has export evidence in all 40 supplied caches, including the added 14.0
 cache. Both arm64 and arm64e slices pass binary/package verification for the
 rootful, rootless, and RootHide layouts. These are static results; private
 protocol behavior, entitlements, layouts, and device operation need separate
 qualification. Reboot acceptance is deferred at the user's request.
-The resumed `korboy9` regression completed all 110 non-reboot cases: 107 passed
-and three failed. Focused scrolling and respring retests passed; the fresh
-crash-report roundtrip remains unresolved. Eight additional FLEX sections
-passed all 138 checks on this same build. These are iOS 17.1.1 results.
+The `korboy10` regression completed all 110 non-reboot cases: 106 passed
+and four failed. Focused UI retests passed two of three cases. The first-tap
+case and fresh crash-report roundtrip remain unresolved. Eight additional FLEX
+sections passed all 138 checks on this same build. These are iOS 17.1.1 results.
 
 ## Inventory
 
@@ -37,7 +38,7 @@ hashes, successful Clang inputs, entitlement values, and artifact hashes.
 | Source/header files | 726 |
 | C/Objective-C translation units indexed with Clang | 269 |
 | Clang failures remaining | 0 |
-| Distinct C function references, including project functions | 1,502 |
+| Distinct C function references, including project functions | 1,501 |
 | Distinct typed Objective-C receiver/selector pairs | 4,915 |
 | Explicit selectors | 350 |
 | Additional selector candidates from literals | 86 |
@@ -57,14 +58,13 @@ preparation because the preparation script changes framework and class lookups.
 Swift source literals and compiled Swift imports are included; Clang cannot
 enumerate Swift call sites. The generated metadata sources beyond the selected
 Swift metadata entry point remain a conservative inventory superset.
-The final source/import snapshot retains all 269 completed Clang inputs after
-exact source/header hash checks against `korboy8`. The sole changed source,
-`Screen.swift`, is outside Clang's input set; its literals and hash were read
-afresh. The older flag's native method metadata is recorded separately below.
-Every final artifact/slice import list was read afresh and is unchanged.
-The cache query set is also identical to `korboy8`, so its 40 qualified cache
-scans are reused with the current inventory hash. Native Vision selector
-metadata separately covers the new Swift property use.
+The current snapshot indexed all 269 Clang inputs afresh with no errors after
+changing the passcode bridge and its header. Swift literals and source hashes
+were also read afresh. Every final artifact/slice import list was read again
+and exactly matches `korboy9`. The only removed cache query is the old
+project-owned `passcodeSet` helper; no new query names were introduced.
+The existing 40 cache scans cover the current query set and retain their
+original cache/query records. Native Vision selector metadata remains separate.
 
 The following need semantic review in addition to a name-presence check:
 
@@ -131,16 +131,16 @@ a command pass. In particular, stripped Objective-C method names can be absent
 from symbol results while their runtime method metadata still exists.
 
 The [receiver-specific method matrix](ios-compatibility-methods.tsv) records
-146 selected private receiver/selector pairs across the same 40 caches. These
+166 selected private receiver/selector pairs across the same 40 caches. These
 are reviewed calls used by the compatibility fallbacks and adjacent device,
 registration, audio and logging paths. Each resolved cell contains the actual
 declaring class and native Objective-C encoding, including superclass methods.
 Its [input summary](ios-compatibility-methods.summary.json) retains the raw
 metadata, reader and reviewed-source hashes. The current publication uses
-fresh metadata reads against the `korboy9` inventory, retaining the original
+fresh metadata reads against the `korboy10` inventory, retaining the original
 cache-qualified symbol scans and a separately recorded RunningBoard/Focus
-class query. Raw inputs are under `.build/compatibility/objc-korboy9-contracts/`
-and `command-contract-scans/`. The preceding 112-row snapshots remain intact.
+class query. Raw inputs are under `.build/compatibility/objc-korboy10-contracts/`
+and `command-contract-scans/`. The preceding 112-row and 146-row snapshots remain intact.
 This establishes receiver and method encoding for those rows; it is not
 exhaustive private-API qualification. In particular,
 an `@?` argument alone does not establish the block's callback prototype.
@@ -154,13 +154,13 @@ the selected matrix after saving each version's metadata:
 
 ```sh
 python3 scripts/compatibility-methods.py \
-  --metadata .build/compatibility/objc-korboy9-contracts \
-  --inventory .build/compatibility/inventory-korboy9.json \
+  --metadata .build/compatibility/objc-korboy10-contracts \
+  --inventory .build/compatibility/inventory-korboy10.json \
   --index docs/development/ios-compatibility-methods.tsv \
   --output docs/development/ios-compatibility-methods.tsv
 ```
 
-The added 34 rows cover RunningBoard handles, identities and state, Focus
+The first 34 added rows cover RunningBoard handles, identities and state, Focus
 properties, mirroring output objects, display geometry and audio controls.
 The recorded `cpuRole` getter resolves on the four 26-27 caches with unsigned
 byte encoding, matching its caller; the other 36 cells remain unresolved and
@@ -171,6 +171,19 @@ the source checks it before use. The preferred volume setter remains unresolved
 in the base method lists; the existing `setVolumeTo:forCategory:` fallback
 resolves in all 40. None of these metadata results proves service authorization,
 assertion-domain meanings, descriptor-mask semantics or device operation.
+
+Another 20 rows cover application proxy/record properties used for app metadata
+and registration readback. Resolved properties retain their actual declaring
+owner and encoding in all 40 caches. `shortVersionString`, `isRunning` and
+`hasSettingsBundle` remain unresolved in the base lists; the guarded KVC helper
+and device results remain separate from that metadata limitation.
+
+The [public API availability check](ios-compatibility-public-availability.summary.json)
+compiled all 269 C/Objective-C inputs for iOS 14 with SDK 26.2 and both
+unguarded-availability diagnostic groups treated as errors. All passed.
+An unguarded iOS 16 API control failed with the expected availability diagnostic;
+the same control inside its version check passed. This checks SDK-annotated
+public API use, not private protocols, permissions or older-device behavior.
 
 Resolver exports require special handling: go-macho's `TrieExport.Type()`
 prints `resolver=0x...` for stub/resolver entries instead of `regular`. This
@@ -205,6 +218,7 @@ requirements; it does not bundle a newer Swift concurrency runtime.
 | Process logs | The activity entry layout changes between 14–16, 17–18 and 26–27. | Decode the measured offsets for the actual OS major, copy packed timestamps safely and reject unqualified future layouts. Every supplied cache's native decoder was inspected; see the layout matrix below. |
 | CPU text recognition | The GPU-free path required 17 even though Vision's older CPU-only request flag is available on 14–16. | Use `usesCPUOnly` before 17 with the existing non-IOSurface image buffer. Newer systems retain compute-stage CPU selection. The native getter/setter encodings agree in all 40 caches; older-device OCR operation is not claimed. |
 | Accessibility caller context | Two optional manual client lookups do not resolve in the supplied caches. Resolving the actual native setters and forcing a client identity would overwrite a host's selected context. | Keep native caller detection and the existing automation switches. The device-only production-source probe preserves a deliberately seeded current and outgoing context; a negative control detects the discarded overwrite. |
+| Passcode configuration | SpringBoard's second lock-status flag describes lockout, not whether a passcode exists. | Use the native configured-passcode query, require compatible factory/getter signatures and preserve an unavailable query as unknown. Device info reports a clear unavailable error; wake refuses the unknown state. Ten native bridge fixtures cover positive, negative, missing, nil and incompatible cases. |
 | Passcode unlock | A private factory or unlock method may exist with an incompatible encoding. | Check factory availability, arity and object return; check passcode, BOOL and completion argument types before preparing the credential or invoking the method. Native method-signature fixtures cover incompatible types, and owned Mac RPC fixtures exercise both supported unlock forms. |
 | Rootful packages | The existing packager and acceptance runner already support rootful paths. | All three iOS packages are extracted afresh and checked, including all six binaries and both slices. This is package proof, not checkra1n/unc0ver/Taurine runtime proof. |
 
@@ -256,7 +270,7 @@ have an export-evidence gap in at least one supplied cache. Weak imports need
 their own caller review; the strong-import result does not qualify those paths.
 The [selected weak-import summary](ios-compatibility-weak-imports.summary.json)
 records fresh IDA control-flow inputs and slice hashes for the installed
-`korboy9` binary. With each recorded missing OS version and a missing weak function,
+`korboy10` binary. With each recorded missing OS version and a missing weak function,
 conservative branch tracing excludes all found direct calls to
 `swift_coroFrameAlloc`, `swift_stdlib_isStackAllocationSafe`,
 `swift_willThrowTypedImpl`, `AsyncStream.makeStream`, the CoreML compute-device
@@ -305,46 +319,43 @@ checks and records that scope in the report.
 
 ## Current device evidence
 
-The installed iOS 17.1.1 CLI is `1.0.0+korboy9`, SHA-256
-`2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a`.
-The install driver verified the CLI and all five companion files against the
-Mac-built artifacts and retained the package hold. All three iOS package layouts
-passed verification again. The final inventory contains 269 successful Clang
-inputs reused after source/header hash checks; its summary records the changed
-Swift source separately. All six artifact import lists remain identical to the
-preceding qualified import set.
+The installed iOS 17.1.1 CLI is `1.0.0+korboy10`, SHA-256
+`bb61f7331d6fd977acece6c2437814ea04b1df8afc359ed3ca3e31e62b89c745`.
+The install driver verified all six installed files against the Mac build and
+retained the package hold. All three iOS layouts and both slices passed package
+verification. The fresh inventory has 269 successful Clang inputs and unchanged
+artifact/slice import lists; its source hashes cover the changed C bridge,
+header and Swift snapshot caller.
 
-The resumed root-only `korboy9` run completed all 110 non-reboot cases:
-107 passed and three failed. Scrolling failed during an unexpected SpringBoard
-restart; a focused retest passed without a restart. The respring case lost SSH
-over Tailscale; its complete two-respring retest passed over the phone's
-discovered local-network address. Original failures remain in the report.
-The fresh crash-report roundtrip still failed: an independent diagnostic
-confirmed the fixture process exited after its crash URL, but neither the
-reader nor a direct directory listing found a new report. A bounded ReportCrash
-log capture returned no entries. A separately signed fixture with a fresh
-bundle identifier, executable name and URL scheme also exited without a new
-report, so the failure is not confined to the old fixture identity.
-The cause remains unresolved; no clean
-110/110 current-build run is claimed.
+The root-only `korboy10` run completed all 110 non-reboot cases: 106 passed and
+four failed. Initial tree/tap, ambiguous-tap and fill cases returned successful
+commands without the expected fixture state changes. Focused retests passed
+ambiguous-tap and fill; tree/tap still failed its counter assertion. A separate first-tap control passed on the previous binary and on an identical
+copy of the current binary under another executable name. These samples do not
+establish the cause or resolve the original failures. The fresh crash-report roundtrip also failed.
+Earlier diagnostics confirmed a fixture exits with SIGABRT without producing a
+new report; changing its bundle identifier, executable name and URL scheme did
+not confine or resolve the failure. Report generation remains unresolved.
+No clean current-build 110/110 run is claimed.
 
 On this same build, eight additional FLEX fixture sections passed all 138 checks: core inspection,
 storage, UI, tracing, command dispatch, metadata, physical state and lifecycle.
 Storage includes reading an actual fixture heartbeat from the process log;
 enabling monitoring alone was not counted as proof of delivery. Each section
 verified its five required installed artifacts against the local build.
-Reports remain private under `.build/compatibility/korboy9-flex/`.
+Reports remain private under `.build/compatibility/korboy10-flex/`.
 App-owned Realm behavior was not exercised against an unrelated user app.
-Both acceptance sessions, the crash diagnostic and the FLEX session removed
-their fixture apps and released their own leases.
+Both current-build acceptance sessions and the FLEX session removed their
+fixture apps and released their own leases. Baseline diagnostics have their
+own separately recorded cleanup.
 
 The [per-command matrix](ios-compatibility-commands.tsv) records positive
 execution within passing cases for all 186 non-reboot command leaves on
-`korboy9`; `device reboot` is explicitly `deferred`. This combines only the
-matching current-build non-reboot report and focused local-network retest.
+`korboy10`; `device reboot` is explicitly `deferred`. This combines only the
+matching current-build non-reboot report and focused UI retest.
 Unexpectedly restarted cases are excluded. Report hashes and original failed
 case names remain in the [evidence summary](ios-compatibility-commands.summary.json).
-Command coverage does not erase the failed fresh crash-report scenario. `case_pass`
+Command coverage does not erase the failed first-tap and fresh crash-report scenarios. `case_pass`
 applies only to the asserted scenarios: passcode unlock used `--check`, the
 empty failure ledger was cleared, audio selection covered the current route
 and a missing UID, and FLEX inspected the fixture. Other release columns say
@@ -361,8 +372,8 @@ user-deferred reboot command explicitly.
 
 ```sh
 python3 scripts/compatibility-commands.py \
-  --acceptance .build/compatibility/acceptance-korboy9-nonreboot.json \
-  --acceptance .build/compatibility/acceptance-korboy9-lan-retest.json \
+  --acceptance .build/compatibility/acceptance-korboy10-nonreboot.json \
+  --acceptance .build/compatibility/acceptance-korboy10-ui-retest.json \
   --defer-reboot
 ```
 

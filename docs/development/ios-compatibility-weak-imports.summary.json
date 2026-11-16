@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0+korboy9",
-  "cli_sha256": "2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a",
+  "version": "1.0.0+korboy10",
+  "cli_sha256": "bb61f7331d6fd977acece6c2437814ea04b1df8afc359ed3ca3e31e62b89c745",
   "weak_names": 73,
   "weak_names_with_export_gaps": 46,
   "scope": "Selected direct-call guard checks in both shipped slices; not a complete weak-import audit",
@@ -95,21 +95,21 @@
     }
   },
   "input_sha256": {
-    "weak-import-gaps-korboy9.json": "a4c562e9a850e010b82591e064ce423c8c6d0932ec50edd3ce4f6e30f966f41f",
-    "weak-cfg-korboy9-arm64-ida.json": "8ba21fc5361ad242cc76495a685fc44fc722417bcfcfbf4998e2453a8df18dc2",
-    "weak-cfg-korboy9-arm64e-ida.json": "3d6b2025bf471843c692e6fb8e83e2cca6b1cb81477f81921a3212feb95c33f4",
-    "weak-cfg-checks-korboy9.json": "0a5e51d733873e601f4823f6c2110de95134d4ff7ccc29d022a487c9b7085e3b",
-    "weak-cfg-checks-korboy9-x21-unknown-control.json": "8bff7b237bccdeaea11d13f16f55e14dd67d6648dc158c301746c767a9ce6fde",
-    "check-weak-cfg-korboy9.py": "fd896ba0f0682f325ebf68e292c8e669a58bbfb35fe84e468c14171357da0394",
-    "check-weak-cfg-korboy9-x21-unknown-control.py": "589df80f7f17d970d314f8ed65a62c16dd8b57d4e0a8919f47cb7ef666a5a1fb",
-    "collect-weak-cfg-korboy9-ida.py": "fc116009a69955dbe698ef543f139ea7889e2defd38df46ccbbb842d37454712",
-    "inventory-korboy9.json": "c340d4e673aec3f3a685794a737cb5aa7c26128d248db99f2295e56bb5abc624"
+    "weak-import-gaps-korboy10.json": "a4c562e9a850e010b82591e064ce423c8c6d0932ec50edd3ce4f6e30f966f41f",
+    "weak-cfg-korboy10-arm64-ida.json": "001a0d9c9a41b5129780505e1d267c3da945ed57045c434e707460a76370dc49",
+    "weak-cfg-korboy10-arm64e-ida.json": "5e84d4eed7bcfc9d36b1950db0e44f304ff9347691ade8c25146e3cc880681ff",
+    "weak-cfg-checks-korboy10.json": "4f45b4ab88a5ed6ce33bb77ee598e40d3d57a784793b90456774a68846f688a1",
+    "weak-cfg-checks-korboy10-x21-unknown-control.json": "cf653df16c84c694064545147075bdcaa0cabad39f32c47c2fee22b1b2c314b9",
+    "check-weak-cfg-korboy10.py": "728e39eee660855d5a6eb03e5efcd930a7621977db03bcb419adf5acbe6698bc",
+    "check-weak-cfg-korboy10-x21-unknown-control.py": "7ec576727f8d5f929b60f5470b4f460ba19da3ba41cb52383c8a32fd6c6bc745",
+    "collect-weak-cfg-korboy10-ida.py": "c3949e60053c6147517b9ec97e752f95f5b4322a9593ee94189c2c934923fe96",
+    "inventory-korboy10.json": "f8523b5479af4d558c26ff73dc6ac6f87a4a62699d5a783dd08211809ef4a4d3"
   },
   "slice_sha256": {
-    "arm64": "e788b36c389f39522734aaac4c4c8ef3a71bbbcab5cd49d9e0fcf3210580e20c",
-    "arm64e": "1b60d902d47f18662d3095a42d840c05fe6f61201522c5a26993283b9dddfd6d"
+    "arm64": "b22b534e49e38dae20eae5efe67639180b9450ce2410fa39c5d31e43e3682784",
+    "arm64e": "a11404beab9d70e4022aee38ab723c50cd13f45990a65dcb033a933a4a5e5f4b"
   },
-  "gap_reuse_note": "Current CLI import lists exactly match korboy8; qualified cache export-gap records are retained. Current slice control-flow graphs were collected afresh.",
+  "gap_reuse_note": "Current artifact/slice import lists exactly match korboy9. Cached export-gap records are retained; current slice control-flow graphs were collected afresh.",
   "register_preservation": {
     "call": "_swift_bridgeObjectRetain",
     "register": "x21",

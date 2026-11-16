@@ -18,8 +18,8 @@ extern "C" {
 
 void icli_private_init(void);
 
-/// Whether the device has a passcode, whether or not it is locked now.
-bool icli_passcode_set(void);
+/// 1 if a passcode is configured, 0 if not, -1 if the query is unavailable.
+int icli_passcode_set(void);
 IcliScreenMetrics icli_screen_metrics(void);
 /// Converts a point in the upright interface to the fixed (portrait) space
 /// that the digitizer and accessibility hit testing use.

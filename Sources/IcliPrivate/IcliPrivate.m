@@ -161,24 +161,23 @@ static bool notifyFlag(const char *name) {
     return state != 0;
 }
 
-// SpringBoard's passcode flag is set only while the passcode is guarding the
-// lock screen, so it reads false on an unlocked device that has a passcode.
-static int passcodeSet(void) {
+// SpringBoard's second lock-status flag describes lockout, not whether a
+// passcode is configured. An unavailable query must remain unknown.
+int icli_passcode_set(void) {
     dlopen("/System/Library/PrivateFrameworks/ManagedConfiguration.framework/ManagedConfiguration", RTLD_NOW);
     Class connectionClass = NSClassFromString(@"MCProfileConnection");
-    if (![connectionClass respondsToSelector:@selector(sharedConnection)]) {
+    NSMethodSignature *factory = [connectionClass methodSignatureForSelector:@selector(sharedConnection)];
+    if (![connectionClass respondsToSelector:@selector(sharedConnection)] || factory.numberOfArguments != 2
+        || strcmp(factory.methodReturnType, @encode(id)) != 0) {
         return -1;
     }
     id connection = ((id (*)(id, SEL))objc_msgSend)(connectionClass, @selector(sharedConnection));
-    if (![connection respondsToSelector:@selector(isPasscodeSet)]) {
+    NSMethodSignature *getter = [connection methodSignatureForSelector:@selector(isPasscodeSet)];
+    if (![connection respondsToSelector:@selector(isPasscodeSet)] || getter.numberOfArguments != 2
+        || strcmp(getter.methodReturnType, @encode(BOOL)) != 0) {
         return -1;
     }
     return ((BOOL (*)(id, SEL))objc_msgSend)(connection, @selector(isPasscodeSet)) ? 1 : 0;
-}
-
-bool icli_passcode_set(void) {
-    int configured = passcodeSet();
-    return configured >= 0 ? configured == 1 : icli_lock_status().passcode_enabled;
 }
 
 static int parseRotationDegrees(id value) {
@@ -1290,7 +1289,9 @@ bool icli_wake(void) {
     icli_private_init();
     IcliLockStatus st = icli_lock_status();
     if (!st.locked && !st.screen_off) return true;
-    bool passcode = icli_passcode_set();
+    int configured = icli_passcode_set();
+    if (configured < 0) return false;
+    bool passcode = configured == 1;
     if (pSBSUndimScreen) {
         pSBSUndimScreen();
     }
