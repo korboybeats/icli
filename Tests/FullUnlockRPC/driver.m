@@ -5,6 +5,9 @@ bool icli_wake(void) { return true; }
 IcliLockStatus icli_lock_status(void) { return (IcliLockStatus){0}; }
 int main(int argc, char **argv) {
     @autoreleasepool {
+        if (argc != 2 && argc != 4) return 2;
+        bool application = argc == 4 && !strcmp(argv[2], "ringer-application");
+        if (argc == 4 && !application && strcmp(argv[2], "ringer-workspace")) return 2;
         FullUnlock session = {0};
         if (task_for_pid(mach_task_self(), atoi(argv[1]), &session.task)) {
             puts("FAIL cannot obtain fixture task port"); return 1;
@@ -13,7 +16,11 @@ int main(int argc, char **argv) {
             puts("FAIL cannot retain fixture task port"); return 1;
         }
         bool ok = prepareContext(&session, false);
-        if (ok) ok = invokeUnlock(&session, (const uint8_t *)"fixture-passcode", strlen("fixture-passcode"));
+        if (ok && argc == 4) {
+            ok = invokeRinger(&session, atoi(argv[3]) != 0, application);
+        } else if (ok) {
+            ok = invokeUnlock(&session, (const uint8_t *)"fixture-passcode", strlen("fixture-passcode"));
+        }
         if (!ok) { printf("FAIL before cleanup: %s\n", session.error); fflush(stdout); }
         cleanup(&session);
         uint8_t byte;

@@ -413,6 +413,26 @@ lease acquisition/release recorded outside the individual test cases. Its
 companion summary retains report and runner hashes. `--defer-reboot` marks the
 user-deferred reboot command explicitly.
 
+The [unlock contract table](ios-compatibility-unlock.tsv) separately records
+SpringBoard's native `SBLockScreenManager.sharedInstance` and
+`attemptUnlockWithPasscode:` encodings in all 40 supplied caches. Both agree
+from 14.0 through 27.2.1: object factory and void-returning method with one
+object argument. The existing runtime-selected legacy fallback matches these
+contracts, and its host fixture now uses the actual void encoding. This
+scoped check reads base class hierarchies; it does not establish absence of
+category methods, task-port authorization, authentication success or lock-screen
+dismissal on those releases. The source still requires native state confirmation.
+
+Current `korboy12` source passed all 21 offline host test scripts, covering the
+older/newer location paths, Silent mode, app-service fallbacks, native launchd
+protocol, process-log layouts, RootHide paths, archive handling, geometry and
+passcode/lease guards. Real Mach calls against an owned disposable Mac process
+also pass both unlock selectors and both native ringer receiver chains. Logs
+and fixture identities stay private under
+`.build/compatibility/korboy12-host-suite/`. These checks exercise production
+logic and the Mac transport; they do not execute iOS services from the firmware
+caches or replace per-version service authorization evidence.
+
 ```sh
 python3 scripts/compatibility-commands.py \
   --acceptance .build/compatibility/acceptance-korboy10-nonreboot.json \

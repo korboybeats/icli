@@ -87,7 +87,7 @@ int main(void) {
         check("@16@0:8", "v40@0:8@16B24B28@?32", true, true);
         check("@16@0:8", "v40@0:8@16c24c28@32", true, true);
         check("r@16@0:8", "v40@0:8r@16rB24rB28@?32", true, true);
-        check("@16@0:8", "B24@0:8@16", false, true);
+        check("@16@0:8", "v24@0:8@16", false, true);
         check("q16@0:8", "v40@0:8@16B24B28@?32", true, false);
         assert(factoryCalls == 0);
         check("@?16@0:8", "v40@0:8@16B24B28@?32", true, false);

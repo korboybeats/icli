@@ -35,6 +35,30 @@ with tempfile.TemporaryDirectory(prefix='icli-unlock-rpc-') as name:
         result = (work / 'result').read_text()
         print(result)
         assert result.startswith('PASS ')
-    finally:
         process.terminate()
+        process.wait(timeout=5)
+        # Test ringer calls on an idle fixture. The original unlock fixture
+        # above retains its busy receive-loop test; a safe setup refusal there
+        # is not permission to retry a write on a live system process.
+        quiet = work / 'ringer-target'
+        subprocess.run(flags + ['-DICLI_RPC_QUIET=1', str(root / 'Tests/FullUnlockRPC/target.m'),
+                                '-o', str(quiet)], check=True)
+        subprocess.run(['codesign', '-s', '-', '--entitlements', str(entitlements), str(quiet)], check=True)
+        process = subprocess.Popen([str(quiet), str(work / 'result')], stdout=subprocess.PIPE, text=True)
+        assert process.stdout.readline().strip() == 'READY'
+        count = 0
+        for application in [False, True]:
+            for enabled in [False, True]:
+                mode = 'ringer-application' if application else 'ringer-workspace'
+                subprocess.run(['sudo', '-n', str(driver), str(process.pid), mode, str(int(enabled))],
+                               check=True, timeout=40)
+                count += 1
+                observed = (work / 'result').read_text()
+                assert observed == (f'PASS native ringer enabled={int(enabled)} '
+                                    f'application={int(application)} count={count}'), observed
+                assert process.poll() is None, 'target died after ringer cleanup'
+                print(observed)
+    finally:
+        if process.poll() is None:
+            process.terminate()
         process.wait(timeout=5)

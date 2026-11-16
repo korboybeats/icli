@@ -90,6 +90,15 @@ The same script now tests the older AX read/write path and compiles the actual
 native ringer invocation routine against Foundation. It checks both workspace
 and application receiver chains, main-thread dispatch, both BOOL values,
 signature rejection, nil receivers and memory failures before writes.
+`scripts/test-full-unlock-rpc.py` additionally runs the production Mach engine
+against a disposable, owned Mac process. Both ringer receiver chains pass real
+cross-process calls in both directions, checking main-thread execution, exact
+BOOL arguments, surviving target and released remote allocations. Both unlock
+selector variants pass separately. The busy receive-loop unlock fixture remains
+separate from the idle ringer fixture. An initial combined busy-fixture run
+safely refused setup before redirecting anything; it was not counted as
+successful ringer execution or retried against a live system process. These
+are Mac transport tests, not older-iOS service tests.
 
 ## Physical phone result
 

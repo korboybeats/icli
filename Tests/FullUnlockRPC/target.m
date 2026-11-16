@@ -4,6 +4,7 @@
 #import <unistd.h>
 static NSString *resultPath;
 static unsigned callCount;
+static BOOL ringerApplication;
 static const char *failureMode;
 static int gate[2];
 static void releaseGate(int number) { char byte = 1; (void)write(gate[1], &byte, 1); }
@@ -16,6 +17,40 @@ uint64_t icli_fixture_read_byte(uint64_t address) { return *(volatile uint8_t *)
 #else
 - (void)attemptUnlockWithPasscode:(NSString *)code mesa:(BOOL)mesa finishUIUnlock:(BOOL)finish completion:(id)completion;
 #endif
+@end
+// Native ringer stand-ins belong only to this disposable Mac process.
+@interface SBRingerControl : NSObject
+- (void)setRingerMuted:(BOOL)muted;
+@end
+@implementation SBRingerControl
+- (void)setRingerMuted:(BOOL)muted {
+    callCount++;
+    [[NSString stringWithFormat:@"%@ native ringer enabled=%u application=%u count=%u",
+        NSThread.isMainThread ? @"PASS" : @"FAIL", muted, ringerApplication, callCount]
+        writeToFile:resultPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+@end
+@interface SBWorkspace : NSObject
++ (instancetype)mainWorkspace;
+- (id)ringerControl;
+@end
+@implementation SBWorkspace
++ (instancetype)mainWorkspace {
+    if (!NSThread.isMainThread) return nil;
+    ringerApplication = NO;
+    return [self new];
+}
+- (id)ringerControl { return NSThread.isMainThread ? [SBRingerControl new] : nil; }
+@end
+@interface SpringBoard : SBWorkspace
++ (instancetype)sharedApplication;
+@end
+@implementation SpringBoard
++ (instancetype)sharedApplication {
+    if (!NSThread.isMainThread) return nil;
+    ringerApplication = YES;
+    return [self new];
+}
 @end
 @implementation SBLockScreenManager
 + (instancetype)sharedInstance {
