@@ -472,8 +472,7 @@ extension Input {
         func run() {
             if parallel.isSet {
                 return parallel.run(output) { target in
-                    try parallel.refuse("--clear", when: clear)
-                    return try target.type(text, submit: submit)
+                    try target.type(text, submit: submit, clear: clear)
                 }
             }
             emit(output) {
@@ -497,8 +496,7 @@ extension Input {
             if parallel.isSet {
                 // The app inserts the text at once, as a keyboard's insertion does; --delay-ms does not apply.
                 return parallel.run(output) { target in
-                    try parallel.refuse("--clear", when: clear)
-                    return try target.type(text, submit: submit)
+                    try target.type(text, submit: submit, clear: clear)
                 }
             }
             emit(output) {

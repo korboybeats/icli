@@ -138,9 +138,11 @@ public struct ParallelTarget {
         return try gesture(frames)
     }
 
-    /// Inserts text into the app's focused input, as its keyboard would.
-    public func type(_ text: String, submit: Bool) throws -> [String: Any] {
-        var result = try request("text", ["text": text])
+    /// Inserts text into the app's focused input, as its keyboard would;
+    /// with `clear`, empties the input first. Right after a tap, the app waits
+    /// up to 2 s for the field to take focus.
+    public func type(_ text: String, submit: Bool, clear: Bool = false) throws -> [String: Any] {
+        var result = try request("text", ["text": text, "clear": clear])
         if submit { result = try key("return") }
         return result
     }
