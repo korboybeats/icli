@@ -7,8 +7,15 @@ works on every release. The only physical test target is iOS 17.1.1.
 The implemented compatibility fixes include source commits `6b3b934` and
 `9120923`, the older CPU text-recognition fallback and the passcode-query
 correction described below.
-The current CLI has SHA-256
+The compatibility-tested CLI has SHA-256
 `bb61f7331d6fd977acece6c2437814ea04b1df8afc359ed3ca3e31e62b89c745`.
+The later same-source `korboy10` reinstall has CLI SHA-256
+`417db49c8ca59f90ea541b23c4d8666ee032e65e21346b84cc920a64a59cc65d`.
+Its five companion binaries are byte-identical to the tested build. Both CLI
+slices differ only in linker stubs, UUID and signature; those differences
+are not treated as runtime-equivalence proof. Acceptance and compiled-guard
+reports below retain the tested CLI identity; no fresh full acceptance run
+of the reinstalled CLI is claimed.
 The six shipped artifacts now have 2,005 distinct strong import names. Every
 name has export evidence in all 40 supplied caches, including the added 14.0
 cache. Both arm64 and arm64e slices pass binary/package verification for the
@@ -131,7 +138,7 @@ a command pass. In particular, stripped Objective-C method names can be absent
 from symbol results while their runtime method metadata still exists.
 
 The [receiver-specific method matrix](ios-compatibility-methods.tsv) records
-166 selected private receiver/selector pairs across the same 40 caches. These
+172 selected private receiver/selector pairs across the same 40 caches. These
 are reviewed calls used by the compatibility fallbacks and adjacent device,
 registration, audio and logging paths. Each resolved cell contains the actual
 declaring class and native Objective-C encoding, including superclass methods.
@@ -139,22 +146,29 @@ Its [input summary](ios-compatibility-methods.summary.json) retains the raw
 metadata, reader and reviewed-source hashes. The current publication uses
 fresh metadata reads against the `korboy10` inventory, retaining the original
 cache-qualified symbol scans and a separately recorded RunningBoard/Focus
-class query. Raw inputs are under `.build/compatibility/objc-korboy10-contracts/`
-and `command-contract-scans/`. The preceding 112-row and 146-row snapshots remain intact.
+class query. Raw inputs are under `.build/compatibility/objc-category-contracts-korboy10/`
+and `command-contract-scans/`. The preceding 112-row, 146-row and 166-row snapshots remain intact.
 This establishes receiver and method encoding for those rows; it is not
 exhaustive private-API qualification. In particular,
 an `@?` argument alone does not establish the block's callback prototype.
 
 `scripts/compatibility-objc.py` reads cache method metadata directly, handles
 the recorded slide/relative-list formats, and retains unparseable encodings.
-Separate category lists are not all merged, so `class_unresolved` and
-`method_unresolved` never prove absence. Source guards and native caller
+Separate category lists are now indexed by their actual class or metaclass,
+retaining the defining image. Category candidates do not prove their image is
+loaded; conflicting encodings remain explicit instead of guessing load order.
+All previous 166 query results remain unchanged across all 40 caches.
+On 17.1.1, independent Objective-C runtime enumeration of LSApplicationProxy
+and LSBundleProxy found 162 methods, all present with matching encodings in
+the cache metadata. Three publisher controls cover conflicting category
+encodings, inherited methods and unresolved methods. `class_unresolved` and
+`method_unresolved` still never prove absence. Source guards and native caller
 inspection establish the fallback decisions described below. To regenerate
 the selected matrix after saving each version's metadata:
 
 ```sh
 python3 scripts/compatibility-methods.py \
-  --metadata .build/compatibility/objc-korboy10-contracts \
+  --metadata .build/compatibility/objc-category-contracts-korboy10 \
   --inventory .build/compatibility/inventory-korboy10.json \
   --index docs/development/ios-compatibility-methods.tsv \
   --output docs/development/ios-compatibility-methods.tsv
@@ -174,9 +188,19 @@ assertion-domain meanings, descriptor-mask semantics or device operation.
 
 Another 20 rows cover application proxy/record properties used for app metadata
 and registration readback. Resolved properties retain their actual declaring
-owner and encoding in all 40 caches. `shortVersionString`, `isRunning` and
-`hasSettingsBundle` remain unresolved in the base lists; the guarded KVC helper
-and device results remain separate from that metadata limitation.
+owner and encoding in all 40 caches. Six additional rows qualify the proxy's
+forwarding methods and LSApplicationRecord's `shortVersionString` and
+`hasSettingsBundle` getters. All six retain identical encodings across all 40
+caches. IDA inspection on 14.0.1 and 27.2.1 shows the proxy forwards through
+its `_record` ivar, whose native type is LSApplicationRecord; its offsets are
+176 and 160 respectively, so icli does not hardcode either offset. The 14
+undefined-key handler delegates `valueForKey:` to that record, and the proxy's
+selector check consults LSApplicationRecord. A native 17.1.1 probe confirms
+both forwarded getters work on an actual proxy. The optional `isRunning` KVC
+query raises NSUnknownKeyException on this proxy; the existing helper returns
+nil, so the optional field stays absent rather than reporting false. Runtime
+results from other releases are not implied. Raw endpoint and runtime evidence
+is under `.build/compatibility/ls-forwarding-*` and `ls-kvc-native-runtime.json`.
 
 The [public API availability check](ios-compatibility-public-availability.summary.json)
 compiled all 269 C/Objective-C inputs for iOS 14 with SDK 26.2 and both
@@ -269,7 +293,7 @@ The 73 distinct weak import names also appear in the presence matrix. Forty-six
 have an export-evidence gap in at least one supplied cache. Weak imports need
 their own caller review; the strong-import result does not qualify those paths.
 The [selected weak-import summary](ios-compatibility-weak-imports.summary.json)
-records fresh IDA control-flow inputs and slice hashes for the installed
+records fresh IDA control-flow inputs and slice hashes for the tested
 `korboy10` binary. With each recorded missing OS version and a missing weak function,
 conservative branch tracing excludes all found direct calls to
 `swift_coroFrameAlloc`, `swift_stdlib_isStackAllocationSafe`,
@@ -320,12 +344,15 @@ checks and records that scope in the report.
 ## Current device evidence
 
 The installed iOS 17.1.1 CLI is `1.0.0+korboy10`, SHA-256
-`bb61f7331d6fd977acece6c2437814ea04b1df8afc359ed3ca3e31e62b89c745`.
+`417db49c8ca59f90ea541b23c4d8666ee032e65e21346b84cc920a64a59cc65d`.
 The install driver verified all six installed files against the Mac build and
-retained the package hold. All three iOS layouts and both slices passed package
-verification. The fresh inventory has 269 successful Clang inputs and unchanged
-artifact/slice import lists; its source hashes cover the changed C bridge,
-header and Swift snapshot caller.
+retained the package hold. The rebuild's six rootless artifacts passed binary
+verification. The preceding tested CLI, identified by SHA-256 `bb61f733` above,
+passed package verification for all three iOS layouts and both slices. Its
+inventory has 269 successful Clang inputs and unchanged artifact/slice import
+lists; its source hashes cover the changed C bridge, header and Swift snapshot
+caller. The acceptance, FLEX, command and compiled-guard reports below refer
+to that preceding tested CLI, not the later relink.
 
 The root-only `korboy10` run completed all 110 non-reboot cases: 106 passed and
 four failed. Initial tree/tap, ambiguous-tap and fill cases returned successful

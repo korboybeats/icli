@@ -5,11 +5,13 @@ Format references: Apple's dyld_cache_format.h, objc-shared-cache.h and
 ObjCVisitor.h; local go-macho's types/objc/objc.go for relative list entries.
 Unsupported cache formats and invalid strings raise errors instead of absent
 results. Unparseable type encodings remain explicit unresolved method records.
-Separate category lists are not merged: an unresolved method is not absence
+Separate category lists retain their defining image: their presence does not
+prove that image is loaded by a caller. Unresolved methods are not absence
 proof. Receiver classes must be confirmed at their source call sites.
 
 https://github.com/apple-oss-distributions/dyld/blob/main/include/mach-o/dyld_cache_format.h
 https://github.com/apple-oss-distributions/dyld/blob/main/include/objc-shared-cache.h
+https://github.com/apple-oss-distributions/objc4/blob/main/runtime/objc-runtime-new.h
 """
 from bisect import bisect_right
 from functools import cache
@@ -83,6 +85,7 @@ class Cache:
                      if p.name in ['dyld_shared_cache_arm64', 'dyld_shared_cache_arm64e']]
         assert len(primaries) == 1, primaries
         self.regions, self.fds, self.identity = [], [], {}
+        self._categories = None
         for path in sorted(folder.glob(primaries[0].name + '*')):
             fd = os.open(path, os.O_RDONLY)
             self.fds.append(fd)
@@ -163,7 +166,7 @@ class Cache:
             raise ValueError(f'unterminated string: {address:#x}')
         return data.split(b'\0', 1)[0].decode('utf-8')
 
-    def image_address(self, name):
+    def images(self):
         h = self.header
         offset, count = struct.unpack_from('<II', h, 448) if struct.unpack_from('<I', h, 16)[0] >= 456 else (0, 0)
         if not offset:
@@ -173,11 +176,15 @@ class Cache:
         for i in range(count):
             address, _, _, path_offset, _ = struct.unpack_from('<QQQII', images, i * 32)
             path = os.pread(self.primary, 1024, path_offset).split(b'\0', 1)[0].decode()
+            yield path, address
+
+    def image_address(self, name):
+        for path, address in self.images():
             if path == name:
                 return address
         raise ValueError('image not located: ' + name)
 
-    def section(self, image, section):
+    def sections(self, image):
         magic, cpu, subtype, kind, ncmds, size, flags, reserved = self.unpack('<IIIIIIII', image)
         assert magic == 0xfeedfacf and size < 16 * 1024 * 1024
         commands = self.read(image + 32, size)
@@ -189,10 +196,43 @@ class Cache:
                 count, = struct.unpack_from('<I', commands, offset + 64)
                 for i in range(count):
                     entry = offset + 72 + i * 80
-                    if commands[entry:entry + 16].rstrip(b'\0').decode() == section:
-                        return struct.unpack_from('<QQ', commands, entry + 32)
+                    name = commands[entry:entry + 16].rstrip(b'\0').decode()
+                    yield name, struct.unpack_from('<QQ', commands, entry + 32)
             offset += size
+
+    def section(self, image, section):
+        for name, value in self.sections(image):
+            if name == section:
+                return value
         raise ValueError('section not located: ' + section)
+
+    def categories(self, address):
+        if self._categories is None:
+            categories = {}
+            seen = set()
+            for image, header in self.images():
+                for name, (start, size) in self.sections(header):
+                    if name not in ['__objc_catlist', '__objc_nlcatlist']:
+                        continue
+                    assert size % 8 == 0, (image, name, size)
+                    for entry in range(start, start + size, 8):
+                        category = self.pointer(entry)
+                        if not category or category in seen:
+                            continue
+                        seen.add(category)
+                        cls = self.pointer(category + 8)
+                        if not cls:
+                            continue  # Weak or unresolved class reference; no receiver claim.
+                        category_name = self.string(self.pointer(category))
+                        for owner, offset in [(cls, 16), (self.pointer(cls), 24)]:
+                            methods = self.pointer(category + offset)
+                            if owner and methods:
+                                categories.setdefault(owner, []).append({
+                                    'name': category_name, 'image': image,
+                                    'address': category, 'method_list': methods})
+            self._categories = categories
+        return [{**category, 'methods': self.methods(category['method_list'])}
+                for category in self._categories.get(address, [])]
 
     def optimizations(self):
         address, size = self.section(self.image_address('/usr/lib/libobjc.A.dylib'), '__objc_opt_ro')
@@ -264,7 +304,8 @@ class Cache:
             ro = self.pointer(address + 32) & ~7
             result.append({'name': self.string(self.pointer(ro + 24)), 'address': address,
                            'ro_flags': self.unpack('<I', ro)[0],
-                           'methods': self.methods(self.pointer(ro + 32))})
+                           'methods': self.methods(self.pointer(ro + 32)),
+                           'categories': self.categories(address)})
             address = self.pointer(address + 8)
         return result
 

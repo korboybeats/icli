@@ -2,7 +2,8 @@
 """Publish selected receiver/selector metadata separately from name presence.
 
 The index's first four columns are the reviewed query catalog. Unresolved
-records are not absence proof: the cache reader does not merge all categories.
+records are not absence proof. Separate category candidates retain image identity;
+they do not establish that the defining image is loaded in a caller.
 Method encodings do not establish block prototypes, permissions or behavior.
 """
 import argparse
@@ -54,6 +55,13 @@ for version in versions:
                 assert len(encodings) == 1, (version, row['receiver'], row['selector'], encodings)
                 value = json.dumps({'owner': owner['name'], 'encoding': encodings.pop()}, separators=(',', ':'))
                 break
+            candidates = [{'category': category['name'], 'image': category['image'],
+                           'encoding': method['types']}
+                          for category in owner.get('categories', [])
+                          for method in category['methods'] if method['selector'] == row['selector']]
+            if candidates:
+                value = json.dumps({'owner': owner['name'], 'category_candidates': candidates}, separators=(',', ':'))
+                break
         row[version] = value
 with args.output.open('w') as stream:
     writer = csv.DictWriter(stream, fieldnames=['receiver', 'side', 'selector', 'sources', *versions],
@@ -65,11 +73,12 @@ args.output.with_suffix('.summary.json').write_text(json.dumps({
     'selected_methods': len(queries),
     'reviewed_source_sha256': source_hashes,
     'versions': evidence,
-    'legend': {'json': 'Actual declaring owner and native Objective-C method encoding',
+    'legend': {'json': 'Declaring owner and native encoding, or separate category candidates with defining images',
                'class_unresolved': 'No unique class definition in the recorded symbol scopes',
                'method_unresolved': 'Method not resolved in recorded base, attached and superclass lists; not absence proof'},
     'limits': ['The query catalog is selected from reviewed source call sites, not every private call.',
                'Metadata establishes method encoding only; block prototypes, entitlements, service protocols and runtime behavior need separate evidence.',
+               'Separate category candidates require their defining image to be loaded; conflicting encodings are retained, not resolved by guessed load order.',
                'Raw unparsed encodings remain available in metadata snapshots; unresolved results are never converted to availability claims.'],
 }, indent=2) + '\n')
 print(f'Published {len(queries)} selected receiver/selector rows across {len(versions)} caches')
