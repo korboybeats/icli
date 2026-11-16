@@ -68,6 +68,7 @@ summary = {
         'tested_at': report['tested_at'], 'runner_sha256': report['runner_sha256'],
         'root_only': report.get('root_only', False), 'completed_run': report.get('completed_run', False),
         'passing_cases': sum(c['passed'] for c in report['cases']), 'total_cases': len(report['cases']),
+        'failing_cases': [c['name'] for c in report['cases'] if not c['passed']],
         'excluded_restarted_cases': [c['name'] for c in report['cases']
                                      if c.get('springboard_restarted') and c['name'] != 'lock_state_after_respring'],
     } for path, report in zip(args.acceptance, reports)],

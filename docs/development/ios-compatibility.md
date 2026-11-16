@@ -14,9 +14,10 @@ cache. Both arm64 and arm64e slices pass binary/package verification for the
 rootful, rootless, and RootHide layouts. These are static results; private
 protocol behavior, entitlements, layouts, and device operation need separate
 qualification. Reboot acceptance is deferred at the user's request.
-Phone testing is paused at the user's request. The preceding `korboy8` run
-stopped after 68 passing cases out of 110 planned, with no failed cases.
-The installed `korboy9` has not had a device regression run.
+The resumed `korboy9` regression completed all 110 non-reboot cases: 107 passed
+and three failed. Focused scrolling and respring retests passed; the fresh
+crash-report roundtrip remains unresolved. Eight additional FLEX sections
+passed all 138 checks on this same build. These are iOS 17.1.1 results.
 
 ## Inventory
 
@@ -130,15 +131,18 @@ a command pass. In particular, stripped Objective-C method names can be absent
 from symbol results while their runtime method metadata still exists.
 
 The [receiver-specific method matrix](ios-compatibility-methods.tsv) records
-112 selected private receiver/selector pairs across the same 40 caches. These
+146 selected private receiver/selector pairs across the same 40 caches. These
 are reviewed calls used by the compatibility fallbacks and adjacent device,
 registration, audio and logging paths. Each resolved cell contains the actual
 declaring class and native Objective-C encoding, including superclass methods.
 Its [input summary](ios-compatibility-methods.summary.json) retains the raw
-metadata, reader and reviewed-source hashes. The selected source files match
-the recorded `korboy7` inventory byte for byte; its native method snapshots are
-retained rather than relabeled as a fresh scan. This establishes receiver and method encoding for
-those rows; it is not exhaustive private-API qualification. In particular,
+metadata, reader and reviewed-source hashes. The current publication uses
+fresh metadata reads against the `korboy9` inventory, retaining the original
+cache-qualified symbol scans and a separately recorded RunningBoard/Focus
+class query. Raw inputs are under `.build/compatibility/objc-korboy9-contracts/`
+and `command-contract-scans/`. The preceding 112-row snapshots remain intact.
+This establishes receiver and method encoding for those rows; it is not
+exhaustive private-API qualification. In particular,
 an `@?` argument alone does not establish the block's callback prototype.
 
 `scripts/compatibility-objc.py` reads cache method metadata directly, handles
@@ -150,11 +154,23 @@ the selected matrix after saving each version's metadata:
 
 ```sh
 python3 scripts/compatibility-methods.py \
-  --metadata .build/compatibility/objc-korboy7 \
-  --inventory .build/compatibility/inventory-korboy7.json \
+  --metadata .build/compatibility/objc-korboy9-contracts \
+  --inventory .build/compatibility/inventory-korboy9.json \
   --index docs/development/ios-compatibility-methods.tsv \
   --output docs/development/ios-compatibility-methods.tsv
 ```
+
+The added 34 rows cover RunningBoard handles, identities and state, Focus
+properties, mirroring output objects, display geometry and audio controls.
+The recorded `cpuRole` getter resolves on the four 26-27 caches with unsigned
+byte encoding, matching its caller; the other 36 cells remain unresolved and
+the source checks the selector before calling it. Focus's singular active-mode
+getter is unresolved on 14, while the plural getter resolves in every cache.
+The optional AirDrop time-limit getter resolves from the supplied 16.2 cache;
+the source checks it before use. The preferred volume setter remains unresolved
+in the base method lists; the existing `setVolumeTo:forCategory:` fallback
+resolves in all 40. None of these metadata results proves service authorization,
+assertion-domain meanings, descriptor-mask semantics or device operation.
 
 Resolver exports require special handling: go-macho's `TrieExport.Type()`
 prints `resolver=0x...` for stub/resolver entries instead of `regular`. This
@@ -288,33 +304,34 @@ inputs reused after source/header hash checks; its summary records the changed
 Swift source separately. All six artifact import lists remain identical to the
 preceding qualified import set.
 
-The latest root-only run belongs to `korboy8`, SHA-256
-`90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c`.
-It passed its first 68 non-reboot cases before the user paused phone testing.
-There are no failed cases, but 42 planned cases were not
-completed. Its report records `completed_run: false`, successful lease release,
-and a matching installed binary hash. The runner exited through its cleanup
-path, removed both installed test apps and stopped further device interaction.
-The runner SHA-256 and complete report hash are retained in the
-[command evidence summary](ios-compatibility-commands.summary.json).
-Those runtime results are not applied to the installed `korboy9` binary.
+The resumed root-only `korboy9` run completed all 110 non-reboot cases:
+107 passed and three failed. Scrolling failed during an unexpected SpringBoard
+restart; a focused retest passed without a restart. The respring case lost SSH
+over Tailscale; its complete two-respring retest passed over the phone's
+discovered local-network address. Original failures remain in the report.
+The fresh crash-report roundtrip still failed: an independent diagnostic
+confirmed the fixture process exited after its crash URL, but neither the
+reader nor a direct directory listing found a new report. A bounded ReportCrash
+log capture returned no entries. The cause remains unresolved; no clean
+110/110 current-build run is claimed.
 
-The preceding `korboy7` build passed a complete 110/110 non-reboot run. On that
-build, eight additional FLEX fixture sections passed all 138 checks: core inspection,
+On this same build, eight additional FLEX fixture sections passed all 138 checks: core inspection,
 storage, UI, tracing, command dispatch, metadata, physical state and lifecycle.
 Storage includes reading an actual fixture heartbeat from the process log;
-enabling monitoring alone was not counted as proof of delivery. These reports
-belong to the earlier binary and remain under `.build/compatibility/korboy7-flex/`;
-they are not counted as current-build passes.
+enabling monitoring alone was not counted as proof of delivery. Each section
+verified its five required installed artifacts against the local build.
+Reports remain private under `.build/compatibility/korboy9-flex/`.
 App-owned Realm behavior was not exercised against an unrelated user app.
+Both acceptance sessions, the crash diagnostic and the FLEX session removed
+their fixture apps and released their own leases.
 
 The [per-command matrix](ios-compatibility-commands.tsv) records positive
-execution within passing cases for 107 command leaves on the preceding
-`korboy8` binary.
-Another 79 leaves are `not_executed`, and `device reboot` is explicitly
-`deferred`. The preceding build's complete report remains private under
-`.build/compatibility/acceptance-korboy7-nonreboot.json`; it is not combined
-with the `korboy8` report. `case_pass`
+execution within passing cases for all 186 non-reboot command leaves on
+`korboy9`; `device reboot` is explicitly `deferred`. This combines only the
+matching current-build non-reboot report and focused local-network retest.
+Unexpectedly restarted cases are excluded. Report hashes and original failed
+case names remain in the [evidence summary](ios-compatibility-commands.summary.json).
+Command coverage does not erase the failed fresh crash-report scenario. `case_pass`
 applies only to the asserted scenarios: passcode unlock used `--check`, the
 empty failure ledger was cleared, audio selection covered the current route
 and a missing UID, and FLEX inspected the fixture. Other release columns say
@@ -331,7 +348,8 @@ user-deferred reboot command explicitly.
 
 ```sh
 python3 scripts/compatibility-commands.py \
-  --acceptance .build/compatibility/acceptance-korboy8-final.json \
+  --acceptance .build/compatibility/acceptance-korboy9-nonreboot.json \
+  --acceptance .build/compatibility/acceptance-korboy9-lan-retest.json \
   --defer-reboot
 ```
 

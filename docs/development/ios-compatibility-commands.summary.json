@@ -1,22 +1,41 @@
 {
   "runtime_os": "17.1.1",
-  "binary_sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c",
+  "binary_sha256": "2c92f6ccfb5f9cfb0f62a01c07801a904b852c11595e40f3d71156325a93295a",
   "command_counts": {
-    "case_pass": 107,
-    "not_executed": 79,
+    "case_pass": 186,
     "deferred": 1
   },
   "presence_sha256": "6fc6cdbac11ced61fddf17f1906fe37c127bd2a5e9804b11e1dd77c11ba5ea48",
   "reports": [
     {
-      "file": "acceptance-korboy8-final.json",
-      "sha256": "d634a63da2ca6f6690a67d3f39c56319de44092e802bf7aaf2c37b6728a1bca8",
-      "tested_at": "2026-11-15T16:18:36.602013+00:00",
+      "file": "acceptance-korboy9-nonreboot.json",
+      "sha256": "cc4a1cb207ccbe8d4856d572cfd78d5da0c5b42d5a6ed67cb70e4e86b27821f8",
+      "tested_at": "2026-11-16T03:10:12.405269+00:00",
       "runner_sha256": "a20c23101bd68b8e2e8c2f988b895a8aec0c82a0def795d2c4a9ad128c042b5c",
       "root_only": true,
-      "completed_run": false,
-      "passing_cases": 68,
-      "total_cases": 68,
+      "completed_run": true,
+      "passing_cases": 107,
+      "total_cases": 110,
+      "failing_cases": [
+        "ui_scroll_to",
+        "crash_report_roundtrip",
+        "springboard_restart"
+      ],
+      "excluded_restarted_cases": [
+        "ui_scroll_to",
+        "log_crash_summary"
+      ]
+    },
+    {
+      "file": "acceptance-korboy9-lan-retest.json",
+      "sha256": "9376397b5a080c252793fc6c0a142e6b827fa3cb030cccc68256f34d1b4ee058",
+      "tested_at": "2026-11-16T03:32:18.681140+00:00",
+      "runner_sha256": "a20c23101bd68b8e2e8c2f988b895a8aec0c82a0def795d2c4a9ad128c042b5c",
+      "root_only": true,
+      "completed_run": true,
+      "passing_cases": 2,
+      "total_cases": 2,
+      "failing_cases": [],
       "excluded_restarted_cases": []
     }
   ],
