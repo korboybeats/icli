@@ -132,6 +132,7 @@ jobs:
           ./scripts/test-audio-routes.sh
           ./scripts/test-silent-mode.sh
           ./scripts/test-passcode-state.sh
+          ./scripts/test-location.sh
           ./scripts/test-verified-ui-actions.sh
           bash ./scripts/test-passcode-unlock.sh
           ./scripts/test-saved-passcode.sh

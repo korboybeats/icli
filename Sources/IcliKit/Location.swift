@@ -20,6 +20,8 @@ private func readLocation(timeout: Double, matching target: (Double, Double)? = 
 /// `clearSimulatedLocation()` runs. The simulation stays on after this process
 /// exits. A nil speed or course is reported as unknown (-1). A vertical
 /// accuracy of -1 marks the altitude as unknown, as CoreLocation does.
+/// On iOS 14, fresh matching coordinates are checked but `simulating` is null:
+/// that OS does not expose the source flag needed to confirm simulation state.
 public func simulateLocation(
     latitude: Double,
     longitude: Double,
@@ -29,9 +31,6 @@ public func simulateLocation(
     speed: Double? = nil,
     course: Double? = nil,
 ) throws -> [String: Any] {
-    guard #available(iOS 15.0, tvOS 15.0, *) else {
-        throw IcliError.unavailable("location simulation verification is unavailable on this iOS")
-    }
     guard latitude.isFinite, (-90 ... 90).contains(latitude) else {
         throw IcliError.failed("latitude must be between -90 and 90")
     }
@@ -64,8 +63,8 @@ public func simulateLocation(
         speed ?? -1,
         course ?? -1,
     )))
-    // locationd accepts the request without a reply, and ignores it without
-    // the simulation entitlement, so only a read-back proves it took effect.
+    // locationd sends no acknowledgement. Read the requested coordinates back;
+    // the newer source flag additionally confirms their simulation provenance.
     let reported: [String: Any]
     do {
         reported = try readLocation(timeout: 5, matching: (latitude, longitude))
@@ -73,7 +72,19 @@ public func simulateLocation(
         _ = try? clearSimulatedLocation()
         throw error
     }
-    guard reported["fresh"] as? Bool == true, reported["simulated"] as? Bool == true else {
+    guard reported["fresh"] as? Bool == true,
+          let reportedLatitude = reported["latitude"] as? Double,
+          let reportedLongitude = reported["longitude"] as? Double,
+          abs(reportedLatitude - latitude) < 1e-7,
+          abs(reportedLongitude - longitude) < 1e-7
+    else {
+        _ = try? clearSimulatedLocation()
+        throw IcliError.unavailable("locationd did not apply the simulated location")
+    }
+    guard #available(iOS 15.0, tvOS 15.0, *) else {
+        return ["simulating": NSNull(), "location": reported]
+    }
+    guard reported["simulated"] as? Bool == true else {
         _ = try? clearSimulatedLocation()
         throw IcliError.unavailable("locationd did not apply the simulated location")
     }
@@ -85,11 +96,13 @@ public func simulateLocation(
 /// keeps handing out the last simulated location as a stale reading; when
 /// that location is far from the real one, a Wi-Fi-only device can reject
 /// real fixes for about 15 minutes.
+/// On iOS 14, the stop request is sent but `simulating` is null because its
+/// completion cannot be established through that OS's location source API.
 public func clearSimulatedLocation() throws -> [String: Any] {
-    guard #available(iOS 15.0, tvOS 15.0, *) else {
-        throw IcliError.unavailable("location simulation verification is unavailable on this iOS")
-    }
     _ = try decodeLocation(takeCString(icli_location_clear_json()))
+    guard #available(iOS 15.0, tvOS 15.0, *) else {
+        return ["simulating": NSNull()]
+    }
     // locationd stops asynchronously and can still stamp one more simulated fix.
     let deadline = Date().addingTimeInterval(6)
     repeat {

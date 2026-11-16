@@ -52,8 +52,6 @@ with args.output.open('w') as output:
         for version in versions:
             if version == runtime_version:
                 static.append(state)
-            elif version.startswith('14.') and command in ['location set', 'location clear']:
-                static.append('unavailable')
             else:
                 gaps = presence['versions'][version]['strong_imports_without_export_evidence']
                 static.append('loading_gap' if gaps else 'imports_only')
@@ -76,7 +74,7 @@ summary = {
         'case_pass requires positive execution in a passing asserted scenario; it does not cover every mode or input.',
         'Passcode preflight, audio no-op selection, lease indicator reads, and fixture FLEX inspection have limited scenarios.',
         'imports_only is whole-process loader evidence, not per-command private ABI or runtime proof.',
-        'Only the source-gated iOS 14 location simulation commands are marked unavailable here.',
+        'Other releases are classified from loading evidence; command availability and verification limits require their implementation notes.',
     ],
 }
 args.output.with_suffix('.summary.json').write_text(json.dumps(summary, indent=2) + '\n')

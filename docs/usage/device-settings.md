@@ -1,5 +1,9 @@
 # Location, Power, and Preferences
 
+On iOS 14, location set checks fresh matching coordinates. Set and clear
+return `simulating: null` because that OS cannot confirm simulation state
+or stop completion; the native requests are still sent.
+
 ```sh
 icli location set 37.3349 -122.0090
 icli location get

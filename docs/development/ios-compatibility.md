@@ -1,8 +1,17 @@
 # iOS compatibility audit
 
-Status: investigation in progress. Version `1.0.0+korboy10` builds and packages
+Status: investigation in progress. Version `1.0.0+korboy11` builds and packages
 for iOS 14.0. This is a deployment floor, not certification that every command
 works on every release. The only physical test target is iOS 17.1.1.
+
+`korboy11` enables the native iOS 14 location set/clear request path. Set
+requires fresh matching coordinates; both commands return `simulating: null`
+there because the OS cannot confirm simulation provenance or stop completion.
+The older clear path waits for NSXPCConnection's public iOS 13+ send barrier
+before returning; this establishes sending, not receipt or stop completion.
+Twenty-five offline host checks cover the older and newer paths. This candidate
+has not been installed on the phone; the device evidence below remains tied
+to the preceding `korboy10` binaries.
 
 The implemented compatibility fixes include source commits `6b3b934` and
 `9120923`, the older CPU text-recognition fallback and the passcode-query
@@ -231,7 +240,7 @@ requirements; it does not bundle a newer Swift concurrency runtime.
 | --- | --- | --- |
 | CLI loading | Nine `AsyncStream` imports, `_xpc_pipe_interface_routine`, and `kIOMainPortDefault` are missing on 14. | The async sequence is available from 15; launchd routines resolve dynamically; IOKit uses the documented null default port. All final strong imports are measured against the floor cache. |
 | Async logging | iOS 14 has no system concurrency runtime. | Callback logging remains available. The 15+ async sequence and its concurrency load are weak on the 14 build; the package verifier accepts only the specific weak concurrency load. |
-| Location | The source-information flag starts at 15. The 14 location structure does not carry the same source-information representation. | `location get` reports `simulated: null` on 14. `set` and `clear` explicitly report that simulation verification is unavailable there, before changing simulation. The inspected native external XPC interfaces expose no simulation-state reader; the technology query filters out the simulated provider. |
+| Location | The source-information flag starts at 15. The 14 location structure does not carry the same source-information representation. | On 14, `get` reports `simulated: null`; `set` sends the native request and requires fresh matching coordinates, while `clear` sends the native stop/clear requests. Both mutation results preserve `simulating: null` instead of claiming confirmed state. On 15+, the source flag remains required. The inspected 14 external XPC interfaces expose no simulation-state reader; the technology query filters out the simulated provider. |
 | Low Power Mode | `_PMLowPowerMode` is absent through the cached 14.8 release and present from 15.0.2. | CoreDuet's `_CDBatterySaver` supplies the verified older `getPowerMode` and completion-based setter ABI. No iOS 14 device result is claimed. |
 | Focus | Mode selection service is absent through cached 14.8. Older state uses `activeModeIdentifiers`. | 14 exposes the verified default Do Not Disturb identity and plural state property. Newer mode selection remains preferred. |
 | Rotation | `AXSpringBoardServer.setOrientation:` is missing on cached 14 releases. | Use the native `AXPISystemActionHelper` portrait, upside-down, left and right actions. Factory/action signatures match in all ten 14 caches; native caller and orientation meanings were checked in the 14.0.1 firmware. Newer rotation remains preferred. |
@@ -387,7 +396,10 @@ applies only to the asserted scenarios: passcode unlock used `--check`, the
 empty failure ledger was cleared, audio selection covered the current route
 and a missing UID, and FLEX inspected the fixture. Other release columns say
 `imports_only`: they qualify whole-process loading, not private command
-behavior. The source-gated iOS 14 simulation commands say `unavailable`.
+behavior. This published table records the preceding `korboy10` artifact,
+whose iOS 14 simulation commands were source-gated as `unavailable`.
+The `korboy11` source enables those requests with the unknown-state result
+described above; it has no on-device command result in this historical table.
 Complete private protocol/entitlement qualification remains open.
 
 The command matrix is reproducible with `scripts/compatibility-commands.py`.

@@ -5,7 +5,7 @@ import IcliKit
 struct Location: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Simulate the device location or read the current one",
-        discussion: "A simulated location applies to every app and stays on after icli exits, until 'icli location clear'.",
+        discussion: "A simulated location applies to every app and stays on after icli exits, until 'icli location clear'. On iOS 14, 'simulating' is null: requests are sent, but that OS cannot confirm simulation state.",
         subcommands: [Set.self, Clear.self, Get.self],
     )
 

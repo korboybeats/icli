@@ -3,6 +3,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
 #import <objc/message.h>
+#include <string.h>
 
 // locationd's simulation client (the one Xcode's location simulation uses).
 // The simulated location lives in locationd and outlives this connection;
@@ -63,11 +64,32 @@ char *icli_location_simulate_json(
 }
 
 char *icli_location_clear_json(void) {
+    id manager = simulationManager();
     NSString *error = sendAll(
-        simulationManager(),
+        manager,
         @[@"stopLocationSimulation", @"clearSimulatedLocations", @"flush"],
         nil
     );
+    if (error) return icli_json(@{@"error": error});
+    // The newer caller waits for location readback before exiting.
+    if (@available(iOS 15.0, tvOS 15.0, *)) return icli_json(@{});
+    @try {
+        SEL getter = NSSelectorFromString(@"connection");
+        NSMethodSignature *signature = [manager methodSignatureForSelector:getter];
+        if (!signature || signature.numberOfArguments != 2 || strcmp(signature.methodReturnType, @encode(id)))
+            return icli_json(@{@"error": @"location simulation connection is unavailable"});
+        NSXPCConnection *connection = ((id (*)(id, SEL))objc_msgSend)(manager, getter);
+        if (![connection isKindOfClass:NSClassFromString(@"NSXPCConnection")])
+            return icli_json(@{@"error": @"location simulation connection is unavailable"});
+        // This public iOS 13+ barrier confirms sending, not receipt or stop
+        // completion. Keep the legacy result unknown.
+        dispatch_semaphore_t sent = dispatch_semaphore_create(0);
+        [connection scheduleSendBarrierBlock:^{ dispatch_semaphore_signal(sent); }];
+        if (dispatch_semaphore_wait(sent, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC)))
+            error = @"location simulation request delivery did not finish";
+    } @catch (NSException *exception) {
+        error = @"location simulation connection is unavailable";
+    }
     return icli_json(error ? @{@"error": error} : @{});
 }
 

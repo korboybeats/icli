@@ -70,6 +70,7 @@ Location notes:
 - Negative coordinates work without `--`: `icli location set -33.8688 151.2093`. Give a negative altitude as `--altitude=-10`.
 - With Location Services turned off, `set` and `get` fail at once with `unavailable` and send nothing to locationd.
 - `get` reads as a System Services location bundle, so it needs no permission prompt. `simulated` is CoreLocation's own flag for a software-simulated fix.
+- On iOS 14, set/clear send native requests and return `simulating: null`; that OS cannot confirm simulation state. Set still requires fresh matching coordinates. Get returns `simulated: null` there.
 - `fresh: false` means no new fix arrived within the timeout and the reading is locationd's last known location. `clear` waits until locationd stops refreshing the simulated fix, but until the next real fix `get` can still return the last simulated location with `fresh: false`.
 - A Wi-Fi-only iPad can reject real fixes for about 15 minutes after a simulated location far from the real one. To avoid that, run `location set` with the real coordinates (from `location get` before simulating), then `location clear`.
 
