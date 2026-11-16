@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0+korboy12",
+  "binary_sha256": "a2eb15f12d7c311bc9e32a7d06a262e78cf5ed5879ec7b8439b82a81010f2b95",
+  "slices": {
+    "arm64": {
+      "slice_sha256": "b0e2830760884aff57227997ce460c0f9659b7611b1331ec1fe64830c18e3ee2",
+      "selected_guard_checks": 1766,
+      "guard_unresolved": 0,
+      "guard_control_calls": 54,
+      "coreml_enum_metadata_guard_checks": 75,
+      "coreml_enum_metadata_unresolved": 0,
+      "nullable_decoding_pairs": 10,
+      "resolved_protocol_conformances": 2024,
+      "async_command_conformances": 0,
+      "guard_cfg_sha256": "5266be5479df6a7d7919c7189f9e78bd9275dc71293f90c6b408570bee49e6ab",
+      "decoding_pairs_sha256": "9dac58633bdbcc0355d6e28d61e8011cd6965d5c1fdcb7d898b92cb487364aa7",
+      "async_conformances_sha256": "074c26ad7db4d86d6c556d61e8e375859fcf68a81b9bda8cc23e16aca4dfe888"
+    },
+    "arm64e": {
+      "slice_sha256": "a58c612826a45caa44b3b01248716d4baf52bf26e631f4bd3b1181e00b1f61d2",
+      "selected_guard_checks": 1626,
+      "guard_unresolved": 0,
+      "guard_control_calls": 50,
+      "coreml_enum_metadata_guard_checks": 75,
+      "coreml_enum_metadata_unresolved": 0,
+      "nullable_decoding_pairs": 10,
+      "resolved_protocol_conformances": 2024,
+      "async_command_conformances": 0,
+      "guard_cfg_sha256": "8ead882f0b0be39a7f9218399f35880bdcd8e97341bda062ea303c372586d5d7",
+      "decoding_pairs_sha256": "3bff82a1244493a5fb5647a4a5b7e93cdf6a72b2ee121cd99b963bc8ec3e164d",
+      "async_conformances_sha256": "9e71b75fc787cf861ed77e216fa0f99024f5a384b99a909a2e1fb299544a5e06"
+    }
+  },
+  "library_loads": {
+    "artifact_slices": 12,
+    "cache_versions": 40,
+    "strong_library_gaps": 0,
+    "input_sha256": "91bed8db3107c03a60ad3d30fe023b08e8e7c4ed126e49ecb5f6baa267b3b1b0"
+  },
+  "native_witness_runtime": {
+    "version": "14.0.1",
+    "function": "instantiateWitnessTable",
+    "address": "0x1842ba9f8",
+    "null_requirement_branch": "0x1842bacc0",
+    "skip_target": "0x1842bac98",
+    "binary_sha256": "8f71bd2ddb5660ec194bd3b50344abe1b058ffbc35d7e2d7d0e0eec96aaaf51b",
+    "ida_evidence_sha256": "d44112e9a1190811e99e85cfaa68dfbc509db76e4740e821dd9b9390dd73ad24",
+    "uuid": "dc2eacea3d9c340996c22df9c89ad19d",
+    "native_cache_code_bytes_compared": 1208,
+    "cache": {
+      "dyld_shared_cache_arm64e": {
+        "size": 2049032192,
+        "mtime_ns": 1600665587876600375,
+        "header_sha256": "12e1c1e5a09207aa44d8f46f51f27a59b9ac4d0e399f2dc2fd447c20869071be"
+      }
+    }
+  },
+  "abi_sources": [
+    "https://github.com/swiftlang/swift/blob/swift-5.3-RELEASE/include/swift/ABI/Metadata.h",
+    "https://github.com/swiftlang/swift/blob/swift-5.3-RELEASE/stdlib/public/runtime/Metadata.cpp"
+  ],
+  "limits": [
+    "Static code, source and metadata checks; no execution on older iOS devices.",
+    "Native null-requirement behavior was inspected in the iOS14.0.1 runtime; other native runtimes were not individually decompiled for this rule.",
+    "Empty direct-call lists do not prove absence of all indirect references or arbitrary reflection calls.",
+    "The CLI has synchronous parsing/dispatch and no async command conformance; external users of syslogEntries must obey its iOS15 availability.",
+    "Explicit load commands do not establish transitive loading, daemon authorization or complete command compatibility.",
+    "Concurrent korboy13 parallel-command source edits are outside this pinned korboy12 candidate check."
+  ],
+  "source_snapshot_revision": "93dff703c13f5cd676dea523291d2de6a3030124"
+}

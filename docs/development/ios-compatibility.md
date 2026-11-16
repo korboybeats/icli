@@ -346,9 +346,35 @@ establish preservation across this call. The checker now retains that one
 documented fact; dropping it reproduces 14 unresolved checks per slice.
 The selected checks now have no unresolved paths. Other calls still invalidate
 register facts conservatively.
-New decoding-protocol descriptors, load markers, async entry-point reachability
-and the other weak imports still require separate qualification. The selected
-check must not be described as a complete weak-import audit.
+The [korboy12 candidate check](ios-compatibility-korboy12-weak.summary.json) records
+fresh CFGs and hashes for both saved candidate slices. The same 3,392 selected checks
+pass, with 104 reachable controls when guards are disabled. Another 150 checks
+exclude the native CoreML CPU enum reads and optional-type metadata reference
+before iOS 17, with all six sites reachable in guards-disabled controls.
+
+Both slices contain ten nullable resilient decoding requirements for newer
+Int128/UInt128 methods. Their actual requirement/witness pairs match Swift's
+[resilient witness format](https://github.com/swiftlang/swift/blob/swift-5.3-RELEASE/include/swift/ABI/Metadata.h).
+The iOS 14.0.1 native `instantiateWitnessTable` at `0x1842ba9f8` skips a null
+requirement before using its witness, matching the
+[Swift 5.3 implementation](https://github.com/swiftlang/swift/blob/swift-5.3-RELEASE/stdlib/public/runtime/Metadata.cpp).
+The inspected runtime UUID and all 1,208 function bytes match the supplied
+14.0.1 cache. This qualifies the missing-requirement metadata handling there;
+it does not execute the decoder on an older device or inspect every later
+runtime individually.
+
+The candidate's CLI entry assembly uses synchronous parsing and command dispatch.
+All 2,024 registered conformance protocol identities resolve in each slice;
+none conforms to `AsyncParsableCommand` or `AsyncMainProtocol`. Found task
+runtime calls belong to the dependency's async parser implementations.
+IcliKit's separate `syslogEntries` API retains its iOS 15 availability;
+the CLI uses callback logging. These establish the inspected entry boundary,
+without claiming an exhaustive graph of arbitrary indirect calls or reflection.
+
+Explicit library load commands in all twelve artifact slices also resolve in
+all 40 supplied caches. Libraries absent on older releases are weak loads.
+This checks explicit loading, not transitive loader execution or daemon access.
+The selected checks remain separate from a complete weak-import/runtime audit.
 
 The Mac builds all six universal artifacts at 14.0. Binary verification checks
 every strong import, including mangled Swift names, against
