@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0+korboy8",
+  "cli_sha256": "90428218a82d85aac2216ad0fdf69462787c8ab5773f93f089051f34924f4f6c",
+  "weak_names": 73,
+  "weak_names_with_export_gaps": 46,
+  "scope": "Selected direct-call guard checks in both shipped slices; not a complete weak-import audit",
+  "architectures": {
+    "arm64": {
+      "_swift_coroFrameAlloc": {
+        "direct_calls": 21,
+        "absent_version_call_checks": 756,
+        "unresolved_checks": 0
+      },
+      "_swift_stdlib_isStackAllocationSafe": {
+        "direct_calls": 5,
+        "absent_version_call_checks": 70,
+        "unresolved_checks": 14
+      },
+      "_swift_willThrowTypedImpl": {
+        "direct_calls": 24,
+        "absent_version_call_checks": 840,
+        "unresolved_checks": 0
+      },
+      "_$sScS10makeStream2of15bufferingPolicyScSyxG6stream_ScS12ContinuationVyx_G12continuationtxm_AG09BufferingE0Oyx__GtFZ": {
+        "direct_calls": 1,
+        "absent_version_call_checks": 25,
+        "unresolved_checks": 0
+      }
+    },
+    "arm64e": {
+      "_swift_coroFrameAlloc": {
+        "direct_calls": 21,
+        "absent_version_call_checks": 756,
+        "unresolved_checks": 0
+      },
+      "_swift_stdlib_isStackAllocationSafe": {
+        "direct_calls": 5,
+        "absent_version_call_checks": 70,
+        "unresolved_checks": 14
+      },
+      "_swift_willThrowTypedImpl": {
+        "direct_calls": 20,
+        "absent_version_call_checks": 700,
+        "unresolved_checks": 0
+      },
+      "_$sScS10makeStream2of15bufferingPolicyScSyxG6stream_ScS12ContinuationVyx_G12continuationtxm_AG09BufferingE0Oyx__GtFZ": {
+        "direct_calls": 1,
+        "absent_version_call_checks": 25,
+        "unresolved_checks": 0
+      }
+    }
+  },
+  "input_sha256": {
+    "weak-import-gaps-korboy8.json": "a4c562e9a850e010b82591e064ce423c8c6d0932ec50edd3ce4f6e30f966f41f",
+    "weak-cfg-arm64-ida.json": "9d0c2dcfd36891f4f786229108b41ac00e4fac060fb1f2dd7893518373b3bf8e",
+    "weak-cfg-arm64e-ida.json": "7b227d44aceaaf280695dd686cd68824a8705e541a1ca2ffb84224863dbaf8d4",
+    "weak-cfg-checks-korboy8.json": "55c6f201bc267579446b2ab20031d6ad10b43c79c84c7f321ccec1c2a2a19e00",
+    "check-weak-cfg.py": "4dd954d11f07a6bfeabcd1c01ac825f882aaf8f28733beff805d3445584a54e7",
+    "collect-weak-cfg-ida.py": "186a1520de17c52baae8236ad27f4705dfdf20e7c236cb9341823a4270403742",
+    "weak-import-source-and-slices-korboy8.log": "f6c9953af58cb8d801b4e8349abcd24f56a66c3f0d72ac4d6d53a128826326ce"
+  },
+  "slice_sha256": {
+    "arm64": "a395dc40581465ad27d7d7ed7ee5a756ec748521c40cc49c74d7ff718cd6e67d",
+    "arm64e": "370e99205fa13eaf295ac6195ea4fc3d3ac57985af8896469ff2fc87f14cb4d6"
+  },
+  "limits": [
+    "The checker retains unknown paths and uses no guessed return values. Guards-disabled controls reach each inspected call.",
+    "One stack-allocation call per architecture remains unresolved by the conservative checker.",
+    "Protocol-requirement descriptors, load markers, async entry-point reachability and other weak imports require separate review."
+  ]
+}

@@ -222,6 +222,31 @@ every C/MIG field, entitlement gate or app-side handler.
 
 ## Verification boundaries
 
+The 73 distinct weak import names also appear in the presence matrix. Forty-six
+have an export-evidence gap in at least one supplied cache. Weak imports need
+their own caller review; the strong-import result does not qualify those paths.
+The [selected weak-import summary](ios-compatibility-weak-imports.summary.json)
+records IDA control-flow inputs and slice hashes for the installed `korboy8`
+binary. With each recorded missing OS version and a missing weak function,
+conservative branch tracing excludes all found direct calls to
+`swift_coroFrameAlloc`, `swift_willThrowTypedImpl` and `AsyncStream.makeStream`
+in both architecture slices. Disabling the modeled guards reaches every
+inspected call, providing a control against an empty or incomplete graph.
+
+The coroutine allocator has an actual null check and `malloc` fallback.
+The typed-error helper is reached only through the generated 18+ check.
+`makeStream` has a 17+ check and a compiled older constructor fallback; the
+build SDK explicitly declares it `@backDeployed(before: iOS 17.0)`. The public
+async logging entry still requires 15+, while 14 uses callback logging.
+These are compiled guard checks, not runtime results on the missing releases.
+
+Five stack-allocation helper call sites per slice contain 15.4 checks. The
+conservative tracer retains an unknown path at one site because a saved result
+crosses a runtime retain call; that site remains unresolved in this check.
+New decoding-protocol descriptors, load markers, async entry-point reachability
+and the other weak imports still require separate qualification. The selected
+check must not be described as a complete weak-import audit.
+
 The Mac builds all six universal artifacts at 14.0. Binary verification checks
 every strong import, including mangled Swift names, against
 `scripts/floor-exports-ios14.json`; public SDK spelling alone is insufficient.
