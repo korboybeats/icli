@@ -62,6 +62,7 @@ icli log syslog --seconds 3 --level error
 | Control Center toggles, audio outputs, location, power, notifications, preferences | [Location, Power, and Preferences](docs/usage/device-settings.md) |
 | Full FlexUltra inspection, heap search, mutation, tracing and MCP | [Inspect Running Apps](docs/usage/flex.md) |
 | JavaScriptCore scripting with `icli probe` | [Script the Device](docs/usage/probe.md) |
+| Several runners each driving their own hidden app (needs the Parallel package) | [Hidden App Sessions](docs/usage/parallel.md) |
 | JSON output, errors, lock state, RootHide paths | [Output and Device State](docs/usage/output.md) |
 | tvOS differences | [tvOS](docs/platforms/tvos.md) |
 

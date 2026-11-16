@@ -92,7 +92,7 @@ let package = Package(
         ),
         .target(
             name: "IcliKit",
-            dependencies: ["IcliPrivate", "IcliSystem", "IcliLaunch", "IcliProbe", "IcliFlexClient"],
+            dependencies: ["IcliPrivate", "IcliSystem", "IcliLaunch", "IcliLaunchPrivate", "IcliProbe", "IcliFlexClient"],
             linkerSettings: [.linkedLibrary("sqlite3")],
         ),
         .executableTarget(

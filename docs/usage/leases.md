@@ -45,5 +45,10 @@ artifacts, so unrelated file work cannot trigger UI inspection. Device-lock
 checks, file permissions and `--force` requirements are unchanged. File work
 can still conflict when tasks edit the same files; the lease is not a file lock.
 
+Parallel sessions ([Hidden App Sessions](parallel.md)) are authorized by their
+own tokens instead: `icli parallel` and commands given `--parallel` run without
+the lease and never acquire, renew or release it, and runners in different
+sessions do not block each other or the lease holder.
+
 `lease`, `status` and the owner indicator remain available to other runners.
 The indicator label passes touches through and is omitted from icli captures.

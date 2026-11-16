@@ -57,6 +57,19 @@ public func runSelfTests(expectedLayout: String? = nil, registrationFixture: Str
         try requireSelfTest((info["memory_bytes"] as? UInt64 ?? 0) > 0, "Device memory was not reported.")
         return info
     }
+    check("parallel", skipWhenUnavailable: true) {
+        let info: [String: Any]
+        do {
+            info = try Parallel.request("ping", timeout: 5)
+        } catch let IcliError.commandFailed(payload) where payload["error"] as? String == "parallel_unavailable" {
+            throw IcliError.unavailable("Parallel (com.korboy.parallel) is not installed or not loaded.")
+        }
+        try requireSelfTest(
+            info["protocol"] as? Int == Parallel.protocolVersion,
+            "Parallel speaks protocol \(info["protocol"] ?? "unknown"); icli speaks \(Parallel.protocolVersion).",
+        )
+        return info
+    }
     check("bootstrap") {
         let path = JailbreakRoot.current.jbrootPath("/Applications")
         var directory: ObjCBool = false

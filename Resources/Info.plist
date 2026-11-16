@@ -11,8 +11,8 @@
 	<key>CFBundlePackageType</key>
 	<string>TOOL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0+korboy12</string>
+	<string>1.0.0+korboy13</string>
 	<key>CFBundleVersion</key>
-	<string>71</string>
+	<string>72</string>
 </dict>
 </plist>

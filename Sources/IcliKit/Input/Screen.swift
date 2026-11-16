@@ -297,11 +297,24 @@ public func recognizeScreen(
     )
 }
 
+/// Text in a Parallel session's scene, in that app's points.
+public func recognizeParallel(
+    _ target: ParallelTarget, languages: [String], minConfidence: Float, region: ScreenRegion? = nil, fast: Bool = false,
+) throws -> [String: Any] {
+    guard !languages.isEmpty, minConfidence.isFinite, (0 ... 1).contains(minConfidence) else {
+        throw IcliError.failed("provide languages and confidence between 0 and 1")
+    }
+    let capture = try target.capture()
+    return try recognizeImage(
+        capture.image, languages: languages, minConfidence: minConfidence, region: region, fast: fast, points: capture.points,
+    )
+}
+
 private func recognizeImage(
     _ fullImage: CGImage, languages: [String], minConfidence: Float, locating: String? = nil,
-    region: ScreenRegion? = nil, fast: Bool = false,
+    region: ScreenRegion? = nil, fast: Bool = false, points: CGSize? = nil,
 ) throws -> [String: Any] {
-    let fullPoints = pointSizeMatching(image: fullImage)
+    let fullPoints = points ?? pointSizeMatching(image: fullImage)
     var cgImage = fullImage
     var origin = CGPoint.zero
     if let region {
@@ -408,11 +421,16 @@ public func uiElements(
     limit: Int? = nil,
     scope: ElementScope = .auto,
     hierarchy: Bool = false,
+    pid: Int32? = nil,
 ) throws -> [String: Any] {
     guard (1 ... 2000).contains(maxElements), limit == nil || (limit! > 0 && limit! <= 2000) else {
         throw IcliError.failed("element limits must be between 1 and 2000")
     }
     var result: [String: Any]
+    // One process's tree, such as a Parallel session's app, whatever is on screen.
+    if let pid {
+        result = try axElements(pid: pid, maxElements: maxElements, hierarchy: hierarchy)
+    } else {
     switch scope {
     case .auto:
         let front = try onScreenPID()
@@ -452,6 +470,7 @@ public func uiElements(
                 + (app["elements"] as? [[String: Any]] ?? [])
             if app["truncated"] as? Bool == true { result["truncated"] = true }
         }
+    }
     }
     var elements = result["elements"] as? [[String: Any]] ?? []
     if visibleOnly {
@@ -726,6 +745,29 @@ public func tapElement(
 ) throws -> [String: Any] {
     try requirePointInput()
     let (hits, used) = try selectedElements(selector, source: source, languages: languages)
+    let (hit, x, y) = try tapTarget(hits, selector)
+    _ = try tap(x: x, y: y)
+    var result: [String: Any] = ["tapped": true, "element": hit]
+    if source != .ax { result["source"] = used.rawValue }
+    return result
+}
+
+/// Taps an element of a Parallel session's app, found in that app's
+/// accessibility tree, with a touch inside the session.
+public func tapParallelElement(_ selector: ElementSelector, in target: ParallelTarget) throws -> [String: Any] {
+    let tree = try uiElements(maxElements: 2000, pid: target.appPID())
+    guard tree["truncated"] as? Bool != true else {
+        throw IcliError.failed("AX query was truncated; narrow the screen before selecting an element")
+    }
+    let (hit, x, y) = try tapTarget((tree["elements"] as? [[String: Any]] ?? []).filter(selector.matches), selector)
+    var result = try target.tap(x: x, y: y)
+    result["tapped"] = true
+    result["element"] = hit
+    return result
+}
+
+/// The one element a tap means, and its tap point.
+private func tapTarget(_ hits: [[String: Any]], _ selector: ElementSelector) throws -> ([String: Any], Double, Double) {
     let hit: [String: Any]
     if selector.indexIsExplicit {
         guard hits.indices.contains(selector.index) else { throw IcliError.failed("element not found") }
@@ -739,10 +781,7 @@ public func tapElement(
     guard let x = elementCoordinate(hit["x"]), let y = elementCoordinate(hit["y"]) else {
         throw IcliError.failed("element has no tap point")
     }
-    _ = try tap(x: x, y: y)
-    var result: [String: Any] = ["tapped": true, "element": hit]
-    if source != .ax { result["source"] = used.rawValue }
-    return result
+    return (hit, x, y)
 }
 
 public func waitForElement(

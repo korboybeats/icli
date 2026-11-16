@@ -406,6 +406,62 @@ def ax_tree(d):
     d.cli('ui', 'tap', 'no-such-element', expected=1)
 
 
+@case('parallel_sessions', 'parallel', ['parallel info', 'parallel list', 'parallel create', 'parallel restart',
+                                         'parallel release', 'ui tree', 'ui tap', 'screen tap', 'screen shot', 'screen ocr',
+                                         'app frontmost'])
+def parallel_sessions(d):
+    """A hidden Calculator session, driven without the lease while Settings stays in front."""
+    info = d.cli('parallel', 'info', expected=None)
+    if info.get('error') == 'parallel_unavailable':
+        assert d.run([d.binary, 'parallel', 'list']).returncode == 69
+        d.observations.append('Parallel is not installed: only the parallel_unavailable answer (exit 69) was checked.')
+        return
+    assert info['protocol'] == info['client_protocol'], info
+    calculator = 'com.apple.calculator'
+    if not any(app.get('bundle_id') == calculator for app in d.cli('app', 'list')['apps']):
+        d.observations.append('Parallel was not exercised: this device has no Calculator.')
+        return
+    d.cli('app', 'launch', 'com.apple.Preferences', '--wait-foreground')
+    # Another runner's commands: the session's token authorizes them, not the lease.
+    created = d.cli_env({}, 'parallel', 'create', calculator, '--launch', '--ttl', '120', lease=False)
+    env = {'ICLI_PARALLEL_TOKEN': created['token'], 'ICLI_PARALLEL_GENERATION': str(created['generation'])}
+    target = ['--parallel', created['session']]
+    try:
+        front = d.cli('app', 'frontmost')
+        assert front['bundle_id'] == 'com.apple.Preferences' and front['verified'], front
+        assert d.cli('ui', 'tree')['pid'] == front['pid']
+        # A freshly launched app answers with placeholder elements until its
+        # accessibility support has loaded, as on the physical screen.
+        deadline = time.monotonic() + 5
+        while not any(e.get('label') == 'equals' for e in d.cli_env(env, 'ui', 'tree', *target, lease=False)['elements']):
+            assert time.monotonic() < deadline, 'Calculator accessibility did not become ready'
+            time.sleep(0.3)
+        for key in ['7', 'add', '8', 'equals']:
+            d.cli_env(env, 'ui', 'tap', key, '--match', 'exact', *target, lease=False)
+        tree = d.cli_env(env, 'ui', 'tree', *target, lease=False)
+        assert any(e.get('label') == 'Result' and e.get('value') == '15' for e in tree['elements']), tree
+        shot = d.cli_env(env, 'screen', 'shot', '--output', '/tmp/icli-parallel.png', *target, lease=False)
+        assert shot['width'] == created['width'] and shot['coordinate_scale'] == 1, shot
+        assert shot['parallel']['generation'] == created['generation'], shot
+        d.run(['rm', '-f', '/tmp/icli-parallel.png'])
+        ocr = d.cli_env(env, 'screen', 'ocr', *target, lease=False)
+        assert any(b['text'].strip() == '15' for b in ocr['blocks']), ocr
+        assert d.cli('app', 'frontmost')['bundle_id'] == 'com.apple.Preferences'
+        restarted = d.cli_env(env, 'parallel', 'restart', *target, lease=False)
+        assert restarted['generation'] == created['generation'] + 1, restarted
+        stale = d.cli_env(env, 'screen', 'tap', '10', '10', *target, lease=False, expected=1)
+        assert stale['error'] == 'stale_generation', stale
+        tokenless = d.cli_env({}, 'screen', 'tap', '10', '10', *target, lease=False, expected=1)
+        assert 'token' in tokenless['message'], tokenless
+        wrong = d.cli_env({**env, 'ICLI_PARALLEL_TOKEN': 'not-the-token'}, 'parallel', 'status', *target, lease=False, expected=1)
+        assert wrong['error'] == 'unauthorized', wrong
+    finally:
+        d.cli_env(env, 'parallel', 'release', *target, lease=False, expected=None)
+    assert all(s['session'] != created['session'] for s in d.cli('parallel', 'list')['sessions'])
+    d.observations.append('A hidden Calculator session computed 7+8=15 through ui tap, read back by ui tree and OCR, '
+                          'without the lease, while Settings stayed the verified frontmost app.')
+
+
 @case('ax_tap_ambiguous', 'ax', ['ui tap'])
 def ax_tap_ambiguous(d):
     d.fixture()

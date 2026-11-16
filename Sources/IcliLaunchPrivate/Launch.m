@@ -9,6 +9,9 @@
 #import <string.h>
 #import <sys/sysctl.h>
 
+// Parallel.m: bundle IDs of apps running in Parallel's hidden sessions.
+NSSet<NSString *> *icli_parallel_session_bundles(void);
+
 @interface NSObject (IcliLaunchLS)
 - (BOOL)openApplicationWithBundleID:(NSString *)bundleID;
 @end
@@ -328,6 +331,14 @@ static NSString *bulkFocalApplication(NSMutableDictionary<NSString *, NSNumber *
             if (foregroundFocal) [foregroundFocalIDs addObject:bundleID];
             if (!pids[bundleID]) pids[bundleID] = @(pid);
         }
+        // Apps in Parallel's hidden sessions hold focal assertions without
+        // being on the screen, which they can never reach while a session
+        // owns them.
+        if (focalIDs.count) {
+            NSSet<NSString *> *sessions = icli_parallel_session_bundles();
+            [focalIDs minusSet:sessions];
+            [foregroundFocalIDs minusSet:sessions];
+        }
         if (focalIDs.count == 1) answer = focalIDs.anyObject;
         else if (focalIDs.count > 1 && foregroundFocalIDs.count == 1) answer = foregroundFocalIDs.anyObject;
     } @catch (NSException *) {
@@ -446,6 +457,13 @@ static NSString *runningBoardFocalApplication(NSMutableDictionary *why) {
     }
     free(processes);
     why[@"pids"] = focalPIDs;
+    // As in the bulk path: Parallel's hidden session apps are never on screen.
+    if (focalIDs.count || focalRoleIDs.count) {
+        NSSet<NSString *> *sessions = icli_parallel_session_bundles();
+        [focalIDs minusSet:sessions];
+        [foregroundFocalIDs minusSet:sessions];
+        [focalRoleIDs minusSet:sessions];
+    }
 #if TARGET_OS_TV
     // The screen saver covers whatever stays focal beneath it, the Home
     // screen included, so while it runs it is the one on screen.

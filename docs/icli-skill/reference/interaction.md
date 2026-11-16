@@ -2,6 +2,8 @@
 
 Coordinates are UI points in the orientation shown on screen (see `icli screen info`). Every command here except `screen shot`, `screen info` and `button wake` exits with code 2 while the device is locked or its screen is off.
 
+Parallel sessions: `--parallel <session>` sends `screen tap/double-tap/long-press/swipe/pinch/shot/ocr`, `ui tree/tap` and `input type/paste/key` to a hidden session's app instead (any screen state, no lease; see [Hidden App Sessions](../../usage/parallel.md)).
+
 ## screen
 
 | Command | Purpose | Key flags | Root | Screen |

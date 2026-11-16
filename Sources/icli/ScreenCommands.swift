@@ -26,7 +26,14 @@ extension Screen {
         @Argument(help: pointHelp) var x: Double
         @Argument(help: pointHelp) var y: Double
         @OptionGroup var then: ExpectOptions
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output) { target in
+                    try parallel.refuse("--expect/--expect-gone", when: then.expect != nil || then.expectGone != nil)
+                    return try target.tap(x: x, y: y)
+                }
+            }
             emit(output) { try then.after { try tap(x: x, y: y) } }
         }
     }
@@ -41,7 +48,14 @@ extension Screen {
         @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
         @Flag(help: "End with a short slow move, so a scroll view stops when the finger lifts; --steps has no effect and --seconds can only lengthen the stroke.")
         var noMomentum = false
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output) { target in
+                    try parallel.refuse("--no-momentum", when: noMomentum)
+                    return try target.swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds)
+                }
+            }
             emit(output) {
                 noMomentum
                     ? try swipeWithoutMomentum(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps)
@@ -80,7 +94,11 @@ extension Screen {
         @Option(help: "Direction of the line through both fingers in degrees; 0 is horizontal, 90 vertical.") var angle: Double = 0
         @Option(help: "Duration of the movement in seconds, up to 60.") var seconds: Double = 0.4
         @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output) { try $0.pinch(x: x, y: y, from: from, to: to, angle: angle, seconds: seconds) }
+            }
             emit(output) { try pinch(x: x, y: y, from: from, to: to, angle: angle, seconds: seconds, steps: steps) }
         }
     }
@@ -91,7 +109,9 @@ extension Screen {
         @Argument(help: pointHelp) var x: Double
         @Argument(help: pointHelp) var y: Double
         @Option(help: "Seconds to hold, up to 60.") var seconds: Double = 0.6
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet { return parallel.run(output) { try $0.tap(x: x, y: y, hold: seconds) } }
             emit(output) { try longPress(x: x, y: y, seconds: seconds) }
         }
     }
@@ -102,7 +122,9 @@ extension Screen {
         @Argument(help: pointHelp) var x: Double
         @Argument(help: pointHelp) var y: Double
         @Option(help: "Seconds between the two taps, up to 1.") var interval: Double = 0.1
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet { return parallel.run(output) { try $0.doubleTap(x: x, y: y, interval: interval) } }
             emit(output) { try doubleTap(x: x, y: y, interval: interval) }
         }
     }
@@ -233,7 +255,19 @@ extension Screen {
         var stdout = false
         @Flag(help: "Also say whether a prompt only the device's owner may answer is on screen; runs text recognition.")
         var checkPrompt = false
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output) { target in
+                    try parallel.refuse("--stdout", when: stdout)
+                    try parallel.refuse("--check-prompt", when: checkPrompt)
+                    guard format == nil || ["jpeg", "jpg", "png"].contains(format!.lowercased()) else {
+                        throw IcliError.failed("format must be jpeg or png")
+                    }
+                    let png = format.map { $0.lowercased() == "png" } ?? (path?.lowercased().hasSuffix(".png") ?? false)
+                    return try target.screenshot(path: path, base64: base64, nativeResolution: nativeResolution, width: width, png: png)
+                }
+            }
             if stdout {
                 writeShotToStdout()
                 return
@@ -328,7 +362,13 @@ extension Screen {
         @Option(help: "Only read this rectangle, in points: x,y,width,height; quicker than the whole screen.") var region: String?
         @Flag(help: "Quicker, less accurate recognition, for short labels; reads fewer languages (not Chinese).") var fast = false
         @Flag(help: compactHelp) var compact = false
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output, compact: compact) {
+                    try recognizeParallel($0, languages: lang, minConfidence: minConfidence, region: ScreenRegion(text: region), fast: fast)
+                }
+            }
             emit(requiresLease: false, output, compact: compact) {
                 try recognizeScreen(languages: lang, minConfidence: minConfidence, region: ScreenRegion(text: region), fast: fast)
             }
@@ -428,7 +468,14 @@ extension Input {
         @Argument(help: "Text sent in one piece, up to 64 KiB; the clipboard is not used.") var text: String
         @Flag(help: "Empty the focused field first.") var clear = false
         @Flag(help: "Press Return afterwards.") var submit = false
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output) { target in
+                    try parallel.refuse("--clear", when: clear)
+                    return try target.type(text, submit: submit)
+                }
+            }
             emit(output) {
                 if clear { try clearFocusedField() }
                 let result = try pasteText(text)
@@ -445,7 +492,15 @@ extension Input {
         @Option(name: .customLong("delay-ms"), help: "Pause after each character in milliseconds, 0–1000.") var delayMS: Double = 30
         @Flag(help: "Empty the focused field first.") var clear = false
         @Flag(help: "Press Return afterwards.") var submit = false
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                // The app inserts the text at once, as a keyboard's insertion does; --delay-ms does not apply.
+                return parallel.run(output) { target in
+                    try parallel.refuse("--clear", when: clear)
+                    return try target.type(text, submit: submit)
+                }
+            }
             emit(output) {
                 if clear { try clearFocusedField() }
                 let result = try typeText(text, delayMS: delayMS)
@@ -459,7 +514,9 @@ extension Input {
         @OptionGroup var output: OutputOptions
         @Argument(help: "return, enter, delete, backspace, forward-delete, tab, escape, space, up, down, left, right, home, end, pageup, pagedown, a letter or a digit, with optional cmd+, ctrl+, shift+, alt+ modifiers.") var name: String
         @Option(help: "Press it this many times, 1–100, with the modifiers held throughout (delete --count 5 erases 5 characters).") var count: Int = 1
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet { return parallel.run(output) { try $0.key(name, count: count) } }
             emit(output) { try pressKey(name, count: count) }
         }
     }
@@ -569,7 +626,15 @@ extension UI {
         @Flag(help: "Also give each element its depth in the accessibility hierarchy (1 is just below the app); --compact indents by it. Slower: it reads every element's parents.")
         var hierarchy = false
         @Flag(help: compactHelp) var compact = false
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output, compact: compact) { target in
+                    try parallel.refuse("--source ocr or any", when: from.parsed() != .ax)
+                    return try uiElements(maxElements: maxElements, visibleOnly: !includeOffscreen, clickableOnly: clickableOnly,
+                                          limit: limit, hierarchy: hierarchy, pid: target.appPID())
+                }
+            }
             emit(allowWhenLocked: scope == "system", output, compact: compact) {
                 guard let scope = ElementScope(rawValue: scope) else {
                     throw IcliError.failed("scope must be auto, app, system or all")
@@ -603,7 +668,15 @@ extension UI {
         @OptionGroup var selection: ElementOptions
         @OptionGroup var from: ElementSourceOptions
         @OptionGroup var then: ExpectOptions
+        @OptionGroup var parallel: ParallelOptions
         func run() {
+            if parallel.isSet {
+                return parallel.run(output) { target in
+                    try parallel.refuse("--source ocr or any", when: from.parsed() != .ax)
+                    try parallel.refuse("--expect/--expect-gone", when: then.expect != nil || then.expectGone != nil)
+                    return try tapParallelElement(selection.selector(), in: target)
+                }
+            }
             emit(output) {
                 let selector = try selection.selector(), source = try from.parsed()
                 return try then.after { try tapElement(selector, source: source, languages: from.lang) }

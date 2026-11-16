@@ -55,6 +55,12 @@ IcliLaunchResult icli_launch_app_with_options(
     const char *bundle_id, const char *arguments_json, const char *environment_json, char **reason);
 char *icli_frontmost_app_json(void);
 
+/// One request to the Parallel broker (package com.korboy.parallel): a JSON
+/// object without the newline. Returns its JSON reply, or an error object
+/// ({"ok":false,"error":...}) when the broker is absent, closes the
+/// connection or does not answer within `timeout` seconds; release with free().
+char *icli_parallel_request_json(const char *request_json, double timeout);
+
 /// Counts posts of 1-8 Darwin notification names while a wait runs, so it
 /// looks again only when one arrived. NULL when a name cannot be registered;
 /// every watch needs icli_watch_end. wait returns the
