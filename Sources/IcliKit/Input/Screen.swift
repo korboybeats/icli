@@ -108,6 +108,7 @@ public func swipe(
     y2: Double,
     seconds: Double,
     steps: Int = 20,
+    fromEdge: Bool = false,
 ) throws -> [String: Any] {
     try requirePointInput()
     try validatePoint(x1, y1)
@@ -123,7 +124,10 @@ public func swipe(
     let distances = clearingHysteresis((0 ... steps).map { length * Double($0) / Double(steps) }, pixel: pixel)
     let unitX = length > 0 ? (x2 - startX) / length : 0, unitY = length > 0 ? (y2 - startY) / length : 0
     let xs = distances.map { startX + unitX * $0 }, ys = distances.map { startY + unitY * $0 }
-    guard icli_hid_stroke(xs, ys, Int32(xs.count), seconds, 0) else { throw IcliError.failed("hid swipe unavailable") }
+    let sent = fromEdge
+        ? icli_hid_edge_stroke(xs, ys, Int32(xs.count), seconds, 0)
+        : icli_hid_stroke(xs, ys, Int32(xs.count), seconds, 0)
+    guard sent else { throw IcliError.failed("hid swipe unavailable") }
     return ["from": [x1, y1], "to": [x2, y2]]
 }
 

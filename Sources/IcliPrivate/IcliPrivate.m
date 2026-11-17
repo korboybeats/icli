@@ -988,6 +988,8 @@ void icli_screen_point_to_digitizer(double x, double y, double *nx, double *ny) 
 
 // Extra event mask bits for the next touch down.
 static uint32_t sTouchDownFlags;
+// Extra event mask bits for every event of the current touch.
+static uint32_t sTouchFlags;
 
 // nx and ny are 0…1 in the fixed digitizer space; one finger event per point,
 // under one hand event, so several fingers move in the same report.
@@ -1017,6 +1019,7 @@ static IOHIDEventRef createDigitizerEventFingers(const double *nx, const double 
         break;
     }
     if (phase == IcliTouchBegan) mask |= sTouchDownFlags;
+    mask |= sTouchFlags;
     IOHIDEventRef parent = pIOHIDEventCreateDigitizerEvent(
         kCFAllocatorDefault,
         timestamp,
@@ -1139,6 +1142,27 @@ bool icli_hid_stroke(const double *xs, const double *ys, int count, double secon
 bool icli_hid_swipe(double x1, double y1, double x2, double y2, double seconds, int steps) {
     double xs[] = {x1, x2}, ys[] = {y1, y2};
     return icli_hid_drag(xs, ys, 2, 0, seconds, steps);
+}
+
+// A stroke that the digitizer reports as starting at the physical screen edge
+// nearest its first point, as firmware reports a finger that lands on the edge.
+// UIKit (_UIEventHIDTouchEdgeTypeForHIDEvent, iOS 17) reads the edge type from
+// event mask bit 18 (type 4, "firmware edge") and the edge from bits 24-27
+// (1 bottom, 2 top, 4 right, 8 left, in fixed portrait space), then matches it
+// against the recognizer's target edge rotated for the interface orientation.
+// Without them the bottom-edge Home gesture only recognizes in portrait.
+bool icli_hid_edge_stroke(const double *xs, const double *ys, int count, double seconds, double rest) {
+    if (count < 1) return false;
+    double nx, ny;
+    icli_screen_point_to_digitizer(xs[0], ys[0], &nx, &ny);
+    double distances[4] = {1 - ny, ny, 1 - nx, nx};
+    uint32_t aims[4] = {1, 2, 4, 8};
+    int nearest = 0;
+    for (int i = 1; i < 4; i++) if (distances[i] < distances[nearest]) nearest = i;
+    sTouchFlags = (1u << 18) | (aims[nearest] << 24);
+    bool sent = icli_hid_stroke(xs, ys, count, seconds, rest);
+    sTouchFlags = 0;
+    return sent;
 }
 
 bool icli_hid_edge_swipe(double x1, double y1, double x2, double y2, double seconds, int steps) {

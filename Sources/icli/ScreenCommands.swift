@@ -48,18 +48,22 @@ extension Screen {
         @Option(help: "Intermediate move events, 1–2000.") var steps: Int = 20
         @Flag(help: "End with a short slow move, so a scroll view stops when the finger lifts; --steps has no effect and --seconds can only lengthen the stroke.")
         var noMomentum = false
+        @Flag(help: "Report the touch as landing on the nearest physical screen edge, as system edge gestures (Home, Control Center) need in every orientation.")
+        var fromEdge = false
         @OptionGroup var parallel: ParallelOptions
         func run() {
             if parallel.isSet {
                 return parallel.run(output) { target in
                     try parallel.refuse("--no-momentum", when: noMomentum)
+                    try parallel.refuse("--from-edge", when: fromEdge)
                     return try target.swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds)
                 }
             }
             emit(output) {
-                noMomentum
+                if fromEdge && noMomentum { throw IcliError.failed("give --from-edge or --no-momentum, not both") }
+                return noMomentum
                     ? try swipeWithoutMomentum(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps)
-                    : try swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps)
+                    : try swipe(x1: fromX, y1: fromY, x2: toX, y2: toY, seconds: seconds, steps: steps, fromEdge: fromEdge)
             }
         }
     }

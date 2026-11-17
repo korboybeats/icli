@@ -119,6 +119,7 @@ bool icli_hid_drag(const double *xs, const double *ys, int count, double hold, d
 /// A swipe whose touch comes in from the screen's edge, as UIKit's edge recognizers require.
 bool icli_hid_edge_swipe(double x1, double y1, double x2, double y2, double seconds, int steps);
 bool icli_hid_stroke(const double *xs, const double *ys, int count, double seconds, double rest);
+bool icli_hid_edge_stroke(const double *xs, const double *ys, int count, double seconds, double rest);
 /// Two-finger pinch centred on (cx, cy) in UI points: the fingers sit on a line at
 /// `angle` degrees and move from `from` to `to` points apart (to > from zooms in).
 bool icli_hid_pinch(double cx, double cy, double from, double to, double angle, double seconds, int steps);

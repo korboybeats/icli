@@ -12,7 +12,7 @@ Parallel sessions: `--parallel <session>` sends `screen tap/double-tap/long-pres
 | `screen tap <x> <y>` | Tap one point | `--expect`, `--expect-gone` (see below) | no | unlocked |
 | `screen double-tap <x> <y>` | Two taps | `--interval 0.1` | no | unlocked |
 | `screen long-press <x> <y>` | Press and hold | `--seconds 0.6` | no | unlocked |
-| `screen swipe` | Straight swipe | `--from-x --from-y --to-x --to-y` (all required), `--seconds 0.25`, `--steps 20`, `--no-momentum` | no | unlocked |
+| `screen swipe` | Straight swipe | `--from-x --from-y --to-x --to-y` (all required), `--seconds 0.25`, `--steps 20`, `--no-momentum`, `--from-edge` (system edge gestures such as Home, needed in landscape) | no | unlocked |
 | `screen scroll-by <up\|down\|left\|right> <points>` | Scroll content an exact distance by touch, with no fling; long distances take several strokes | `--x`, `--y` (a point in the scroll view) | no | unlocked |
 | `screen click <x> <y>` | Click with a virtual pointer, as a trackpad does on an iPad; an iPhone uses the pointer only through AssistiveTouch's pointer devices | `--button`, `--count`, `--hold`, `--hover`, `--normalized` | no | unlocked |
 | `screen scroll <x> <y>` | Scroll the view under a virtual pointer by exact deltas, no momentum (iPad; on an iPhone with iOS 17.1.1 it moved nothing, so use `scroll-by`) | `--dx`, `--dy` (positive `dy` moves toward the end of the content), `--seconds`, `--steps`, `--normalized` | no | unlocked |
