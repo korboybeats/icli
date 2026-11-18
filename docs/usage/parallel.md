@@ -17,8 +17,10 @@ icli parallel release $P
 | Command | What it does |
 | --- | --- |
 | `icli parallel info` | Whether Parallel is loaded, its version, protocol and session limit |
-| `icli parallel list` | All sessions, without tokens |
+| `icli parallel list` | All sessions, without tokens, and the Spaces (`screens`: each one's sessions, front app and whether the person has taken it over) |
 | `icli parallel create <bundle-id> [--ttl s] [--launch] [--orientation o] [--export]` | Start a session for an installed app. Prints `session` and `token`; with `--launch` also launches the app and prints `generation`. `--export` prints `export ICLI_PARALLEL=… ICLI_PARALLEL_TOKEN=… ICLI_PARALLEL_GENERATION=…` lines for `eval`. |
+| `icli parallel create <bundle-id> --screen n` | Open the app in Space `n` (see `list`'s `screens`) instead of a new one; `unknown_screen` if there is none. Without `--screen`, the app gets a new Space that closes with its last app. |
+| `icli parallel attach <session> [--export]` | Take control of an app the person opened in a Space: prints its `token` (and `generation` while it runs). Such sessions have no TTL. |
 | `icli parallel launch [--orientation o]` | Launch the app hidden; answers once it has drawn. Any copy of the app already running in the background is terminated first. |
 | `icli parallel restart` | Terminate and launch again; the generation increases |
 | `icli parallel stop` | Terminate the app; the session stays |
@@ -60,4 +62,4 @@ A session's token, not the device lease, authorizes work in it: commands with `-
 
 ## Errors
 
-Broker errors keep Parallel's code in `error`: `user_control` (the person has taken control of the session in the Parallel viewer app; input resumes when they hand it back, capture still works), `stale_generation`, `generation_required`, `unauthorized`, `unknown_session`, `capacity`, `app_in_use`, `app_in_foreground`, `not_running`, `session_busy`, `launch_timeout`, `agent_missing` and others; see Parallel's PROTOCOL.md. Transport failures are `parallel_unavailable` (exit 69), `parallel_disconnected` and `timed_out`. `icli tests` reports whether Parallel is loaded and speaks icli's protocol.
+Broker errors keep Parallel's code in `error`: `user_control` (the person has taken control of the session's Space; input resumes when they hand it back, capture still works), `stale_generation`, `generation_required`, `unauthorized`, `unknown_session`, `capacity`, `app_in_use`, `app_in_foreground`, `not_running`, `session_busy`, `launch_timeout`, `agent_missing` and others; see Parallel's PROTOCOL.md. Transport failures are `parallel_unavailable` (exit 69), `parallel_disconnected` and `timed_out`. `icli tests` reports whether Parallel is loaded and speaks icli's protocol.

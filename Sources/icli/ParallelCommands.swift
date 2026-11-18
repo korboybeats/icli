@@ -61,7 +61,7 @@ struct ParallelCommand: ParsableCommand {
         passes without a command, or when SpringBoard restarts.
         """,
         subcommands: [Info.self, List.self, Create.self, Launch.self, Restart.self, Stop.self, Status.self,
-                      Renew.self, Release.self, Rotate.self, Gesture.self],
+                      Renew.self, Release.self, Rotate.self, Gesture.self, Attach.self],
     )
 }
 
@@ -93,27 +93,20 @@ extension ParallelCommand {
         @OptionGroup var output: OutputOptions
         @Argument(help: "Bundle ID of an installed app.") var bundleID: String
         @Option(help: "Seconds the session lives without a command, 10–3600.") var ttl: Double = 300
+        @Option(help: "Open the app in this Space (virtual screen); default: a new one that closes with its last app.")
+        var screen: Int?
         @Flag(help: "Also launch the app hidden and wait until it has drawn.") var launch = false
         @Option(help: orientationHelp) var orientation: String?
         @Flag(help: "Print shell assignments for ICLI_PARALLEL, ICLI_PARALLEL_TOKEN and ICLI_PARALLEL_GENERATION instead of JSON.")
         var export = false
         func run() {
-            if export {
-                do {
-                    let result = try create()
-                    for (name, key) in [("ICLI_PARALLEL", "session"), ("ICLI_PARALLEL_TOKEN", "token"), ("ICLI_PARALLEL_GENERATION", "generation")] {
-                        if let value = result[key] { print("export \(name)='\(value)'") }
-                    }
-                } catch {
-                    emit(allowWhenLocked: true, requiresLease: false, output) { throw error }
-                }
-                return
-            }
-            emit(allowWhenLocked: true, requiresLease: false, output) { try create() }
+            emitSession(export: export, output) { try create() }
         }
 
         private func create() throws -> [String: Any] {
-            var session = try Parallel.request("create", ["bundle": bundleID, "ttl": ttl])
+            var fields: [String: Any] = ["bundle": bundleID, "ttl": ttl]
+            if let screen { fields["screen"] = screen }
+            var session = try Parallel.request("create", fields)
             guard launch else { return session }
             let target = try ParallelTarget(session: session["session"] as? String ?? "", token: session["token"] as? String, generation: nil)
             do {
@@ -124,6 +117,18 @@ extension ParallelCommand {
             }
             return session
         }
+    }
+
+    struct Attach: ParsableCommand {
+        static var configuration = CommandConfiguration(
+            abstract: "Take control of an app the person opened in a Space.",
+            discussion: "Prints the session's token (and generation while the app runs). The session has no TTL: it ends when the person closes the app or its Space. `icli parallel list` shows each Space's sessions.",
+        )
+        @OptionGroup var output: OutputOptions
+        @Argument(help: "Session ID from `icli parallel list`.") var session: String
+        @Flag(help: "Print shell assignments for ICLI_PARALLEL, ICLI_PARALLEL_TOKEN and ICLI_PARALLEL_GENERATION instead of JSON.")
+        var export = false
+        func run() { emitSession(export: export, output) { try Parallel.request("attach", ["session": session]) } }
     }
 
     struct Launch: ParsableCommand {
@@ -194,5 +199,21 @@ extension ParallelCommand {
                 return try target.gesture(list)
             }
         }
+    }
+}
+
+/// Prints a session reply as JSON, or with `export` as shell assignments for eval.
+private func emitSession(export: Bool, _ output: OutputOptions, _ body: () throws -> [String: Any]) {
+    guard export else {
+        emit(allowWhenLocked: true, requiresLease: false, output, body)
+        return
+    }
+    do {
+        let result = try body()
+        for (name, key) in [("ICLI_PARALLEL", "session"), ("ICLI_PARALLEL_TOKEN", "token"), ("ICLI_PARALLEL_GENERATION", "generation")] {
+            if let value = result[key] { print("export \(name)='\(value)'") }
+        }
+    } catch {
+        emit(allowWhenLocked: true, requiresLease: false, output) { throw error }
     }
 }
