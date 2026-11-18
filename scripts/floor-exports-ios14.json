@@ -17,6 +17,10 @@
     {
       "file": "consumer-floor-definitions.json",
       "sha256": "ead0d86235dda9a69e61bc736e8cd7b140ad21d0e3412f5ae497b6f681041c73"
+    },
+    {
+      "file": "korboy16-ci-definitions.json",
+      "sha256": "429dca36c9049d833a62c8d1c5b25eb1f340725f6519e3827e7bca5889ac7f68"
     }
   ],
   "exports": {
@@ -35,7 +39,13 @@
     "_$s10Foundation11JSONEncoderC16OutputFormattingVSQAAMc": [
       "/usr/lib/swift/libswiftFoundation.dylib"
     ],
+    "_$s10Foundation11JSONEncoderC16OutputFormattingVSYAAMc": [
+      "/usr/lib/swift/libswiftFoundation.dylib"
+    ],
     "_$s10Foundation11JSONEncoderC16OutputFormattingVs10SetAlgebraAAMc": [
+      "/usr/lib/swift/libswiftFoundation.dylib"
+    ],
+    "_$s10Foundation11JSONEncoderC16OutputFormattingVs9OptionSetAAMc": [
       "/usr/lib/swift/libswiftFoundation.dylib"
     ],
     "_$s10Foundation11JSONEncoderC16outputFormattingAC06OutputD0VvMTj": [
@@ -1580,6 +1590,9 @@
     "_$ss10SetAlgebraP7isEmptySbvgTq": [
       "/usr/lib/swift/libswiftCore.dylib"
     ],
+    "_$ss10SetAlgebraP8containsySb7ElementQzFTj": [
+      "/usr/lib/swift/libswiftCore.dylib"
+    ],
     "_$ss10SetAlgebraP8containsySb7ElementQzFTq": [
       "/usr/lib/swift/libswiftCore.dylib"
     ],
@@ -1674,6 +1687,9 @@
       "/usr/lib/swift/libswiftCore.dylib"
     ],
     "_$ss11_SetStorageCMn": [
+      "/usr/lib/swift/libswiftCore.dylib"
+    ],
+    "_$ss11_StringGutsV16_foreignCopyUTF84intoSiSgSrys5UInt8VG_tF": [
       "/usr/lib/swift/libswiftCore.dylib"
     ],
     "_$ss11_StringGutsV16_slowWithCStringyxxSPys4Int8VGKXEKlF": [
@@ -1785,6 +1801,9 @@
       "/usr/lib/swift/libswiftFoundation.dylib"
     ],
     "_$ss15ContiguousArrayV15reserveCapacityyySiF": [
+      "/usr/lib/swift/libswiftCore.dylib"
+    ],
+    "_$ss15ContiguousArrayV28_allocateBufferUninitialized15minimumCapacitys01_abD0VyxGSi_tFZ": [
       "/usr/lib/swift/libswiftCore.dylib"
     ],
     "_$ss15ContiguousArrayV6appendyyxnF": [
@@ -2883,6 +2902,9 @@
       "/usr/lib/swift/libswiftCore.dylib"
     ],
     "_$ss9OptionSetMp": [
+      "/usr/lib/swift/libswiftCore.dylib"
+    ],
+    "_$ss9OptionSetP8rawValuex03RawD0Qz_tcfCTj": [
       "/usr/lib/swift/libswiftCore.dylib"
     ],
     "_$ss9OptionSetP8rawValuex03RawD0Qz_tcfCTq": [
