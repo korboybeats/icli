@@ -16,4 +16,4 @@ cmp .build/icli .build/package-check/roothide/usr/bin/icli
 cmp .build/icli-tvos .build/package-check/tvos/usr/bin/icli
 shasum -a 256 .build/icli .build/package-check/rootless/var/jb/usr/bin/icli .build/package-check/roothide/usr/bin/icli \
   .build/icli-tvos .build/package-check/tvos/usr/bin/icli
-python3 scripts/verify-packages.py
+python3 scripts/verify-packages.py --skip-rootful

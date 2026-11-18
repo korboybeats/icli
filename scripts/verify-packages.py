@@ -16,7 +16,8 @@ root = Path(__file__).resolve().parents[1]
 version = plistlib.loads((root / 'Resources/Info.plist').read_bytes())['CFBundleShortVersionString']
 verifier = runpy.run_path(str(root / 'scripts/verify-binary.py'))
 parser = argparse.ArgumentParser()
-parser.add_argument('--ios-only', action='store_true', help='Verify all three iOS layouts without a tvOS build')
+parser.add_argument('--ios-only', action='store_true', help='Verify iOS layouts without a tvOS build')
+parser.add_argument('--skip-rootful', action='store_true', help='Skip the local-only rootful package')
 options = parser.parse_args()
 
 
@@ -95,8 +96,9 @@ report = {'version': version, **ios, 'minimum_ios': '14.0', 'packages': []}
 # tvOS is its own executable: the same sources built against the AppleTVOS
 # SDK, with IOKit's headers from the stub the tvOS build links against.
 layouts = [('rootless', 'iphoneos-arm64', 'var/jb', ios['binary_sha256']),
-           ('roothide', 'iphoneos-arm64e', '', ios['binary_sha256']),
-           ('rootful', 'iphoneos-arm', '', ios['binary_sha256'])]
+           ('roothide', 'iphoneos-arm64e', '', ios['binary_sha256'])]
+if not options.skip_rootful:
+    layouts.append(('rootful', 'iphoneos-arm', '', ios['binary_sha256']))
 if not options.ios_only:
     tvos = verify_binary(root / '.build/icli-tvos', 'TVOS', 'appletvos', [root / '.build/tvos-stubs'])
     report['tvos'] = {'binary': 'icli-tvos', **tvos, 'minimum_tvos': '15.0'}
