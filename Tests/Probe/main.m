@@ -1,7 +1,9 @@
 #import "IcliProbe.h"
+#import "IcliProbeBridge.h"
 
 #import <Foundation/Foundation.h>
 
+#include <dlfcn.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -173,11 +175,17 @@ static void outputCapture(void) {
 /// owned: an over-release crashes under NSZombieEnabled, a leak stays counted.
 /// The class also answers to the underscored names private methods have.
 static int liveCounted;
+static JSGlobalContextRef ownershipContext;
 
 @interface IcliProbeTestObject : NSObject
 @end
 
 @implementation IcliProbeTestObject
+
++ (bool)captureOwnershipContext {
+    ownershipContext = [IcliProbeContextClass currentContext].JSGlobalContextRef;
+    return ownershipContext != NULL;
+}
 
 + (instancetype)allocWithZone:(struct _NSZone *)zone {
     liveCounted++;
@@ -205,17 +213,13 @@ static int liveCounted;
 
 @end
 
-/// Make garbage until the collector has finalized what scripts dropped, or
-/// give up after enough rounds that a leak is the only explanation left.
-static void collectGarbage(void) {
-    for (int round = 0; round < 40 && liveCounted > 0; round++) {
-        @autoreleasepool {
-            (void)evaluate("var junk = []; for (var i = 0; i < 200000; i++) junk.push({i: i}); junk = null");
-        }
-    }
-}
-
 static void bridgeOwnership(void) {
+    // Collect synchronously after the scripts return. Heap pressure alone
+    // does not reliably run finalizers on every host.
+    expectValue("ObjC.use('IcliProbeTestObject').captureOwnershipContext()", @"true");
+    void (*collectGarbage)(JSContextRef) = dlsym(RTLD_DEFAULT, "JSSynchronousGarbageCollectForDebugging");
+    expect(collectGarbage && ownershipContext, "the ownership test can collect its JavaScript heap");
+    if (!collectGarbage || !ownershipContext) return;
     // An object whose allocation is real, unlike NSString's or NSArray's
     // shared placeholder, which ignores retain and release and so hides a
     // miscount. alloc's handle and init's each own one reference.
@@ -228,7 +232,7 @@ static void bridgeOwnership(void) {
                            "}");
         }
     }
-    collectGarbage();
+    collectGarbage(ownershipContext);
     expect(liveCounted == 0, "every initialized object was released exactly once, %d left", liveCounted);
 }
 
@@ -276,8 +280,9 @@ static void bridgeBasics(void) {
     expectValue("JSON.stringify(map.$value)", @"{\"k\":\"v\"}");
 
     // Scalars in both directions.
-    expectValue("ObjC.use('NSFileManager').defaultManager().fileExistsAtPath_('/')", @"true");
-    expectValue("ObjC.use('NSFileManager').defaultManager().fileExistsAtPath_('/no/such/path')", @"false");
+    // Runtime encodings report BOOL as signed char on Intel and bool on ARM.
+    expectValue("Boolean(ObjC.use('NSFileManager').defaultManager().fileExistsAtPath_('/'))", @"true");
+    expectValue("Boolean(ObjC.use('NSFileManager').defaultManager().fileExistsAtPath_('/no/such/path'))", @"false");
     expectValue("ObjC.use('NSString').stringWithUTF8String_('abc').length", @"3");
 
     // String conversion goes through the object's own description.

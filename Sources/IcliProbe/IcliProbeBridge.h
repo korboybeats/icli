@@ -23,9 +23,10 @@ void icli_probe_throw(JSContext *context, NSString *format, ...) NS_FORMAT_FUNCT
 /// prelude wraps each one in a proxy, so a script calls methods by name
 /// instead of calling `send` itself.
 @protocol IcliProbeObjCHandleExports <JSExport>
-@property (nonatomic, readonly) BOOL objcHandle;
+// JSExport treats Intel's Objective-C BOOL as a numeric signed char.
+@property (nonatomic, readonly) bool objcHandle;
 @property (nonatomic, readonly) NSString *className;
-@property (nonatomic, readonly) BOOL isClassHandle;
+@property (nonatomic, readonly) bool isClassHandle;
 - (NSString *)toString;
 /// The object as a plain JavaScript value: a collection becomes an array or
 /// an object, and anything else its description.

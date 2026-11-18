@@ -67,8 +67,8 @@ static const char *icli_probe_unqualified(const char *type) {
     return handle;
 }
 
-- (BOOL)objcHandle {
-    return YES;
+- (bool)objcHandle {
+    return true;
 }
 
 - (NSString *)className {
@@ -76,7 +76,7 @@ static const char *icli_probe_unqualified(const char *type) {
     return NSStringFromClass(owner);
 }
 
-- (BOOL)isClassHandle {
+- (bool)isClassHandle {
     return object_isClass(_target);
 }
 
