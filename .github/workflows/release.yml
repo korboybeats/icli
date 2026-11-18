@@ -14,7 +14,7 @@ on:
       runner:
         description: macOS runner for the release build
         type: choice
-        default: macos-26
+        default: macos-26-intel
         options:
           - macos-26
           - macos-26-intel
@@ -54,7 +54,7 @@ jobs:
   release:
     needs: check-release
     if: needs.check-release.outputs.build == 'true'
-    runs-on: ${{ inputs.runner || 'macos-26' }}
+    runs-on: ${{ inputs.runner || 'macos-26-intel' }}
     timeout-minutes: 45
     permissions:
       contents: write
