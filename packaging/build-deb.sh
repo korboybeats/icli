@@ -73,7 +73,7 @@ Description: On-device $PLATFORM control CLI
 CONTROL
 # Parallel (hidden app sessions behind `icli parallel` and --parallel) is an
 # optional iPhone package; without it those commands answer parallel_unavailable.
-[ "$PLATFORM" = tvOS ] || echo "Suggests: com.korboy.parallel (>= 1.1.0)" >> "$STAGE/DEBIAN/control"
+[ "$PLATFORM" = tvOS ] || echo "Suggests: com.korboy.parallel (>= 1.0.0)" >> "$STAGE/DEBIAN/control"
 OUTPUT="$ROOT/.build/com.korboy.icli_${VERSION}_${ARCH}.deb"
 dpkg-deb --root-owner-group -b "$STAGE" "$OUTPUT"
 echo "built $OUTPUT"

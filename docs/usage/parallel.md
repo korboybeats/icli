@@ -1,6 +1,6 @@
 # Hidden App Sessions (Parallel)
 
-With the Parallel package (`com.korboy.parallel`, 1.1.0 or later) installed, icli can run apps in hidden sessions: each session owns one installed app and runs it in a scene that is never shown on the screen. Several runners can each drive their own app at the same time, and the person holding the phone keeps using it. Without the package, these commands fail with `parallel_unavailable` (exit 69).
+With the Parallel package (`com.korboy.parallel`, 1.0.0 or later) installed, icli can run apps in hidden sessions: each session owns one installed app and runs it in a scene that is never shown on the screen. Several runners can each drive their own app at the same time, and the person holding the phone keeps using it. Without the package, these commands fail with `parallel_unavailable` (exit 69).
 
 ```sh
 eval "$(icli parallel create com.example.app --launch --export)"
