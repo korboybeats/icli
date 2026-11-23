@@ -18,6 +18,43 @@ private func managedReceipt(_ bundleID: String) -> String {
     JailbreakRoot.current.jbrootPath("/var/lib/icli/apps/" + bundleID + ".json")
 }
 
+/// A validated .app bundle on disk: has a bundle identifier, a Mach-O
+/// executable and no symlink that leaves the bundle.
+struct ValidatedAppBundle {
+    let app: String
+    let bundleID: String
+    let executable: String
+}
+
+func validateAppBundle(_ path: String, kind: String = "app") throws -> ValidatedAppBundle {
+    let manager = FileManager.default
+    let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
+    var isDirectory: ObjCBool = false
+    guard manager.fileExists(atPath: trimmed, isDirectory: &isDirectory), isDirectory.boolValue else {
+        throw IcliError.failed("\(kind) bundle is not a directory: \(path)")
+    }
+    let infoData = try Data(contentsOf: URL(fileURLWithPath: trimmed + "/Info.plist"))
+    guard let info = try PropertyListSerialization.propertyList(from: infoData, format: nil) as? [String: Any],
+          let bundleID = info["CFBundleIdentifier"] as? String, !bundleID.isEmpty,
+          let executable = info["CFBundleExecutable"] as? String, !executable.isEmpty,
+          !executable.contains("/"), executable != ".", executable != ".."
+    else {
+        throw IcliError.failed("\(kind) has invalid bundle metadata")
+    }
+    _ = try machOInfo(at: trimmed + "/" + executable)
+    let bundleRoot = URL(fileURLWithPath: trimmed).resolvingSymlinksInPath().path + "/"
+    if let entries = manager.enumerator(at: URL(fileURLWithPath: trimmed), includingPropertiesForKeys: [.isSymbolicLinkKey]) {
+        for case let item as URL in entries {
+            if try item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true,
+               !item.resolvingSymlinksInPath().path.hasPrefix(bundleRoot)
+            {
+                throw IcliError.failed("\(kind) bundle contains a symlink outside the app")
+            }
+        }
+    }
+    return ValidatedAppBundle(app: trimmed, bundleID: bundleID, executable: executable)
+}
+
 /// An IPA extracted into a private staging directory, which the caller
 /// removes: exactly one Payload/*.app with a bundle identifier, a Mach-O
 /// executable and no symlink that leaves the bundle.
@@ -41,27 +78,8 @@ func stageIPA(_ path: String) throws -> StagedIPA {
         let payload = stage + "/Payload"
         let bundles = try manager.contentsOfDirectory(atPath: payload).filter { $0.hasSuffix(".app") }
         guard bundles.count == 1 else { throw IcliError.failed("IPA must contain exactly one Payload/*.app") }
-        let source = payload + "/" + bundles[0]
-        let infoData = try Data(contentsOf: URL(fileURLWithPath: source + "/Info.plist"))
-        guard let info = try PropertyListSerialization.propertyList(from: infoData, format: nil) as? [String: Any],
-              let bundleID = info["CFBundleIdentifier"] as? String,
-              let executable = info["CFBundleExecutable"] as? String, !executable.isEmpty,
-              !executable.contains("/"), executable != ".", executable != ".."
-        else {
-            throw IcliError.failed("IPA has invalid bundle metadata")
-        }
-        _ = try machOInfo(at: source + "/" + executable)
-        let bundleRoot = URL(fileURLWithPath: source).resolvingSymlinksInPath().path + "/"
-        if let entries = manager.enumerator(at: URL(fileURLWithPath: source), includingPropertiesForKeys: [.isSymbolicLinkKey]) {
-            for case let item as URL in entries {
-                if try item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true,
-                   !item.resolvingSymlinksInPath().path.hasPrefix(bundleRoot)
-                {
-                    throw IcliError.failed("IPA bundle contains a symlink outside the app")
-                }
-            }
-        }
-        return StagedIPA(stage: stage, app: source, bundleID: bundleID, executable: executable)
+        let validated = try validateAppBundle(payload + "/" + bundles[0], kind: "IPA")
+        return StagedIPA(stage: stage, app: validated.app, bundleID: validated.bundleID, executable: validated.executable)
     } catch {
         try? manager.removeItem(atPath: stage)
         throw error

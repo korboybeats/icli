@@ -138,6 +138,39 @@ public func installIPAInContainer(
     return result
 }
 
+/// Installs an unpacked .app directory into its own app container under
+/// /var/containers/Bundle/Application, cloning it into the container before
+/// ad-hoc re-signing so the source bundle is left untouched.
+public func installAppInContainer(
+    _ path: String,
+    registration: AppRegistrationType = .system,
+    resign: Bool = true,
+) throws -> [String: Any] {
+    guard geteuid() == 0 else {
+        throw IcliError.failed("container installation requires root; run sudo icli app install <file.app> --container")
+    }
+    guard FileManager.default.fileExists(atPath: path) else { throw IcliError.failed("package not found: \(path)") }
+    let validated = try validateAppBundle(path, kind: "app")
+    if resign, try machOSigning(at: validated.app + "/" + validated.executable).encrypted {
+        throw IcliError.failed("\(validated.executable) is FairPlay encrypted; decrypt the app before installing it")
+    }
+    var signing: [String: Any]?
+    var result = try installValidatedBundleInContainer(
+        validated,
+        registration: registration,
+        prepareTarget: { target in
+            if resign {
+                signing = try signAppBundle(target)
+            }
+        },
+    )
+    result["resigned"] = signing != nil
+    if let signing {
+        result.merge(signing) { $1 }
+    }
+    return result
+}
+
 /// Runs `prepareApp` on the validated, temporary Payload/*.app before it is
 /// copied into a container. The path is removed when this call returns.
 public func installIPAInContainer(
@@ -153,11 +186,26 @@ public func installIPAInContainer(
     let staged = try stageIPA(path)
     defer { try? manager.removeItem(atPath: staged.stage) }
     try prepareApp(staged.app)
-    let bundleID = staged.bundleID
+    let validated = ValidatedAppBundle(app: staged.app, bundleID: staged.bundleID, executable: staged.executable)
+    return try installValidatedBundleInContainer(validated, registration: registration)
+}
+
+private func installValidatedBundleInContainer(
+    _ validated: ValidatedAppBundle,
+    registration: AppRegistrationType,
+    prepareTarget: ((String) throws -> Void)? = nil,
+) throws -> [String: Any] {
+    let manager = FileManager.default
+    let bundleID = validated.bundleID
     // Refuses a plug-in that does not extend the app's identifier before
     // anything is changed; registration reads them from the installed copy.
-    _ = try appPlugIns(of: staged.app, owner: bundleID)
+    _ = try appPlugIns(of: validated.app, owner: bundleID)
     let existingContainer = try container("app", bundleID, create: false)["path"] as? String
+    if let existingContainer,
+       normalizedAppPath(validated.app).hasPrefix(normalizedAppPath(existingContainer) + "/")
+    {
+        throw IcliError.failed("source app bundle is already inside its destination container")
+    }
     let previous = existingContainer.flatMap(appBundle(in:))
     if let existingContainer, previous != nil, !isManaged(existingContainer) {
         throw IcliError.failed("\(bundleID) is already installed and icli did not install it; remove it first")
@@ -186,7 +234,7 @@ public func installIPAInContainer(
         _ = try killApp(bundleID, force: true)
     }
 
-    let target = bundleContainer + "/" + (staged.app as NSString).lastPathComponent
+    let target = bundleContainer + "/" + (validated.app as NSString).lastPathComponent
     let backup = bundleContainer + "/.icli-previous"
     let marker = bundleContainer + "/" + containerMarker
     let markerExisted = manager.fileExists(atPath: marker)
@@ -195,7 +243,10 @@ public func installIPAInContainer(
             try? manager.removeItem(atPath: backup)
             try manager.moveItem(atPath: previous, toPath: backup)
         }
-        try manager.copyItem(atPath: staged.app, toPath: target)
+        try manager.copyItem(atPath: validated.app, toPath: target)
+        if let prepareTarget {
+            try prepareTarget(target)
+        }
         if !markerExisted, !manager.createFile(atPath: marker, contents: Data()) {
             throw IcliError.failed("could not mark the app container as installed by icli")
         }
